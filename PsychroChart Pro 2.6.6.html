@@ -1,0 +1,2330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Psychrometric Chart — Pro 2.6.6</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
+
+:root{
+  --leftW:380px; --rightW:420px;
+  --bg:#080c14; --fg:#e8edf5; --muted:#7b8da4; --dim:#4a5b72;
+  --panel:#0d1320; --panel2:#0a0f1a; --panelText:#e8edf5;
+  --accent:#3b82f6; --accentDim:#1e40af; --chip:#059669; --chipHover:#047857;
+  --warn:#d97706; --danger:#dc2626; --success:#10b981;
+  --grid:rgba(148,163,184,.06); --grid2:rgba(148,163,184,.14);
+  --sat:#22d3ee; --rh:#67e8f9; --enth:#fb923c; --vline:#a3e635; --dpline:#c084fc;
+  --pt:#f472b6; --ptGlow:rgba(244,114,182,.35);
+  --heat:#ef4444; --cool:#3b82f6; --humid:#22c55e; --dehum:#a78bfa;
+  --evap:#06b6d4; --mix:#eab308;
+  --shadow:0 8px 32px rgba(0,0,0,.5); --shadow2:0 2px 8px rgba(0,0,0,.3);
+  --r:10px; --r2:6px;
+  --inputBg:#111827; --inputBorder:rgba(148,163,184,.12); --inputFocus:#3b82f6;
+  --halo:rgba(8,12,20,.92); --plotBorder:#475569;
+  --glass:rgba(15,23,42,.72); --glassBorder:rgba(148,163,184,.08);
+  --lw-sat:2.5; --lw-rh:1.0; --lw-enth:0.9; --lw-v:0.9; --lw-dp:0.9;
+  --mono:'JetBrains Mono',ui-monospace,Consolas,monospace;
+  --sans:'DM Sans',system-ui,-apple-system,sans-serif;
+  --tabH:36px;
+}
+[data-theme="light"]{
+  --bg:#f8fafc; --fg:#0f172a; --muted:#1e293b; --dim:#475569;
+  --panel:#ffffff; --panel2:#f1f5f9; --panelText:#0f172a;
+  --grid:rgba(71,85,105,.08); --grid2:rgba(71,85,105,.18);
+  --sat:#0891b2; --rh:#0e7490; --enth:#c2410c; --vline:#4d7c0f; --dpline:#7c3aed;
+  --pt:#be185d; --ptGlow:rgba(190,24,93,.2);
+  --heat:#b91c1c; --cool:#1d4ed8; --humid:#15803d; --dehum:#6d28d9;
+  --evap:#0891b2; --mix:#a16207;
+  --inputBg:#fff; --inputBorder:rgba(71,85,105,.22); --inputFocus:#3b82f6;
+  --halo:rgba(248,250,252,.95); --plotBorder:#334155;
+  --glass:rgba(255,255,255,.88); --glassBorder:rgba(71,85,105,.15);
+  --shadow:0 4px 16px rgba(0,0,0,.08); --shadow2:0 1px 4px rgba(0,0,0,.06);
+}
+[data-style="classic"]{--sat:#1e293b;--rh:#dc2626;--enth:#16a34a;--vline:#7c3aed;--dpline:#0891b2;}
+[data-theme="dark"][data-style="classic"]{--sat:#e2e8f0;--rh:#f87171;--enth:#4ade80;--vline:#a78bfa;--dpline:#22d3ee;}
+[data-style="ashrae"]{
+  --bg:#ffffff;--fg:#000000;--muted:#333333;--dim:#555555;
+  --panel:#f7f7f5;--panel2:#eeeee8;--panelText:#111111;
+  --grid:rgba(0,0,0,.06);--grid2:rgba(0,0,0,.15);
+  --sat:#000000;--rh:#2266bb;--enth:#338833;--vline:#cc3333;--dpline:#777777;
+  --pt:#cc0000;--ptGlow:rgba(204,0,0,.15);
+  --heat:#cc0000;--cool:#0055aa;--humid:#007733;--dehum:#6633aa;
+  --evap:#007777;--mix:#997700;
+  --inputBg:#fff;--inputBorder:rgba(0,0,0,.15);--inputFocus:#0055aa;
+  --halo:rgba(255,255,255,.95);--plotBorder:#000000;
+  --glass:rgba(255,255,255,.9);--glassBorder:rgba(0,0,0,.1);
+  --lw-sat:2.5;--lw-rh:0.6;--lw-enth:0.5;--lw-v:0.5;--lw-dp:0.4;
+  --shadow:0 2px 8px rgba(0,0,0,.06);--shadow2:0 1px 3px rgba(0,0,0,.04);
+}
+[data-theme="dark"][data-style="ashrae"]{
+  --bg:#12100e;--fg:#e8e4dc;--muted:#c0b8a8;--dim:#8a8278;
+  --panel:#1a1714;--panel2:#141210;--panelText:#e8e4dc;
+  --grid:rgba(200,190,170,.06);--grid2:rgba(200,190,170,.14);
+  --sat:#e8e0d0;--rh:#6da6e8;--enth:#6dd89a;--vline:#e8a070;--dpline:#a09888;
+  --pt:#e87878;--ptGlow:rgba(232,120,120,.15);
+  --inputBg:#1e1b18;--inputBorder:rgba(200,190,170,.15);
+  --halo:rgba(18,16,14,.92);--plotBorder:#c0b8a8;
+  --glass:rgba(18,16,14,.75);--glassBorder:rgba(200,190,170,.1);
+}
+
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:13px;-webkit-font-smoothing:antialiased}
+::selection{background:var(--accent);color:#fff}
+::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--dim);border-radius:3px}
+#app{position:fixed;inset:0;display:grid;grid-template-columns:var(--leftW) 1px 1fr 1px var(--rightW);grid-template-rows:44px 1fr;overflow:hidden}
+
+#topBar{grid-column:1/-1;grid-row:1;display:flex;align-items:center;gap:10px;padding:0 14px;background:var(--panel);border-bottom:1px solid var(--glassBorder);z-index:20}
+#topBar .logo{font-family:var(--mono);font-weight:700;font-size:14px;letter-spacing:-.02em;background:linear-gradient(135deg,var(--accent),var(--chip));-webkit-background-clip:text;-webkit-text-fill-color:transparent;white-space:nowrap;cursor:pointer}
+#topBar .sep{width:1px;height:20px;background:var(--glassBorder)}
+.topCtrl{display:flex;align-items:center;gap:5px}
+.topCtrl label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-weight:600}
+.topCtrl select,.topCtrl input{height:28px;padding:0 8px;font-size:12px;font-family:var(--sans);font-weight:500;background:var(--inputBg);color:var(--fg);border:1px solid var(--inputBorder);border-radius:var(--r2);outline:none;appearance:none;cursor:pointer}
+.topCtrl select:focus,.topCtrl input:focus{border-color:var(--inputFocus);box-shadow:0 0 0 2px rgba(59,130,246,.15)}
+.topCtrl input[type="text"]{width:130px}
+.topActions{margin-left:auto;display:flex;gap:5px;align-items:center}
+.tbtn{height:28px;padding:0 9px;font-size:10px;font-family:var(--sans);font-weight:600;letter-spacing:.02em;text-transform:uppercase;border:1px solid var(--inputBorder);border-radius:var(--r2);background:var(--inputBg);color:var(--fg);cursor:pointer;transition:all .15s;white-space:nowrap;display:flex;align-items:center;gap:3px}
+.tbtn:hover{border-color:var(--accent);color:var(--accent)}
+.tbtn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+.tbtn.success{background:var(--chip);color:#fff;border-color:var(--chip)}
+
+.panel{grid-row:2;background:var(--panel);border-right:1px solid var(--glassBorder);overflow-y:auto;overflow-x:hidden}
+#rightPanel{border-right:none;border-left:1px solid var(--glassBorder)}
+.split{grid-row:2;background:var(--glassBorder);cursor:col-resize;width:1px}.split:hover{background:var(--accent);width:3px;margin:0 -1px}
+.panelTabs{display:flex;border-bottom:1px solid var(--glassBorder);position:sticky;top:0;z-index:5;background:var(--panel)}
+.panelTabs button{flex:1;height:var(--tabH);font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;background:none;border:none;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;transition:all .15s;font-family:var(--sans)}
+.panelTabs button:hover{color:var(--fg)}.panelTabs button.active{color:var(--accent);border-bottom-color:var(--accent)}
+.tabContent{display:none;padding:12px 14px 16px}.tabContent.active{display:block}
+.section-title{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:12px 0 8px;display:flex;align-items:center;gap:6px}
+.section-title::after{content:'';flex:1;height:1px;background:var(--glassBorder)}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:4px 0}
+.row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin:4px 0}
+.row4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;margin:4px 0}
+.full{grid-column:1/-1}
+.field{display:flex;flex-direction:column;gap:2px}
+.field>label{font-size:10px;color:var(--muted);font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+input[type="number"],input[type="text"],select,textarea{width:100%;height:30px;padding:0 8px;font-size:12px;font-family:var(--mono);font-weight:500;background:var(--inputBg);color:var(--fg);border:1px solid var(--inputBorder);border-radius:var(--r2);outline:none;appearance:none;transition:border-color .15s}
+textarea{height:auto;padding:6px 8px;font-family:var(--sans);font-size:12px;resize:vertical}
+input:focus,select:focus,textarea:focus{border-color:var(--inputFocus);box-shadow:0 0 0 2px rgba(59,130,246,.1)}
+input:disabled{opacity:.5;cursor:not-allowed}
+.btn{width:100%;height:30px;font-size:11px;font-family:var(--sans);font-weight:600;letter-spacing:.03em;text-transform:uppercase;border:1px solid var(--inputBorder);border-radius:var(--r2);background:var(--inputBg);color:var(--fg);cursor:pointer;transition:all .15s}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+.btn.accent{background:var(--accent);color:#fff;border-color:var(--accent)}.btn.accent:hover{background:var(--accentDim)}
+.btn.chip{background:var(--chip);color:#fff;border-color:var(--chip)}.btn.chip:hover{background:var(--chipHover)}
+.btn.danger{background:rgba(220,38,38,.12);color:var(--danger);border-color:rgba(220,38,38,.3)}
+.btn.warn{background:rgba(217,119,6,.12);color:var(--warn);border-color:rgba(217,119,6,.3)}
+
+.ptable{width:100%;border-collapse:collapse;font-size:11px;margin:4px 0}
+.ptable th{font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);text-align:left;padding:4px;border-bottom:1px solid var(--glassBorder)}
+.ptable td{padding:3px 4px;border-bottom:1px solid var(--glassBorder);vertical-align:middle}
+.ptable input{height:22px;padding:0 4px;font-size:11px}
+.ptable .del,.ptable .dup{width:22px;height:22px;padding:0;display:flex;align-items:center;justify-content:center;font-size:11px;border-radius:4px;border:1px solid var(--inputBorder);background:transparent;cursor:pointer}
+.ptable .del{color:var(--danger);border-color:rgba(220,38,38,.2)}.ptable .del:hover{background:rgba(220,38,38,.15)}
+.ptable .dup{color:var(--muted)}.ptable .dup:hover{background:rgba(59,130,246,.1);color:var(--accent)}
+
+.badge{display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:600;padding:1px 6px;border-radius:10px}
+.badge.heat{background:rgba(239,68,68,.1);color:var(--heat)}.badge.cool{background:rgba(59,130,246,.1);color:var(--cool)}
+.badge.humid{background:rgba(34,197,94,.1);color:var(--humid)}.badge.dehum{background:rgba(167,139,250,.1);color:var(--dehum)}
+.badge.evap{background:rgba(6,182,212,.1);color:var(--evap)}.badge.mix{background:rgba(234,179,8,.1);color:var(--mix)}
+
+.metric{display:flex;flex-direction:column;gap:1px;padding:5px 7px;border-radius:var(--r2);background:var(--panel2);border:1px solid var(--glassBorder)}
+.metric .val{font-family:var(--mono);font-size:11px;font-weight:600;color:var(--fg);word-break:break-word}.metric .lbl{font-size:9px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.calcResult{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin:6px 0}
+
+.legend{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}.legend-item{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--muted)}.legend-dot{width:8px;height:8px;border-radius:50%}
+
+.procCard{padding:6px 8px;border-radius:var(--r2);margin:3px 0;background:var(--panel2);border:1px solid var(--glassBorder)}
+.procCard .procHead{display:flex;align-items:center;gap:6px}.procCard .procTitle{font-size:11px;font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.procCard .badge{flex-shrink:0}
+
+#chartWrap{grid-column:3;grid-row:2;position:relative;overflow:hidden;background:var(--bg)}
+canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+#cv{z-index:1}
+
+#yAxisLabel{position:absolute;right:8px;top:50%;z-index:5;writing-mode:vertical-rl;transform:translateY(-50%);font-family:var(--sans);font-size:12px;font-weight:600;color:var(--fg);letter-spacing:.03em;white-space:nowrap;pointer-events:none;text-align:center;padding:4px 2px;opacity:.75}
+
+#hud{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);padding:5px 12px;border-radius:8px;background:var(--glass);backdrop-filter:blur(12px);border:1px solid var(--glassBorder);font-family:var(--mono);font-size:11px;font-weight:500;color:var(--fg);z-index:10;white-space:nowrap;box-shadow:var(--shadow2);transition:opacity .15s}
+#hud.hidden{opacity:0;pointer-events:none}
+
+#chartToolbar{position:absolute;top:8px;left:8px;right:8px;display:flex;align-items:center;gap:6px;z-index:10;flex-wrap:wrap}
+#layerToggles{display:flex;flex-wrap:wrap;gap:3px;padding:4px 6px;border-radius:8px;background:var(--glass);backdrop-filter:blur(12px);border:1px solid var(--glassBorder)}
+#layerToggles label{display:flex;align-items:center;gap:4px;font-size:10px;font-weight:600;padding:3px 7px;border-radius:5px;cursor:pointer;transition:all .15s;color:var(--dim);border:1px solid transparent;user-select:none}
+#layerToggles label:hover{color:var(--fg)}#layerToggles label.on{color:var(--fg);background:rgba(59,130,246,.08);border-color:rgba(59,130,246,.2)}
+#layerToggles input[type="checkbox"]{display:none}
+.ltDot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+#chartActions{margin-left:auto;display:flex;gap:4px;padding:4px 6px;border-radius:8px;background:var(--glass);backdrop-filter:blur(12px);border:1px solid var(--glassBorder)}
+#chartActions button{height:26px;padding:0 8px;font-size:10px;font-family:var(--sans);font-weight:600;letter-spacing:.03em;text-transform:uppercase;border:1px solid var(--glassBorder);border-radius:5px;background:transparent;color:var(--fg);cursor:pointer;transition:all .15s}
+#chartActions button:hover{border-color:var(--accent);color:var(--accent)}
+#chartActions button.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+#procModeBar{position:absolute;top:8px;left:50%;transform:translateX(-50%);padding:4px 14px;border-radius:8px;background:rgba(234,179,8,.15);border:1px solid rgba(234,179,8,.4);font-size:11px;font-weight:600;color:var(--warn);z-index:12;display:none;font-family:var(--sans)}
+#procModeBar.visible{display:block}
+
+#ctxMenu{position:fixed;z-index:300;min-width:220px;background:var(--panel);border:1px solid var(--glassBorder);border-radius:10px;box-shadow:var(--shadow);padding:4px 0;display:none;font-size:12px;color:var(--fg)}
+#ctxMenu.visible{display:block}
+#ctxMenu .ctx-item{padding:7px 14px;cursor:pointer;display:flex;align-items:center;gap:8px;transition:background .1s;color:var(--fg)}
+#ctxMenu .ctx-item:hover{background:rgba(59,130,246,.1)}
+#ctxMenu .ctx-item .ctx-icon{width:16px;text-align:center;font-size:13px}
+#ctxMenu .ctx-item .ctx-key{margin-left:auto;font-size:10px;font-family:var(--mono);color:var(--dim)}
+#ctxMenu .ctx-sep{height:1px;background:var(--glassBorder);margin:3px 8px}
+[data-theme="light"] #ctxMenu{background:#ffffff;border:1px solid #d1d5db;box-shadow:0 8px 24px rgba(0,0,0,.12)}
+[data-theme="light"] #ctxMenu .ctx-item{color:#111827}
+[data-theme="light"] #ctxMenu .ctx-item:hover{background:rgba(59,130,246,.08)}
+[data-theme="light"] #ctxMenu .ctx-key{color:#6b7280}
+[data-theme="light"] #ctxMenu .ctx-sep{background:#e5e7eb}
+[data-style="ashrae"] #ctxMenu{background:#fafaf5;border:1px solid #c8c8b8;box-shadow:0 6px 20px rgba(0,0,0,.1)}
+[data-style="ashrae"] #ctxMenu .ctx-item{color:#111}
+[data-style="ashrae"] #ctxMenu .ctx-item:hover{background:rgba(0,85,170,.06)}
+[data-style="ashrae"][data-theme="light"] #ctxMenu{background:#ffffff;border:1px solid #bbb}
+[data-theme="light"] .te-row label{color:#111827}
+[data-theme="light"] .te-row select,[data-theme="light"] .te-row input[type="number"]{background:#fff;color:#111827;border-color:#d1d5db}
+[data-theme="light"] .modal-panel h2{color:#0f172a}
+[data-theme="light"] .modal-panel h3{color:#1d4ed8}
+
+.modal-overlay{position:fixed;inset:0;z-index:200;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.55);backdrop-filter:blur(4px)}
+.modal-overlay.visible{display:flex}
+.modal-panel{background:var(--panel);border:1px solid var(--glassBorder);border-radius:14px;padding:24px 28px;max-width:560px;width:92%;box-shadow:var(--shadow);max-height:85vh;overflow-y:auto}
+.modal-panel h2{font-size:16px;margin-bottom:12px;font-family:var(--mono)}
+.modal-panel h3{font-size:13px;margin:14px 0 6px;color:var(--accent)}
+.modal-panel p,.modal-panel li{font-size:12px;line-height:1.6;color:var(--muted)}
+.modal-panel ul{padding-left:18px;margin:6px 0}
+.modal-panel .close-btn{margin-top:16px;width:100%;height:32px;background:var(--inputBg);border:1px solid var(--inputBorder);border-radius:var(--r2);color:var(--fg);font-family:var(--sans);font-weight:600;cursor:pointer}
+.modal-panel .close-btn:hover{border-color:var(--accent)}
+.shortcutGrid{display:grid;grid-template-columns:auto 1fr;gap:6px 16px}
+.shortcutGrid .k{font-family:var(--mono);font-size:11px;padding:2px 6px;border-radius:4px;background:var(--inputBg);border:1px solid var(--glassBorder);text-align:center}
+.shortcutGrid .d{font-size:12px;color:var(--muted);display:flex;align-items:center}
+.dev-info{font-size:11px;color:var(--dim);margin-top:8px;padding:10px;background:var(--panel2);border-radius:8px;border:1px solid var(--glassBorder)}
+[data-theme="light"] .dev-info{color:#334155}
+[data-theme="light"] .ptable td{color:#0f172a}
+[data-theme="light"] .ptable th{color:#334155;background:#e2e8f0}
+[data-theme="light"] .metric .lbl{color:#475569}
+[data-theme="light"] .metric .val{color:#0f172a}
+[data-theme="light"] .procCard .procTitle{color:#0f172a}
+[data-theme="light"] .badge{font-weight:700}
+[data-theme="light"] .section-title{color:#334155}
+[data-theme="light"] .modal-panel p,[data-theme="light"] .modal-panel li{color:#334155}
+[data-theme="light"] .shortcutGrid .d{color:#334155}
+[data-theme="light"] .legend-item{color:#334155}
+[data-style="ashrae"] .ptable td{color:var(--fg)}
+[data-style="ashrae"] .ptable th{color:var(--muted);background:var(--panel2)}
+[data-style="ashrae"] .metric .val{color:var(--fg)}
+[data-style="ashrae"] .procCard .procTitle{color:var(--fg)}
+
+#toastContainer{position:fixed;bottom:20px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:6px}
+
+.te-grid{display:flex;flex-direction:column;gap:5px;margin:6px 0}
+.te-row{display:grid;grid-template-columns:100px 44px 80px 60px;gap:6px;align-items:center;font-size:11px}
+.te-row label{font-weight:600;color:var(--fg);font-size:11px}
+.te-row input[type="color"]{width:36px;height:26px;border:1px solid var(--inputBorder);border-radius:4px;cursor:pointer;padding:1px;background:var(--inputBg)}
+.te-row select{height:26px;font-size:10px;padding:0 4px;border-radius:4px;border:1px solid var(--inputBorder);background:var(--inputBg);color:var(--fg);font-family:var(--sans)}
+.te-row input[type="number"]{height:26px;font-size:11px;padding:0 4px;border-radius:4px;border:1px solid var(--inputBorder);background:var(--inputBg);color:var(--fg);font-family:var(--mono)}
+.toast{padding:7px 14px;border-radius:8px;background:var(--glass);backdrop-filter:blur(16px);border:1px solid var(--glassBorder);font-size:12px;font-weight:500;color:var(--fg);box-shadow:var(--shadow);animation:toastIn .3s ease-out;display:flex;align-items:center;gap:8px}
+.toast.success{border-color:rgba(16,185,129,.4)}.toast.error{border-color:rgba(220,38,38,.4)}.toast.info{border-color:rgba(59,130,246,.4)}
+@keyframes toastIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+@keyframes toastOut{from{opacity:1}to{opacity:0;transform:translateY(-8px)}}
+
+#splitL{grid-column:2;grid-row:2}#splitR{grid-column:4;grid-row:2}
+#leftPanel{grid-column:1;grid-row:2}#rightPanel{grid-column:5;grid-row:2}
+
+/* ===== GLOSSARY MODAL STYLES ===== */
+.glossary-grid{display:grid;grid-template-columns:1fr 1fr;gap:0;margin:8px 0;border:1px solid var(--glassBorder);border-radius:8px;overflow:hidden}
+.glossary-item{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border-bottom:1px solid var(--glassBorder);border-right:1px solid var(--glassBorder);transition:background .15s}
+.glossary-item:hover{background:rgba(59,130,246,.04)}
+.glossary-item:nth-child(2n){border-right:none}
+.glossary-item:nth-last-child(-n+2){border-bottom:none}
+.glossary-icon{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;background:var(--panel2);border:1px solid var(--glassBorder)}
+.glossary-body{display:flex;flex-direction:column;gap:2px;min-width:0}
+.glossary-abbr{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--fg);letter-spacing:.02em}
+.glossary-full{font-size:11px;color:var(--accent);font-weight:600}
+.glossary-desc{font-size:10px;color:var(--muted);line-height:1.4}
+.glossary-unit{font-family:var(--mono);font-size:10px;color:var(--dim);margin-top:1px}
+[data-theme="light"] .glossary-abbr{color:#0f172a}
+[data-theme="light"] .glossary-desc{color:#475569}
+
+/* ===== MIX FLOW MODAL ===== */
+.mix-flow-card{padding:10px 12px;border-radius:var(--r);background:var(--panel2);border:1px solid var(--glassBorder)}
+.mix-flow-card-head{display:flex;align-items:center;gap:8px}
+.mix-flow-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.mix-flow-name{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--fg)}
+.mix-flow-props{font-size:10px;color:var(--muted);margin-left:auto;font-family:var(--mono)}
+#mixFlowOverlay .section-title{margin-top:10px}
+.mix-flow-hint{font-size:10px;color:var(--warn);padding:4px 8px 2px;line-height:1.5;display:none}
+
+/* ===== EDIT POINT MODAL ===== */
+#editPtOverlay .ep-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0}
+#editPtOverlay .ep-field{display:flex;flex-direction:column;gap:3px}
+#editPtOverlay .ep-field.full{grid-column:1/-1}
+#editPtOverlay .ep-field>label{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+#editPtOverlay .ep-field>input,#editPtOverlay .ep-field>select{height:32px;padding:0 10px;font-size:13px;font-family:var(--mono);font-weight:500;background:var(--inputBg);color:var(--fg);border:1px solid var(--inputBorder);border-radius:var(--r2);outline:none}
+#editPtOverlay .ep-field>input:focus,#editPtOverlay .ep-field>select:focus{border-color:var(--inputFocus);box-shadow:0 0 0 3px rgba(59,130,246,.12)}
+#editPtOverlay .ep-readonly{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin:8px 0}
+#editPtOverlay .ep-ro{display:flex;flex-direction:column;gap:1px;padding:6px 8px;border-radius:var(--r2);background:var(--panel2);border:1px solid var(--glassBorder)}
+#editPtOverlay .ep-ro .ro-val{font-family:var(--mono);font-size:12px;font-weight:600;color:var(--fg)}
+#editPtOverlay .ep-ro .ro-lbl{font-size:9px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+#editPtOverlay .ep-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}
+#editPtOverlay .ep-actions .btn{height:34px;font-size:12px}
+
+/* ===== REPORT FORMAT MODAL ===== */
+#reportOverlay label:has(input:checked){border-color:var(--accent)!important;background:rgba(59,130,246,.06)!important;box-shadow:0 0 0 2px rgba(59,130,246,.15)}
+#reportOverlay label:hover{border-color:var(--accent)!important}
+[data-theme="light"] #reportOverlay label:has(input:checked){background:rgba(59,130,246,.08)!important}
+.mix-flow-hint.visible{display:block}
+.mix-flow-hint code{font-family:var(--mono);font-size:10px;background:rgba(217,119,6,.12);padding:1px 4px;border-radius:3px;color:var(--warn)}
+
+/* ===== BLINKING ACTIVE BUTTON ===== */
+@keyframes btnBlink{0%,100%{opacity:1;box-shadow:0 0 4px rgba(59,130,246,.3)}50%{opacity:.65;box-shadow:0 0 12px rgba(59,130,246,.6)}}
+#chartActions button.active{animation:btnBlink 1.2s ease-in-out infinite}
+#chartActions button#btnProcessMode.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+#chartActions button#btnMixMode.active{background:var(--mix);color:#fff;border-color:var(--mix);animation-name:btnBlinkMix}
+@keyframes btnBlinkMix{0%,100%{opacity:1;box-shadow:0 0 4px rgba(234,179,8,.3)}50%{opacity:.65;box-shadow:0 0 12px rgba(234,179,8,.6)}}
+
+/* ===== PROCESS CARD ENHANCEMENTS ===== */
+.procCard{cursor:pointer;transition:border-color .15s, background .15s}
+.procCard:hover{border-color:var(--accent)}
+.procCard.selected{border-color:var(--accent);background:rgba(59,130,246,.06)}
+.procCard .procDel{width:22px;height:22px;padding:0;display:flex;align-items:center;justify-content:center;font-size:12px;border-radius:4px;border:1px solid rgba(220,38,38,.2);background:transparent;color:var(--danger);cursor:pointer;flex-shrink:0;transition:background .15s}
+.procCard .procDel:hover{background:rgba(220,38,38,.15)}
+
+/* ===== POINT TABLE EDIT MODE TOGGLE ===== */
+.ptEditModeWrap{display:flex;align-items:center;gap:6px;margin:4px 0 6px}
+.ptEditModeWrap label{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.ptEditModeWrap select{height:24px;font-size:10px;padding:0 6px;border-radius:4px;border:1px solid var(--inputBorder);background:var(--inputBg);color:var(--fg);font-family:var(--sans)}
+
+/* ===== ADD POINT VIA PARAMS MODAL ===== */
+#addPtParamOverlay .ap-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0}
+#addPtParamOverlay .ap-field{display:flex;flex-direction:column;gap:3px}
+#addPtParamOverlay .ap-field.full{grid-column:1/-1}
+#addPtParamOverlay .ap-field>label{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+#addPtParamOverlay .ap-field>input,#addPtParamOverlay .ap-field>select{height:32px;padding:0 10px;font-size:13px;font-family:var(--mono);font-weight:500;background:var(--inputBg);color:var(--fg);border:1px solid var(--inputBorder);border-radius:var(--r2);outline:none}
+#addPtParamOverlay .ap-field>input:focus,#addPtParamOverlay .ap-field>select:focus{border-color:var(--inputFocus);box-shadow:0 0 0 3px rgba(59,130,246,.12)}
+#addPtParamOverlay .ap-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}
+#addPtParamOverlay .ap-actions .btn{height:34px;font-size:12px}
+</style>
+</head>
+<body>
+<div id="app" data-theme="dark" data-style="pro">
+
+<!-- TOP BAR -->
+<header id="topBar">
+  <div class="logo" id="logoClick" title="About PSYCHRO·PRO">▲ PSYCHRO·PRO</div>
+  <div class="sep"></div>
+  <div class="topCtrl"><label>Project</label><input id="projName" type="text" value="MyProject" style="width:120px"></div>
+  <div class="topCtrl"><label>Ver</label><input id="projVer" type="text" value="v1" style="width:50px"></div>
+  <div class="sep"></div>
+  <div class="topCtrl"><label>Company</label><input id="companyName" type="text" placeholder="Company" style="width:120px"></div>
+  <div class="topCtrl"><label>Engineer</label><input id="engineerName" type="text" placeholder="Engineer" style="width:110px"></div>
+  <div class="sep"></div>
+  <div class="topCtrl"><label>Theme</label><select id="theme"><option value="dark" selected>Dark</option><option value="light">Light</option></select></div>
+  <div class="topCtrl"><label>Units</label><select id="units"><option value="SI" selected>SI (°C, g/kg)</option><option value="IP">IP (°F, gr/lb)</option></select></div>
+  <div class="topCtrl"><label>Style</label><select id="style"><option value="pro" selected>Pro</option><option value="classic">Classic</option><option value="ashrae">ASHRAE</option><option value="custom">Custom</option></select></div>
+  <div class="sep"></div>
+  <div class="topCtrl"><label>Atm</label><span id="pUsed" style="font-family:var(--mono);font-size:10px;color:var(--muted)">—</span></div>
+  <div class="topActions">
+    <button class="tbtn" id="btnUndo" title="Undo (Ctrl+Z)">↩</button>
+    <button class="tbtn" id="btnRedo" title="Redo (Ctrl+Y)">↪</button>
+    <button class="tbtn" id="btnSave" title="Save project JSON">💾</button>
+    <button class="tbtn" id="btnLoad">📂</button>
+    <input id="fileLoad" type="file" accept=".json" style="display:none"/>
+    <button class="tbtn" id="btnExportPng">📷</button>
+    <button class="tbtn" id="btnReport" title="Generate Report (HTML / Word)">📊</button>
+    <button class="tbtn" id="btnGlossary" title="Glossary & Abbreviations">📖</button>
+    <button class="tbtn" id="btnShortcuts" title="Keyboard shortcuts (?)">⌨</button>
+    <button class="tbtn" id="btnAbout" title="About / Developer Info">ⓘ</button>
+  </div>
+</header>
+
+<!-- LEFT PANEL -->
+<aside id="leftPanel" class="panel">
+  <div class="panelTabs">
+    <button class="active" data-tab="tabAtmo">Atmosphere</button>
+    <button data-tab="tabPoints">Points</button>
+    <button data-tab="tabCalc">Calculator</button>
+  </div>
+
+  <div id="tabAtmo" class="tabContent active">
+    <div class="section-title">Atmospheric Conditions</div>
+    <div class="row">
+      <div class="field"><label>Altitude</label><div class="row" style="margin:0"><input id="alt" type="number" value="0" step="1" min="-200" max="9000"/><select id="altUnit"><option value="m">m</option><option value="ft">ft</option></select></div></div>
+      <div class="field"><label>Override P</label><div class="row" style="margin:0"><input id="pOverride" type="number" step="0.01" min="70" max="106"/><select id="pUnit"><option value="kPa">kPa</option><option value="psi">psia</option></select></div></div>
+    </div>
+    <div class="row"><button id="applyAtm" class="btn chip full">Apply Atmosphere</button></div>
+
+    <div class="section-title">Chart Range</div>
+    <div class="row3">
+      <div class="field"><label>Tdb min</label><input id="tMin" type="number" value="-10" step="0.5"></div>
+      <div class="field"><label>Tdb max</label><input id="tMax" type="number" value="55" step="0.5"></div>
+      <div class="field"><label>W max</label><input id="wMax" type="number" value="30" step="1"></div>
+    </div>
+    <div class="row3"><button id="btnRedraw" class="btn accent">Redraw</button><button id="btnFit" class="btn accent">Fit Pts</button><button id="btnResetZoom" class="btn">Reset</button></div>
+
+    <div class="section-title">Grid & Curves</div>
+    <div class="row">
+      <div class="field"><label>Quality</label><select id="density"><option value="fine">Fine</option><option value="normal" selected>Normal</option><option value="fast">Fast</option></select></div>
+      <div class="field"><label>RH Step %</label><input id="rhStep" type="number" value="10" step="5" min="5"></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Labels</label><select id="labelMode"><option value="none">None</option><option value="end">Ends</option><option value="mid" selected>Mid</option></select></div>
+      <div class="field"><label>Label Sz</label><input id="labelPx" type="number" value="11" min="8" max="16"></div>
+    </div>
+
+    <div class="section-title">ASHRAE 55 Comfort</div>
+    <div class="row">
+      <div class="field"><label>Comfort Zone</label><select id="comfortZone"><option value="none">None</option><option value="summer">Summer</option><option value="winter">Winter</option><option value="both" selected>Both</option></select></div>
+      <div class="field"><label>Temp Adj °</label><input id="comfortAdj" type="number" value="0" step="0.5"></div>
+    </div>
+
+    <div class="section-title">SHR Protractor</div>
+    <div class="row">
+      <div class="field"><label>Show SHR</label><select id="shrShow"><option value="off">Off</option><option value="on">On</option></select></div>
+      <div class="field"><label>SHR Value</label><input id="shrVal" type="number" value="0.75" step="0.01" min="-2" max="2"></div>
+    </div>
+
+    <div class="section-title">Legend</div>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:var(--sat)"></div>Sat</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--rh)"></div>RH</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--enth)"></div>h/WB</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--vline)"></div>Vol</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--dpline)"></div>Tdp</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--heat)"></div>Heat</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--cool)"></div>Cool</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--humid)"></div>Humid</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--dehum)"></div>Dehum</div>
+    </div>
+  </div>
+
+  <div id="tabPoints" class="tabContent">
+    <div class="section-title">Add Point</div>
+    <div class="row3">
+      <div class="field"><label>Tdb</label><input id="inT" type="number" value="26" step="0.1"></div>
+      <div class="field"><label>Given</label><select id="inMode"><option value="RH">RH %</option><option value="W">W</option><option value="Twb">Twb</option><option value="Tdp">Tdp</option></select></div>
+      <div class="field"><label>Value</label><input id="inX" type="number" value="50" step="0.1"></div>
+    </div>
+    <div class="row3">
+      <div class="field"><label>Label</label><input id="inLbl" type="text" value="Pt"></div>
+      <div class="field"><label>Connect</label><select id="connect"><option value="no">No</option><option value="yes">Yes</option></select></div>
+      <div class="field"><label>&nbsp;</label><button id="addPt" class="btn chip">+ Add</button></div>
+    </div>
+    <div class="section-title">All Points</div>
+    <div class="ptEditModeWrap"><label>Edit By</label><select id="ptTblEditMode"><option value="RH">Tdb + RH%</option><option value="Twb">Tdb + Twb</option></select></div>
+    <div style="overflow-x:auto"><table class="ptable" id="ptsTbl"><thead><tr><th>#</th><th>Label</th><th>Tdb</th><th id="ptTblSecondHdr">RH%</th><th>W</th><th></th></tr></thead><tbody></tbody></table></div>
+    <div class="section-title">Edit Selected</div>
+    <div class="row3">
+      <div class="field"><label>Point</label><select id="selPt"></select></div>
+      <div class="field"><label>Edit By</label><select id="editMode"><option value="RH">RH%</option><option value="W">W</option><option value="Twb">Twb</option></select></div>
+      <div class="field"><label>Label</label><input id="selLbl" type="text"></div>
+    </div>
+    <div class="row3">
+      <div class="field"><label>Tdb</label><input id="selT" type="number" step="0.1"></div>
+      <div class="field"><label>Value</label><input id="selX" type="number" step="0.1"></div>
+      <div class="field"><label>&nbsp;</label><button id="applyEdit" class="btn accent">Apply</button></div>
+    </div>
+    <div class="section-title">Bulk Import</div>
+    <div class="field"><label>CSV (Tdb,RH%,Label per line)</label><textarea id="bulkCSV" rows="3" placeholder="26,50,Room&#10;13,95,Supply"></textarea></div>
+    <div class="row"><button id="bulkImport" class="btn accent full">Import CSV Points</button></div>
+  </div>
+
+  <div id="tabCalc" class="tabContent">
+    <div class="section-title">Property Calculator</div>
+    <div class="row">
+      <div class="field"><label>Input 1</label><select id="calcIn1"><option value="Tdb">Tdb</option><option value="RH">RH %</option><option value="W">W</option><option value="Twb">Twb</option><option value="Tdp">Tdp</option><option value="h">h</option></select></div>
+      <div class="field"><label>Value</label><input id="calcV1" type="number" value="26" step="0.1"></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Input 2</label><select id="calcIn2"><option value="Tdb">Tdb</option><option value="RH" selected>RH %</option><option value="W">W</option><option value="Twb">Twb</option><option value="Tdp">Tdp</option><option value="h">h</option></select></div>
+      <div class="field"><label>Value</label><input id="calcV2" type="number" value="50" step="0.1"></div>
+    </div>
+    <div class="row"><button id="calcBtn" class="btn chip full">Calculate</button></div>
+    <div id="calcResults" class="calcResult"></div>
+    <div class="row"><button id="calcAddPt" class="btn accent full">Add as Point</button></div>
+
+    <div class="section-title">Psychrometric Table</div>
+    <div class="row3">
+      <div class="field"><label>From T</label><input id="tblFrom" type="number" value="10" step="1"></div>
+      <div class="field"><label>To T</label><input id="tblTo" type="number" value="40" step="1"></div>
+      <div class="field"><label>&nbsp;</label><button id="tblGen" class="btn accent">Generate</button></div>
+    </div>
+    <div id="psyTableWrap" style="overflow:auto;max-height:300px;margin-top:6px"></div>
+  </div>
+</aside>
+
+<div id="splitL" class="split"></div>
+<div id="splitR" class="split"></div>
+
+<!-- CHART -->
+<main id="chartWrap">
+  <div id="yAxisLabel">Humidity Ratio — Mass of Water Vapour per Unit Mass of Dry Air</div>
+  <div id="chartToolbar">
+    <div id="layerToggles"></div>
+    <div id="chartActions">
+      <button id="btnProcessMode">Process</button>
+      <button id="btnMixMode">Mix</button>
+      <button id="btnFitScreen" title="Fit chart to screen (F)">Fit</button>
+      <button id="btnZoomIn">+</button>
+      <button id="btnZoomOut">−</button>
+    </div>
+  </div>
+  <div id="procModeBar">⚡ Process Mode — Click two points to create a process. Esc to cancel.</div>
+  <div id="mixModeBar" style="position:absolute;top:8px;left:50%;transform:translateX(-50%);padding:4px 14px;border-radius:8px;background:rgba(234,179,8,.15);border:1px solid rgba(234,179,8,.4);font-size:11px;font-weight:600;color:var(--warn);z-index:12;display:none;font-family:var(--sans);white-space:nowrap"></div>
+  <canvas id="cv"></canvas>
+  <div id="hud" class="hidden">—</div>
+</main>
+
+<!-- RIGHT PANEL -->
+<aside id="rightPanel" class="panel">
+  <div class="panelTabs">
+    <button class="active" data-tab="tabProc">Processes</button>
+    <button data-tab="tabMix">Mixing</button>
+    <button data-tab="tabCoil">Coil/ADP</button>
+  </div>
+  <div id="tabProc" class="tabContent active">
+    <div class="section-title">Create Process</div>
+    <div class="row3">
+      <div class="field"><label>Start</label><select id="procA"></select></div>
+      <div class="field"><label>End</label><select id="procB"></select></div>
+      <div class="field"><label>&nbsp;</label><button id="procAdd" class="btn chip">+ Add</button></div>
+    </div>
+    <div class="section-title">Process List</div>
+    <div id="processCards"></div>
+    <div class="section-title">Selected Process</div>
+    <div class="row">
+      <div class="field"><label>Select</label><select id="procSel"></select></div>
+      <div class="field"><label>Flow</label><div class="row" style="margin:0"><input id="flowVal" type="number" step="0.01" value="1.0"><select id="flowUnit"></select></div></div>
+    </div>
+    <div class="row"><div class="field"><label>&nbsp;</label><button id="procDel" class="btn danger">Delete</button></div><div class="field"><label>&nbsp;</label><button id="procRev" class="btn">Reverse</button></div></div>
+    <div class="row3" style="margin-top:6px">
+      <div class="metric"><span class="lbl">ΔT</span><span class="val" id="mDT">—</span></div>
+      <div class="metric"><span class="lbl">ΔW</span><span class="val" id="mDW">—</span></div>
+      <div class="metric"><span class="lbl">Δh</span><span class="val" id="mDh">—</span></div>
+    </div>
+    <div class="row4" style="margin-top:4px">
+      <div class="metric"><span class="lbl">SHR</span><span class="val" id="mSHR">—</span></div>
+      <div class="metric"><span class="lbl">Qs</span><span class="val" id="mQs">—</span></div>
+      <div class="metric"><span class="lbl">Ql</span><span class="val" id="mQl">—</span></div>
+      <div class="metric"><span class="lbl">Qt</span><span class="val" id="mQt">—</span></div>
+    </div>
+  </div>
+  <div id="tabMix" class="tabContent">
+    <div class="section-title">Air Mixing</div>
+    <div class="row"><div class="field"><label>Point A</label><select id="mixA"></select></div><div class="field"><label>Point B</label><select id="mixB"></select></div></div>
+    <div class="row3">
+      <div class="field"><label id="mixLblA">Flow A</label><input id="mixWA" type="number" value="1" step="0.1"></div>
+      <div class="field"><label id="mixLblB">Flow B</label><input id="mixWB" type="number" value="1" step="0.1"></div>
+      <div class="field"><label>Label</label><input id="mixLbl" type="text" value="Mix"></div>
+    </div>
+    <div class="row"><button id="mixAdd" class="btn chip full">+ Add Mix Point</button></div>
+    <p style="font-size:10px;color:var(--muted);margin-top:6px">Mix point is locked & auto-updates. Lever rule shown on chart.</p>
+  </div>
+  <div id="tabCoil" class="tabContent">
+    <div class="section-title">Coil Analysis (ADP)</div>
+    <p style="font-size:11px;color:var(--muted);margin-bottom:6px">Select cooling process for ADP & Bypass Factor.</p>
+    <div class="row"><div class="field"><label>Process</label><select id="adpProc"></select></div><div class="field"><label>&nbsp;</label><button id="adpCalc" class="btn accent">Calc ADP</button></div></div>
+    <div id="adpResults" class="calcResult" style="margin-top:6px"></div>
+    <div class="section-title">Ventilation Rate</div>
+    <div class="row">
+      <div class="field"><label>People</label><input id="ventPeople" type="number" value="10" step="1"></div>
+      <div class="field"><label>Rate per Person</label><div class="row" style="margin:0"><input id="ventRate" type="number" value="10" step="0.5"><select id="ventUnit"><option value="Lps">L/s</option><option value="cfm">CFM</option></select></div></div>
+    </div>
+    <div class="row"><button id="ventCalc" class="btn accent full">Calculate OA Load</button></div>
+    <div id="ventResults" class="calcResult" style="margin-top:6px"></div>
+  </div>
+</aside>
+
+<!-- CONTEXT MENU -->
+<div id="ctxMenu">
+  <div class="ctx-item" data-action="endProcess" id="ctxEndProc" style="display:none"><span class="ctx-icon">🏁</span><span id="ctxEndProcText">End Process Here</span></div>
+  <div class="ctx-sep" id="ctxEndProcSep" style="display:none"></div>
+  <div class="ctx-item" data-action="addPointHere"><span class="ctx-icon">📍</span>Add Point Here</div>
+  <div class="ctx-item" data-action="addPointTdb"><span class="ctx-icon">🌡️</span>Add Point at This Tdb…</div>
+  <div class="ctx-item" data-action="addPointParams"><span class="ctx-icon">📝</span>Add Point via Parameters…</div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-item" data-action="editPoint" id="ctxEditPt"><span class="ctx-icon">✏️</span>Edit Point</div>
+  <div class="ctx-item" data-action="lockPoint" id="ctxLock"><span class="ctx-icon">🔒</span><span id="ctxLockText">Lock Point</span></div>
+  <div class="ctx-item" data-action="resetLabel" id="ctxResetLabel"><span class="ctx-icon">↩️</span>Reset Label Position</div>
+  <div class="ctx-item" data-action="deletePoint" id="ctxDeletePt"><span class="ctx-icon">🗑️</span>Delete Point</div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-item" data-action="startProcess"><span class="ctx-icon">➡️</span><span id="ctxStartProc">Start Process Here</span><span class="ctx-key">P</span></div>
+  <div class="ctx-item" data-action="nearestProps"><span class="ctx-icon">📋</span>Copy Properties</div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-item" data-action="fitAll"><span class="ctx-icon">⊞</span>Fit All Points<span class="ctx-key">F</span></div>
+  <div class="ctx-item" data-action="resetZoom"><span class="ctx-icon">↺</span>Reset Zoom<span class="ctx-key">R</span></div>
+  <div class="ctx-item" data-action="toggleComfort"><span class="ctx-icon">🏠</span>Toggle Comfort Zone<span class="ctx-key">C</span></div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-item" data-action="chartTheme"><span class="ctx-icon">🎨</span>Custom Chart Theme…</div>
+  <div class="ctx-item" data-action="exportPng"><span class="ctx-icon">📷</span>Export as PNG</div>
+  <div class="ctx-item" data-action="copyPng"><span class="ctx-icon">📋</span>Copy Chart to Clipboard</div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-item" data-action="glossary"><span class="ctx-icon">📖</span>Glossary & Abbreviations</div>
+  <div class="ctx-item" data-action="about"><span class="ctx-icon">ⓘ</span>About PSYCHRO·PRO</div>
+</div>
+
+<div id="toastContainer"></div>
+
+<!-- SHORTCUTS MODAL -->
+<div id="shortcutsOverlay" class="modal-overlay">
+  <div class="modal-panel">
+    <h2>⌨ Keyboard Shortcuts</h2>
+    <div class="shortcutGrid">
+      <span class="k">Ctrl+Z</span><span class="d">Undo</span>
+      <span class="k">Ctrl+Y</span><span class="d">Redo</span>
+      <span class="k">Space+Drag</span><span class="d">Pan chart</span>
+      <span class="k">Scroll</span><span class="d">Zoom in/out</span>
+      <span class="k">P</span><span class="d">Toggle process mode</span>
+      <span class="k">Escape</span><span class="d">Cancel mode / close dialogs</span>
+      <span class="k">F</span><span class="d">Fit all points</span>
+      <span class="k">R</span><span class="d">Reset zoom</span>
+      <span class="k">G</span><span class="d">Toggle grid</span>
+      <span class="k">C</span><span class="d">Cycle comfort zones</span>
+      <span class="k">D</span><span class="d">Toggle dew point lines</span>
+      <span class="k">?</span><span class="d">Show this panel</span>
+      <span class="k">1–7</span><span class="d">Toggle layers (Sat/RH/h/v/Tdp/Pts/Proc)</span>
+      <span class="k">Del</span><span class="d">Delete selected point</span>
+      <span class="k">Right-click</span><span class="d">Context menu with actions</span>
+    </div>
+    <button class="close-btn" id="closeShortcuts">Close (Esc)</button>
+  </div>
+</div>
+
+<!-- ABOUT MODAL -->
+<div id="aboutOverlay" class="modal-overlay">
+  <div class="modal-panel">
+    <h2>ⓘ About PSYCHRO·PRO</h2>
+    <p style="margin-bottom:12px">Professional-grade ASHRAE psychrometric chart analysis software.</p>
+    <h3>Features</h3>
+    <ul>
+      <li>Full ASHRAE psychrometric calculations (SI & IP units)</li>
+      <li>Altitude & pressure correction per ASHRAE Fundamentals</li>
+      <li>ASHRAE Standard 55 thermal comfort zone overlays</li>
+      <li>Air mixing with mass/enthalpy balance & lever rule</li>
+      <li>Coil analysis with ADP & bypass factor calculation</li>
+      <li>SHR protractor & process type auto-classification</li>
+      <li>Ventilation load calculator (outdoor air)</li>
+      <li>Psychrometric property table generation</li>
+      <li>Bulk CSV point import & project save/load (JSON)</li>
+      <li>PNG/HTML report export with embedded chart</li>
+      <li>Multiple themes: Pro, Classic, and ASHRAE-authentic</li>
+    </ul>
+    <h3>Developer</h3>
+    <div class="dev-info">
+      <strong>Developer:</strong> Shadi Alashkar<br>
+      <strong>Email:</strong> alashkar.shadi@gmail.com<br>
+      <strong>Version:</strong> 2.6.6 Edition<br>
+      <strong>Build:</strong> 2022-03-12
+    </div>
+    <h3>Legal Disclaimer & License</h3>
+    <div class="dev-info" style="color:var(--muted)">
+      <strong>MIT License</strong><br>
+      This software is released under the MIT License. It is free of charge for educational and professional use.<br><br>
+      <strong>From Engineer to Engineer.</strong> This tool was created by an engineer for engineers — built with care to serve the HVAC, mechanical engineering, and building science community.<br><br>
+      <strong>THIS SOFTWARE IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND,</strong> express or implied, including but not limited to the warranties of merchantability, fitness for a particular purpose, and non-infringement.<br><br>
+      <strong>USE AT YOUR OWN RISK.</strong> The developer shall not be held liable for any damages, losses, or consequences arising from the use of this software. All psychrometric calculations are based on ASHRAE Handbook of Fundamentals equations; however, no guarantee is made regarding absolute numerical accuracy.<br><br>
+      Every reasonable effort has been made to ensure calculation accuracy and compliance with ASHRAE standards. Users are responsible for independently verifying all results before use in engineering design, construction, or any safety-critical application.<br><br>
+      This software is intended for professional use by qualified HVAC engineers, mechanical engineers, and related professionals. It does not replace professional engineering judgment.<br><br>
+      Permission is hereby granted, free of charge, to any person obtaining a copy of this software, to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, subject to the above copyright notice and this permission notice being included in all copies or substantial portions of the Software.<br><br>
+      © 2022 All rights reserved.
+    </div>
+    <button class="close-btn" id="closeAbout">Close</button>
+  </div>
+</div>
+
+<!-- ===== GLOSSARY MODAL ===== -->
+<div id="glossaryOverlay" class="modal-overlay">
+  <div class="modal-panel" style="max-width:680px">
+    <h2>📖 Glossary & Abbreviations</h2>
+    <p style="margin-bottom:6px">All psychrometric properties and abbreviations used in PSYCHRO·PRO.</p>
+
+    <h3>Psychrometric Properties</h3>
+    <div class="glossary-grid">
+      <div class="glossary-item">
+        <div class="glossary-icon">🌡️</div>
+        <div class="glossary-body">
+          <span class="glossary-abbr">Tdb / DBT</span>
+          <span class="glossary-full">Dry-Bulb Temperature</span>
+          <span class="glossary-desc">Temperature of air measured by a standard thermometer, not affected by moisture.</span>
+          <span class="glossary-unit">SI: °C &nbsp;|&nbsp; IP: °F</span>
+        </div>
+      </div>
+      <div class="glossary-item">
+        <div class="glossary-icon">💧</div>
+        <div class="glossary-body">
+          <span class="glossary-abbr">Twb / WBT</span>
+          <span class="glossary-full">Wet-Bulb Temperature</span>
+          <span class="glossary-desc">Temperature read by a thermometer with a wetted wick; indicates evaporative cooling potential.</span>
+          <span class="glossary-unit">SI: °C &nbsp;|&nbsp; IP: °F</span>
+        </div>
+      </div>
+      <div class="glossary-item">
+        <div class="glossary-icon">🔽</div>
+        <div class="glossary-body">
+          <span class="glossary-abbr">Tdp / DPT</span>
+          <span class="glossary-full">Dew-Point Temperature</span>
+          <span class="glossary-desc">Temperature at which air becomes saturated and condensation begins.</span>
+          <span class="glossary-unit">SI: °C &nbsp;|&nbsp; IP: °F</span>
+        </div>
+      </div>
+      <div class="glossary-item">
+        <div class="glossary-icon">💦</div>
+        <div class="glossary-body">
+          <span class="glossary-abbr">RH</span>
+          <span class="glossary-full">Relative Humidity</span>
+          <span class="glossary-desc">Ratio of actual water vapour pressure to saturation pressure at the same temperature.</span>
+          <span class="glossary-unit">%  (0–100)</span>
+        </div>
+      </div>
+      <div class="glossary-item">
+        <div class="glossary-icon">⚖️</div>
+        <div class="glossary-body">
+          <span class="glossary-abbr">W / ω</span>
+          <span class="glossary-full">Humidity Ratio</span>
+          <span class="glossary-desc">Mass of water vapour per unit mass of dry air. Also called moisture content or mixing ratio.</span>
+          <span class="glossary-unit">SI: g/kg &nbsp;|&nbsp; IP: grains/lb</span>
+        </div>
+      </div>
+      <div class="glossary-item">
+        <div class="glossary-icon">⚡</div>
+        <div class="glossary-body">
+          <span class="glossary-abbr">h</span>
+          <span class="glossary-full">Specific Enthalpy</span>
+          <span class="glossary-desc">Total energy content of moist air per unit mass of dry air (sensible + latent heat).</span>
+          <span class="glossary-unit">SI: kJ/kg &nbsp;|&nbsp; IP: Btu/lb</span>
+        </div>
+      </div>
+      <div class="glossary-item">
+        <div class="glossary-icon">📐</div>
+        <div class="glossary-body">
+          <span class="glossary-abbr">v</span>
+          <span class="glossary-full">Specific Volume</span>
+          <span class="glossary-desc">Volume occupied per unit mass of dry air. Inverse of density.</span>
+          <span class="glossary-unit">SI: m³/kg &nbsp;|&nbsp; IP: ft³/lb</span>
+        </div>
+      </div>
+      <div class="glossary-item">
+        <div class="glossary-icon">🏋️</div>
+        <div class="glossary-body">
+          <span class="glossary-abbr">ρ</span>
+          <span class="glossary-full">Density</span>
+          <span class="glossary-desc">Mass of moist air per unit volume. ρ = 1/v.</span>
+          <span class="glossary-unit">SI: kg/m³ &nbsp;|&nbsp; IP: lb/ft³</span>
+        </div>
+      </div>
+    </div>
+
+    <h3>Process & Analysis Terms</h3>
+    <div class="glossary-grid">
+      <div class="glossary-item">
+        <div class="glossary-icon">📊</div>
+        <div class="glossary-body">
+          <span class="glossary-abbr">SHR</span>
+          <span class="glossary-full">Sensible Heat Ratio</span>
+          <span class="glossary-desc">Ratio of sensible heat to total heat in a process. SHR = Qs / Qt.</span>
+          <span class="glossary-unit">Dimensionless (0–1)</span>
+        </div>
+      </div>
+      <div class="glossary-item">
+        <div class="glossary-icon">🎯</div>
+        <div class="glossary-body">
+          <span class="glossary-abbr">ADP</span>
+          <span class="glossary-full">Apparatus Dew Point</span>
+          <span class="glossary-desc">The saturation point where the coil process line intersects the saturation curve.</span>
+          <span class="glossary-unit">SI: °C &nbsp;|&nbsp; IP: °F</span>
+        </div>
+      </div>
+      <div class="glossary-item">
+        <div class="glossary-icon">🔄</div>
+        <div class="glossary-body">
+          <span class="glossary-abbr">BPF / BF</span>
+          <span class="glossary-full">Bypass Factor</span>
+          <span class="glossary-desc">Fraction of air that bypasses the coil without being conditioned.</span>
+          <span class="glossary-unit">Dimensionless (0–1)</span>
+        </div>
+      </div>
+      <div class="glossary-item">
+        <div class="glossary-icon">🌀</div>
+        <div class="glossary-body">
+          <span class="glossary-abbr">CF</span>
+          <span class="glossary-full">Contact Factor</span>
+          <span class="glossary-desc">Fraction of air effectively in contact with the coil. CF = 1 − BPF.</span>
+          <span class="glossary-unit">Dimensionless (0–1)</span>
+        </div>
+      </div>
+      <div class="glossary-item">
+        <div class="glossary-icon">🔥</div>
+        <div class="glossary-body">
+          <span class="glossary-abbr">Qs</span>
+          <span class="glossary-full">Sensible Heat</span>
+          <span class="glossary-desc">Heat that changes temperature without changing moisture content.</span>
+          <span class="glossary-unit">kW (or Btu/h)</span>
+        </div>
+      </div>
+      <div class="glossary-item">
+        <div class="glossary-icon">🌫️</div>
+        <div class="glossary-body">
+          <span class="glossary-abbr">Ql</span>
+          <span class="glossary-full">Latent Heat</span>
+          <span class="glossary-desc">Heat that changes moisture content without changing temperature.</span>
+          <span class="glossary-unit">kW (or Btu/h)</span>
+        </div>
+      </div>
+      <div class="glossary-item">
+        <div class="glossary-icon">⚡</div>
+        <div class="glossary-body">
+          <span class="glossary-abbr">Qt</span>
+          <span class="glossary-full">Total Heat</span>
+          <span class="glossary-desc">Sum of sensible and latent heat. Qt = Qs + Ql.</span>
+          <span class="glossary-unit">kW (or Btu/h)</span>
+        </div>
+      </div>
+      <div class="glossary-item">
+        <div class="glossary-icon">🌬️</div>
+        <div class="glossary-body">
+          <span class="glossary-abbr">OA</span>
+          <span class="glossary-full">Outdoor Air</span>
+          <span class="glossary-desc">Fresh air intake from outside for ventilation requirements.</span>
+          <span class="glossary-unit">L/s or CFM</span>
+        </div>
+      </div>
+      <div class="glossary-item">
+        <div class="glossary-icon">🔁</div>
+        <div class="glossary-body">
+          <span class="glossary-abbr">RA / SA</span>
+          <span class="glossary-full">Return Air / Supply Air</span>
+          <span class="glossary-desc">RA is air returning from the conditioned space; SA is conditioned air delivered to the space.</span>
+          <span class="glossary-unit">L/s or CFM</span>
+        </div>
+      </div>
+      <div class="glossary-item">
+        <div class="glossary-icon">🌀</div>
+        <div class="glossary-body">
+          <span class="glossary-abbr">Pv / Pws</span>
+          <span class="glossary-full">Vapour Pressure / Saturation Vapour Pressure</span>
+          <span class="glossary-desc">Pv is the partial pressure of water vapour in air. Pws is the maximum Pv at a given temperature. RH = Pv / Pws.</span>
+          <span class="glossary-unit">Pa or kPa</span>
+        </div>
+      </div>
+      <div class="glossary-item">
+        <div class="glossary-icon">🏔️</div>
+        <div class="glossary-body">
+          <span class="glossary-abbr">Patm</span>
+          <span class="glossary-full">Atmospheric Pressure</span>
+          <span class="glossary-desc">Barometric pressure at a given altitude. Affects all psychrometric calculations. Standard sea level = 101.325 kPa.</span>
+          <span class="glossary-unit">kPa or psia</span>
+        </div>
+      </div>
+    </div>
+
+    <h3>Keyboard Shortcuts Quick Reference</h3>
+    <div class="shortcutGrid" style="margin-top:4px">
+      <span class="k">Ctrl+Z / Y</span><span class="d">Undo / Redo</span>
+      <span class="k">P</span><span class="d">Toggle process mode</span>
+      <span class="k">F</span><span class="d">Fit all points</span>
+      <span class="k">R</span><span class="d">Reset zoom</span>
+      <span class="k">G</span><span class="d">Toggle grid</span>
+      <span class="k">C</span><span class="d">Cycle comfort zones</span>
+      <span class="k">D</span><span class="d">Toggle dew point lines</span>
+      <span class="k">1–7</span><span class="d">Toggle layers</span>
+      <span class="k">Del</span><span class="d">Delete selected point</span>
+      <span class="k">?</span><span class="d">Shortcuts panel</span>
+      <span class="k">Scroll</span><span class="d">Zoom in/out</span>
+      <span class="k">Drag</span><span class="d">Pan chart / move points</span>
+      <span class="k">Dbl-click</span><span class="d">Lock/unlock point</span>
+      <span class="k">Right-click</span><span class="d">Context menu</span>
+    </div>
+
+    <button class="close-btn" id="closeGlossary">Close (Esc)</button>
+  </div>
+</div>
+
+<!-- MIX FLOW MODAL -->
+<div id="mixFlowOverlay" class="modal-overlay">
+  <div class="modal-panel" style="max-width:440px">
+    <h2>🔀 Air Mixing — Flow Rates</h2>
+    <p style="margin-bottom:10px;font-size:11px;color:var(--muted)">Define flow rates for the two air streams to calculate the mixed-air condition.</p>
+
+    <div class="section-title">Input Method</div>
+    <div class="row">
+      <div class="field full"><label>Method</label>
+        <select id="mixFlowMethod">
+          <option value="both">Enter both flows</option>
+          <option value="flowA_pctB">—</option>
+          <option value="flowB_pctA">—</option>
+        </select>
+      </div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Flow Unit</label>
+        <select id="mixFlowUnit">
+          <option value="Lps">L/s</option>
+          <option value="cfm">CFM</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="section-title" style="margin-top:14px">Air Streams</div>
+
+    <!-- Point A card -->
+    <div class="mix-flow-card">
+      <div class="mix-flow-card-head">
+        <span class="mix-flow-dot" style="background:var(--accent)"></span>
+        <span class="mix-flow-name" id="mixFlowNameA">Point A</span>
+        <span class="mix-flow-props" id="mixFlowPropsA"></span>
+      </div>
+      <div class="row" style="margin-top:6px">
+        <div class="field"><label id="mixFlowLblA">Flow</label><input id="mixFlowValA" type="number" value="1" step="0.1" min="0"></div>
+      </div>
+      <div class="mix-flow-hint" id="mixFlowHintA"></div>
+    </div>
+
+    <!-- Point B card -->
+    <div class="mix-flow-card" style="margin-top:6px">
+      <div class="mix-flow-card-head">
+        <span class="mix-flow-dot" style="background:var(--chip)"></span>
+        <span class="mix-flow-name" id="mixFlowNameB">Point B</span>
+        <span class="mix-flow-props" id="mixFlowPropsB"></span>
+      </div>
+      <div class="row" style="margin-top:6px">
+        <div class="field"><label id="mixFlowLblB">Flow</label><input id="mixFlowValB" type="number" value="1" step="0.1" min="0"></div>
+      </div>
+      <div class="mix-flow-hint" id="mixFlowHintB"></div>
+    </div>
+
+    <div class="section-title" style="margin-top:14px">Mix Result Label</div>
+    <div class="row">
+      <div class="field"><label>Label</label><input id="mixFlowLabel" type="text" value="Mix"></div>
+    </div>
+
+    <div class="row" style="margin-top:14px;gap:8px">
+      <button class="btn chip" id="mixFlowOk">+ Create Mix Point</button>
+      <button class="btn" id="mixFlowCancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT POINT MODAL -->
+<div id="editPtOverlay" class="modal-overlay">
+  <div class="modal-panel" style="max-width:420px">
+    <h2>✏️ Edit Point — <span id="epTitle">Point</span></h2>
+    <p style="margin-bottom:8px;font-size:11px;color:var(--muted)">Modify the point properties below. The point will be repositioned on the chart once you apply.</p>
+
+    <div class="section-title">Properties</div>
+    <div class="ep-grid">
+      <div class="ep-field full">
+        <label>Label</label>
+        <input type="text" id="epLabel" placeholder="Point name">
+      </div>
+      <div class="ep-field">
+        <label id="epTdbLabel">Dry Bulb (°C)</label>
+        <input type="number" id="epTdb" step="0.1">
+      </div>
+      <div class="ep-field">
+        <label>Define By</label>
+        <select id="epMode">
+          <option value="RH">Relative Humidity (%)</option>
+          <option value="W">Humidity Ratio</option>
+          <option value="Twb">Wet Bulb Temp</option>
+          <option value="Tdp">Dew Point Temp</option>
+        </select>
+      </div>
+      <div class="ep-field full">
+        <label id="epValLabel">Relative Humidity (%)</label>
+        <input type="number" id="epVal" step="0.1">
+      </div>
+    </div>
+
+    <div class="section-title">Computed Properties (preview)</div>
+    <div class="ep-readonly">
+      <div class="ep-ro"><span class="ro-val" id="epRH">—</span><span class="ro-lbl">RH %</span></div>
+      <div class="ep-ro"><span class="ro-val" id="epW">—</span><span class="ro-lbl" id="epWLbl">W (g/kg)</span></div>
+      <div class="ep-ro"><span class="ro-val" id="epH">—</span><span class="ro-lbl" id="epHLbl">h (kJ/kg)</span></div>
+      <div class="ep-ro"><span class="ro-val" id="epTwb">—</span><span class="ro-lbl" id="epTwbLbl">Twb (°C)</span></div>
+      <div class="ep-ro"><span class="ro-val" id="epTdp">—</span><span class="ro-lbl" id="epTdpLbl">Tdp (°C)</span></div>
+      <div class="ep-ro"><span class="ro-val" id="epV">—</span><span class="ro-lbl" id="epVLbl">v (m³/kg)</span></div>
+    </div>
+
+    <div class="ep-actions">
+      <button class="btn accent" id="epApply">Apply Changes</button>
+      <button class="btn" id="epCancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- REPORT FORMAT MODAL -->
+<div id="reportOverlay" class="modal-overlay">
+  <div class="modal-panel" style="max-width:480px">
+    <h2>📊 Generate Report</h2>
+    <p style="margin-bottom:14px;font-size:11px;color:var(--muted)">Choose your export format. Both options produce professional engineering reports with embedded chart, state point data, and process analysis.</p>
+
+    <div class="section-title">Report Format</div>
+    <div style="display:flex;gap:10px;margin:8px 0">
+      <label style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;padding:16px 12px;border-radius:10px;border:2px solid var(--glassBorder);cursor:pointer;transition:all .15s;background:var(--panel2)" id="rptOptHTML">
+        <input type="radio" name="rptFmt" value="html" checked style="display:none">
+        <span style="font-size:28px">🌐</span>
+        <span style="font-size:13px;font-weight:700;color:var(--fg)">HTML Report</span>
+        <span style="font-size:10px;color:var(--muted);text-align:center">Interactive, opens in browser, print-ready</span>
+      </label>
+      <label style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;padding:16px 12px;border-radius:10px;border:2px solid var(--glassBorder);cursor:pointer;transition:all .15s;background:var(--panel2)" id="rptOptDOCX">
+        <input type="radio" name="rptFmt" value="docx" style="display:none">
+        <span style="font-size:28px">📄</span>
+        <span style="font-size:13px;font-weight:700;color:var(--fg)">Word (.docx)</span>
+        <span style="font-size:10px;color:var(--muted);text-align:center">MS Word format, editable, professional layout</span>
+      </label>
+    </div>
+
+    <div class="section-title">Options</div>
+    <div class="row" style="margin:6px 0">
+      <div class="field"><label>Include Chart Image</label><select id="rptChart"><option value="yes">Yes</option><option value="no">No</option></select></div>
+      <div class="field"><label>Include Processes</label><select id="rptProc"><option value="yes">Yes</option><option value="no">No</option></select></div>
+    </div>
+    <div class="row" style="margin:6px 0">
+      <div class="field"><label>Printer Friendly</label><select id="rptPrint"><option value="no">No</option><option value="yes">Yes</option></select></div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:16px">
+      <button class="btn accent" id="rptGenerate">Generate Report</button>
+      <button class="btn" id="rptCancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- CUSTOM THEME MODAL -->
+<div id="themeEditorOverlay" class="modal-overlay">
+  <div class="modal-panel" style="max-width:640px">
+    <h2>🎨 Custom Chart Theme</h2>
+    <p style="margin-bottom:10px;font-size:11px;color:var(--muted)">Customize every visual aspect of the chart. Changes apply live and are saved with your project.</p>
+    <h3>Curve Colors</h3>
+    <div class="te-grid">
+      <div class="te-row"><label>Saturation</label><input type="color" id="ct_sat" value="#22d3ee"><select id="ct_sat_ls"><option value="solid">Solid</option><option value="dashed">Dashed</option><option value="dotted">Dotted</option></select><input type="number" id="ct_sat_lw" value="2.5" step="0.1" min="0.3" max="6" style="width:50px" title="Width"></div>
+      <div class="te-row"><label>RH Lines</label><input type="color" id="ct_rh" value="#67e8f9"><select id="ct_rh_ls"><option value="solid">Solid</option><option value="dashed">Dashed</option><option value="dotted">Dotted</option></select><input type="number" id="ct_rh_lw" value="1.0" step="0.1" min="0.2" max="4" style="width:50px"></div>
+      <div class="te-row"><label>Enthalpy / WB</label><input type="color" id="ct_enth" value="#fb923c"><select id="ct_enth_ls"><option value="solid">Solid</option><option value="dashed">Dashed</option><option value="dotted">Dotted</option></select><input type="number" id="ct_enth_lw" value="0.9" step="0.1" min="0.2" max="4" style="width:50px"></div>
+      <div class="te-row"><label>Volume</label><input type="color" id="ct_vline" value="#a3e635"><select id="ct_vline_ls"><option value="solid">Solid</option><option value="dashed">Dashed</option><option value="dotted">Dotted</option></select><input type="number" id="ct_vline_lw" value="0.9" step="0.1" min="0.2" max="4" style="width:50px"></div>
+      <div class="te-row"><label>Dew Point</label><input type="color" id="ct_dp" value="#c084fc"><select id="ct_dp_ls"><option value="solid">Solid</option><option value="dashed" selected>Dashed</option><option value="dotted">Dotted</option></select><input type="number" id="ct_dp_lw" value="0.9" step="0.1" min="0.2" max="4" style="width:50px"></div>
+    </div>
+    <h3>Chart Background & Grid</h3>
+    <div class="te-grid">
+      <div class="te-row"><label>Background</label><input type="color" id="ct_bg" value="#080c14"><span></span><span></span></div>
+      <div class="te-row"><label>Major Grid</label><input type="color" id="ct_grid2" value="#263040"><select id="ct_grid2_ls"><option value="solid">Solid</option><option value="dashed">Dashed</option><option value="dotted">Dotted</option></select><input type="number" id="ct_grid2_lw" value="1.0" step="0.1" min="0.2" max="3" style="width:50px"></div>
+      <div class="te-row"><label>Minor Grid</label><input type="color" id="ct_grid" value="#1a2030"><select id="ct_grid_ls"><option value="solid">Solid</option><option value="dashed">Dashed</option><option value="dotted">Dotted</option></select><input type="number" id="ct_grid_lw" value="1.0" step="0.1" min="0.2" max="3" style="width:50px"></div>
+      <div class="te-row"><label>Plot Border</label><input type="color" id="ct_border" value="#475569"><span></span><input type="number" id="ct_border_lw" value="1.5" step="0.1" min="0.5" max="4" style="width:50px"></div>
+    </div>
+    <h3>Points & Processes</h3>
+    <div class="te-grid">
+      <div class="te-row"><label>Point Color</label><input type="color" id="ct_pt" value="#f472b6"><span></span><span></span></div>
+      <div class="te-row"><label>Point Size</label><span></span><span></span><input type="number" id="ct_ptSize" value="4" step="0.5" min="2" max="10" style="width:50px"></div>
+      <div class="te-row"><label>Arrow Width</label><span></span><span></span><input type="number" id="ct_arrowW" value="2.5" step="0.1" min="1" max="6" style="width:50px"></div>
+    </div>
+    <h3>Text & Labels</h3>
+    <div class="te-grid">
+      <div class="te-row"><label>Axis Text</label><input type="color" id="ct_axisText" value="#7b8da4"><span></span><input type="number" id="ct_axisPx" value="10" step="1" min="7" max="16" style="width:50px"></div>
+      <div class="te-row"><label>Curve Labels</label><input type="color" id="ct_lblText" value="#7b8da4"><span></span><input type="number" id="ct_lblPx" value="11" step="1" min="7" max="16" style="width:50px"></div>
+      <div class="te-row"><label>Text Halo</label><input type="color" id="ct_halo" value="#080c14"><span></span><input type="number" id="ct_haloW" value="3" step="0.5" min="0" max="6" style="width:50px" title="Halo width"></div>
+    </div>
+    <div style="display:flex;gap:6px;margin-top:14px">
+      <button class="btn accent" id="ctApply" style="flex:1">Apply Theme</button>
+      <button class="btn" id="ctResetDefault" style="flex:1">Reset to Defaults</button>
+    </div>
+    <button class="close-btn" id="closeThemeEditor">Close</button>
+  </div>
+</div>
+
+<!-- ADD POINT VIA PARAMETERS MODAL -->
+<div id="addPtParamOverlay" class="modal-overlay">
+  <div class="modal-panel" style="max-width:420px">
+    <h2>📝 Add Point via Parameters</h2>
+    <p style="margin-bottom:8px;font-size:11px;color:var(--muted)">Define a new point by entering its psychrometric properties.</p>
+
+    <div class="section-title">Input Method</div>
+    <div class="ap-grid">
+      <div class="ap-field full">
+        <label>Define By</label>
+        <select id="apInputMode">
+          <option value="TdbRH">Tdb + RH (%)</option>
+          <option value="TdbTwb">Tdb + Twb</option>
+        </select>
+      </div>
+      <div class="ap-field">
+        <label id="apTdbLabel">Dry Bulb (°C)</label>
+        <input type="number" id="apTdb" step="0.1" value="26">
+      </div>
+      <div class="ap-field">
+        <label id="apSecondLabel">Relative Humidity (%)</label>
+        <input type="number" id="apSecondVal" step="0.1" value="50">
+      </div>
+      <div class="ap-field full">
+        <label>Label</label>
+        <input type="text" id="apLabel" placeholder="Point name" value="">
+      </div>
+    </div>
+
+    <div class="ap-actions">
+      <button class="btn chip" id="apAdd">+ Add Point</button>
+      <button class="btn" id="apCancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+</div>
+
+<script>
+/* ====================================================================
+   PSYCHRO·PRO v2.6.6 — Professional Psychrometric Chart Engine
+   Fixes: enthalpy labels at saturation (ASHRAE-style outside plot),
+          negative altitude barometric correction, pan drift, glossary
+   ==================================================================== */
+
+const Psy=(()=>{
+  const Rda=287.055,Rv=461.495,grainsPerLb=7000,kPaPerPsi=6.894757293168361,ft3PerM3=35.3146667215;
+  function p_ws_Pa(Tc){
+    const T=Tc+273.15;
+    if(Tc>=0){const c8=-5800.2206,c9=1.3914993,c10=-4.8640239e-2,c11=4.1764768e-5,c12=-1.4452093e-8,c13=6.5459673;return Math.exp(c8/T+c9+c10*T+c11*T*T+c12*T*T*T+c13*Math.log(T));}
+    else{const c1=-5674.5359,c2=6.3925247,c3=-9.677843e-3,c4=0.62215701e-6,c5=2.0747825e-9,c6=-9.484024e-13,c7=4.1635019;return Math.exp(c1/T+c2+c3*T+c4*T*T+c5*T*T*T+c6*T**4+c7*Math.log(T));}
+  }
+  const baroPa=a=>101325*Math.pow(1-2.25577e-5*a,5.25588);
+  const invBaroAlt_m=p=>(1-Math.pow(p/101325,1/5.25588))/2.25577e-5;
+  const w_from_pv=(pv,p)=>0.621945*pv/Math.max(1,p-pv);
+  const pv_from_w=(w,p)=>(w*p)/(w+0.621945);
+  const h_kJkg=(T,w)=>1.006*T+w*(2501+1.86*T);
+  const v_m3kg=(T,w,p)=>Rda*(T+273.15)*(1+1.607858*w)/p;
+  const RH_from_Tw=(T,w,p)=>Math.max(0,Math.min(1,pv_from_w(w,p)/p_ws_Pa(T)));
+  function dewpoint_from_pv(pv){if(pv<=0)return -80;let lo=-80,hi=80;for(let i=0;i<60;i++){const m=(lo+hi)/2;(p_ws_Pa(m)>pv)?hi=m:lo=m;}return(lo+hi)/2;}
+  function twb_from_Tw(T,w,p=101325){const h=h_kJkg(T,w);let lo=-40,hi=Math.min(T+1,80);for(let i=0;i<60;i++){const m=(lo+hi)/2;const ws=w_from_pv(Math.min(p_ws_Pa(m),p*.999),p);(h_kJkg(m,ws)>h)?hi=m:lo=m;}return(lo+hi)/2;}
+  function w_from_Tdp(Tdp,p){return w_from_pv(Math.min(p_ws_Pa(Tdp),p*.999),p);}
+  const rho=(T,w,p)=>1/v_m3kg(T,w,p);
+  const wsat_at=(T,p)=>w_from_pv(Math.min(p_ws_Pa(T),p*.999),p);
+  return{Rda,Rv,grainsPerLb,kPaPerPsi,ft3PerM3,p_ws_Pa,baroPa,invBaroAlt_m,w_from_pv,pv_from_w,h_kJkg,v_m3kg,RH_from_Tw,dewpoint_from_pv,twb_from_Tw,w_from_Tdp,rho,wsat_at};
+})();
+
+/* State */
+let nextPid=1;
+const app={theme:'dark',units:'SI',pPa:101325,style:'pro',tMin:-10,tMax:55,wMaxDisp:30,default:{tMin:-10,tMax:55,wMaxDisp:30},density:'normal',rhStep:10,labelMode:'mid',labelPx:11,points:[],processes:[],tool:{panning:false,processMode:false,start:null,mixMode:false,mixStart:null},hover:{x:null,y:null},comfortZone:'both',comfortAdj:0,shrShow:false,shrVal:0.75,ctxT:0,ctxW:0,ctxPtIdx:-1,_hovLabel:-1,_hovPickIdx:-1};
+
+const defaultCT={
+  sat:'#22d3ee',sat_ls:'solid',sat_lw:2.5,
+  rh:'#67e8f9',rh_ls:'solid',rh_lw:1.0,
+  enth:'#fb923c',enth_ls:'solid',enth_lw:0.9,
+  vline:'#a3e635',vline_ls:'solid',vline_lw:0.9,
+  dp:'#c084fc',dp_ls:'dashed',dp_lw:0.9,
+  bg:'#080c14',grid2:'#263040',grid2_ls:'solid',grid2_lw:1.0,
+  grid:'#1a2030',grid_ls:'solid',grid_lw:1.0,
+  border:'#475569',border_lw:1.5,
+  pt:'#f472b6',ptSize:4,arrowW:2.5,
+  axisText:'#7b8da4',axisPx:10,lblText:'#7b8da4',lblPx:11,
+  halo:'#080c14',haloW:3
+};
+let customTheme=JSON.parse(JSON.stringify(defaultCT));
+function isCustom(){return app.style==='custom';}
+function setDash(style){if(style==='dashed')ctx.setLineDash([6*dpi,4*dpi]);else if(style==='dotted')ctx.setLineDash([2*dpi,3*dpi]);else ctx.setLineDash([]);}
+function ctCol(key){return isCustom()?customTheme[key]:css(`--${key==='dp'?'dpline':key==='vline'?'vline':key==='enth'?'enth':key}`);}
+function ctLw(key){return(isCustom()?customTheme[key+'_lw']:parseFloat(css(`--lw-${key==='dp'?'dp':key==='vline'?'v':key}`)||1))*dpi;}
+function ctLs(key){return isCustom()?customTheme[key+'_ls']:(key==='dp'?'dashed':'solid');}
+
+/* Undo / Redo */
+const undoStack=[],redoStack=[];
+function snapshot(){return JSON.parse(JSON.stringify({points:app.points,processes:app.processes,tMin:app.tMin,tMax:app.tMax,wMaxDisp:app.wMaxDisp}));}
+function pushHistory(){undoStack.push(snapshot());if(undoStack.length>80)undoStack.shift();redoStack.length=0;}
+function undo(){const p=undoStack.pop();if(!p)return;redoStack.push(snapshot());Object.assign(app,p);el.tMin.value=app.tMin;el.tMax.value=app.tMax;el.wMax.value=app.wMaxDisp;refreshAll();toast('Undone','info');}
+function redo(){const p=redoStack.pop();if(!p)return;undoStack.push(snapshot());Object.assign(app,p);el.tMin.value=app.tMin;el.tMax.value=app.tMax;el.wMax.value=app.wMaxDisp;refreshAll();toast('Redone','info');}
+
+/* DOM */
+const byId=id=>document.getElementById(id);
+const on=(n,t,h)=>n&&n.addEventListener(t,h);
+function getOrCreateTBody(tbl){if(!tbl)return null;return tbl.tBodies?.[0]||(()=>{const tb=document.createElement('tbody');tbl.appendChild(tb);return tb})();}
+let el={},ctx=null,dpi=1,W=100,H=100;
+let padL=100,padR=36,padT=66,padB=82;
+
+function toast(msg,type='info'){const d=document.createElement('div');d.className=`toast ${type}`;const icon={success:'✓',error:'✕',info:'ℹ'}[type]||'';d.innerHTML=`<span>${icon}</span><span>${msg}</span>`;byId('toastContainer').appendChild(d);setTimeout(()=>{d.style.animation='toastOut .2s ease-in forwards';setTimeout(()=>d.remove(),200);},2200);}
+
+function initTabs(){document.querySelectorAll('.panelTabs').forEach(bar=>{bar.querySelectorAll('button').forEach(btn=>{btn.addEventListener('click',()=>{bar.querySelectorAll('button').forEach(b=>b.classList.remove('active'));btn.classList.add('active');const parent=bar.parentElement;parent.querySelectorAll('.tabContent').forEach(tc=>tc.classList.remove('active'));const t=parent.querySelector('#'+btn.dataset.tab);if(t)t.classList.add('active');});});});}
+
+function calcLimits(){return app.units==='SI'?{Tmin:-50,Tmax:80,Wmin:2,Wmax:60}:{Tmin:-58,Tmax:176,Wmin:200,Wmax:1200};}
+function enforceCalcBounds(){const L=calcLimits();app.tMin=Math.max(app.tMin,L.Tmin);app.tMax=Math.min(app.tMax,L.Tmax);app.wMaxDisp=Math.min(Math.max(app.wMaxDisp,L.Wmin),L.Wmax);if(app.tMax-app.tMin<.5){const m=(app.tMin+app.tMax)/2;app.tMin=m-.25;app.tMax=m+.25;}}
+
+function resize(){const r=el.cv.getBoundingClientRect();dpi=Math.min(devicePixelRatio||1,2);W=Math.floor(r.width*dpi);H=Math.floor(r.height*dpi);el.cv.width=W;el.cv.height=H;}
+function xc(T){return padL+(T-app.tMin)*(W-padL-padR)/(app.tMax-app.tMin);}
+function yc(w){const wMax=(app.units==='SI')?app.wMaxDisp/1000:app.wMaxDisp/Psy.grainsPerLb;return H-padB-w*(H-padT-padB)/wMax;}
+const invT=px=>app.tMin+(px-padL)*(app.tMax-app.tMin)/(W-padL-padR);
+function invW(py){const wMax=(app.units==='SI')?app.wMaxDisp/1000:app.wMaxDisp/Psy.grainsPerLb;return(H-padB-py)*wMax/(H-padT-padB);}
+function autoPadding(){ctx.font=`${11*dpi}px JetBrains Mono,monospace`;const wLabels=(app.units==='SI')?['0','5','10','15','20','25','30']:['0','200','400','600','800','1000'];const ww=Math.max(...wLabels.map(s=>ctx.measureText(s).width));padL=Math.ceil(30+ww+18);padR=Math.ceil(24+ww+36);padB=82;padT=66;}
+const css=n=>getComputedStyle(el.root).getPropertyValue(n).trim();
+const crisp=p=>Math.round(p)+0.5;
+function textHalo(str,px,py,col,align='left',base='alphabetic',sizePx=11){ctx.textAlign=align;ctx.textBaseline=base;ctx.font=`500 ${sizePx*dpi}px JetBrains Mono,monospace`;const hw=isCustom()?customTheme.haloW:3;ctx.lineWidth=hw*dpi;ctx.strokeStyle=isCustom()?customTheme.halo:css('--halo');ctx.globalAlpha=.9;if(hw>0)ctx.strokeText(str,px,py);ctx.fillStyle=col;ctx.globalAlpha=1;ctx.fillText(str,px,py);}
+function stepT(){return el.density.value==='fine'?.2:(el.density.value==='fast'?1:.5);}
+function lw(name){const v=parseFloat(css(`--lw-${name}`)||'1');return(isFinite(v)?v:1)*dpi;}
+
+const layers={grid:true,gridMinor:true,sat:true,rh:true,enth:true,vlines:true,dp:true,points:true,processes:true,mixlinks:true,comfort:true};
+function layerOn(k){return layers[k]!==false;}
+
+/* ================ DRAWING ================ */
+function redraw(){
+  resize();autoPadding();ctx.clearRect(0,0,W,H);
+  ctx.fillStyle=isCustom()?customTheme.bg:css('--bg');ctx.fillRect(0,0,W,H);
+  ctx.save();ctx.beginPath();ctx.rect(padL,padT,W-padL-padR,H-padT-padB);ctx.clip();
+  drawGrid();drawComfortZones();
+  if(layerOn('sat'))drawSat();if(layerOn('rh'))drawRH();if(layerOn('enth'))drawWB();if(layerOn('vlines'))drawV();if(layerOn('dp'))drawDP();
+  if(app.shrShow)drawSHRLine();if(layerOn('processes'))drawProcesses();if(layerOn('mixlinks'))drawMixDashes();if(layerOn('points'))drawPoints();
+  drawCrosshair();ctx.restore();
+  /* Draw enthalpy labels OUTSIDE the clipped area (above/left of chart) */
+  if(layerOn('enth'))drawEnthalpyLabelsAtSat();
+  drawAxes();drawAxisTicks();
+  const bc=isCustom()?customTheme.border:css('--plotBorder');
+  const bw=isCustom()?customTheme.border_lw:1.5;
+  ctx.strokeStyle=bc;ctx.lineWidth=bw;ctx.strokeRect(padL,padT,W-padL-padR,H-padT-padB);
+  updateYAxisLabel();
+}
+
+function drawGrid(){
+  const majT=(app.units==='SI')?5:10,minT=(app.units==='SI')?1:2,majW=(app.units==='SI')?5:500,minW=(app.units==='SI')?1:100;
+  if(layers.gridMinor){
+    const gc=isCustom()?customTheme.grid:css('--grid');
+    const glw=isCustom()?customTheme.grid_lw:1;
+    ctx.strokeStyle=gc;ctx.lineWidth=glw;ctx.globalAlpha=.8;
+    ctx.save();setDash(isCustom()?customTheme.grid_ls:'solid');
+    const ts=Math.ceil(app.tMin/minT)*minT;ctx.beginPath();for(let T=ts;T<=app.tMax+.01;T+=minT){const px=crisp(xc(T));ctx.moveTo(px,padT);ctx.lineTo(px,H-padB);}ctx.stroke();
+    for(let w=0;w<=app.wMaxDisp+.01;w+=minW){const wy=(app.units==='SI')?w/1000:w/Psy.grainsPerLb;const py=crisp(yc(wy));ctx.beginPath();ctx.moveTo(padL,py);ctx.lineTo(W-padR,py);ctx.stroke();}
+    ctx.restore();
+  }
+  if(layers.grid){
+    const gc=isCustom()?customTheme.grid2:css('--grid2');
+    const glw=isCustom()?customTheme.grid2_lw:1;
+    ctx.strokeStyle=gc;ctx.lineWidth=glw;ctx.globalAlpha=.9;
+    ctx.save();setDash(isCustom()?customTheme.grid2_ls:'solid');
+    const ts=Math.ceil(app.tMin/majT)*majT;
+    for(let T=ts;T<=app.tMax+.01;T+=majT){const px=crisp(xc(T));ctx.beginPath();ctx.moveTo(px,padT);ctx.lineTo(px,H-padB);ctx.stroke();}
+    for(let w=0;w<=app.wMaxDisp+.01;w+=majW){const wy=(app.units==='SI')?w/1000:w/Psy.grainsPerLb;const py=crisp(yc(wy));ctx.beginPath();ctx.moveTo(padL,py);ctx.lineTo(W-padR,py);ctx.stroke();}
+    ctx.restore();ctx.globalAlpha=1;
+  }
+}
+
+function drawAxes(){
+  ctx.globalAlpha=1;
+  const ac=isCustom()?customTheme.axisText:css('--fg');
+  const am=isCustom()?customTheme.axisText:css('--muted');
+  const ap=isCustom()?customTheme.axisPx:10;
+  const tu=(app.units==='SI')?'Dry-Bulb Temperature (°C)':'Dry-Bulb Temperature (°F)';
+  textHalo(tu,(padL+W-padR)/2,H-4*dpi,ac,'center','alphabetic',ap);
+  const wu=(app.units==='SI')?'g/kg':'gr/lb';
+  textHalo(wu,padL+2,padT-6,am,'left','alphabetic',ap-2);
+}
+
+function updateYAxisLabel(){
+  const label=byId('yAxisLabel');if(!label)return;
+  label.textContent=(app.units==='SI')?'Humidity Ratio — g Water Vapour / kg Dry Air':'Humidity Ratio — Grains of Moisture / lb Dry Air';
+}
+
+function drawAxisTicks(){
+  const majT=(app.units==='SI')?5:10,majW=(app.units==='SI')?5:500;
+  const tc=isCustom()?customTheme.axisText:css('--fg');
+  const lc=isCustom()?customTheme.axisText:css('--muted');
+  const ap=isCustom()?customTheme.axisPx:10;
+  ctx.save();const ts=Math.ceil(app.tMin/majT)*majT;
+  for(let T=ts;T<=app.tMax+.01;T+=majT){const px=crisp(xc(T));if(px<padL-1||px>W-padR+1)continue;ctx.strokeStyle=tc;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(px,H-padB);ctx.lineTo(px,H-padB+5*dpi);ctx.stroke();textHalo(`${Math.round(T)}`,px,H-padB+14*dpi,lc,'center','top',ap);}
+  for(let w=0;w<=app.wMaxDisp+.01;w+=majW){const wy=(app.units==='SI')?w/1000:w/Psy.grainsPerLb;const py=crisp(yc(wy));if(py<padT-1||py>H-padB+1)continue;ctx.strokeStyle=tc;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(padL-5*dpi,py);ctx.lineTo(padL,py);ctx.stroke();textHalo(`${w}`,padL-7*dpi,py,lc,'right','middle',ap);ctx.beginPath();ctx.moveTo(W-padR,py);ctx.lineTo(W-padR+5*dpi,py);ctx.stroke();textHalo(`${w}`,W-padR+7*dpi,py,lc,'left','middle',ap);}
+  ctx.restore();
+}
+
+function plotSeg(pts,col,lineW=1.5,alpha=.95,dashStyle='solid'){ctx.save();setDash(dashStyle);ctx.strokeStyle=col;ctx.lineWidth=lineW;ctx.globalAlpha=alpha;ctx.lineCap='round';ctx.lineJoin='round';ctx.beginPath();let dr=false;for(const p of pts){if(p&&isFinite(p[0])&&isFinite(p[1])&&p[0]>=padL-2&&p[0]<=W-padR+2&&p[1]>=padT-2&&p[1]<=H-padB+2){if(!dr){ctx.moveTo(p[0],p[1]);dr=true;}else ctx.lineTo(p[0],p[1]);}else{if(dr){ctx.stroke();dr=false;ctx.beginPath();}}}if(dr)ctx.stroke();ctx.globalAlpha=1;ctx.restore();}
+function labelOnCurve(pts,label,color,fontsize,mode){if(mode==='none')return;let idx=(mode==='end')?pts.length-1:Math.floor(pts.length/2);for(let i=idx;i>=0;i--){const p=pts[i];if(p){textHalo(label,p[0]+5*dpi,p[1]-2*dpi,color,'left','alphabetic',fontsize);break;}}}
+
+function drawSat(){const s=stepT(),pts=[];for(let T=app.tMin-2;T<=app.tMax+2;T+=s){const w=Psy.wsat_at(T,app.pPa);pts.push([xc(T),yc(w)]);}plotSeg(pts,ctCol('sat'),ctLw('sat'),1,ctLs('sat'));}
+function drawRH(){const step=parseInt(el.rhStep.value||10,10),s=stepT(),mode=el.labelMode.value,f=parseInt(el.labelPx.value,10)||11;for(let rh=step;rh<100;rh+=step){const pts=[];for(let T=app.tMin-2;T<=app.tMax+2;T+=s){const pv=Math.min(app.pPa*.999,Psy.p_ws_Pa(T)*(rh/100));pts.push([xc(T),yc(Psy.w_from_pv(pv,app.pPa))]);}plotSeg(pts,ctCol('rh'),ctLw('rh'),.85,ctLs('rh'));const lc=isCustom()?customTheme.lblText:css('--rh');labelOnCurve(pts,`${rh}%`,lc,f,mode);}}
+
+function drawWB(){
+  const base=[5,10,15,20,24,26,28,30,32,35,38,40];
+  const list=(app.units==='SI')?base:base.map(c=>c*9/5+32);
+  const s=stepT(),mode=el.labelMode.value,f=parseInt(el.labelPx.value,10)||11;
+  for(const TwbDisp of list){
+    const TwbC=(app.units==='SI')?TwbDisp:(TwbDisp-32)*5/9;
+    const wwb=Psy.wsat_at(TwbC,app.pPa);
+    const hwb=Psy.h_kJkg(TwbC,wwb);
+    const pts=[];
+    for(let T=Math.max(TwbC-1,app.tMin-2);T<=app.tMax+2;T+=s){
+      const w=Math.max(0,(hwb-1.006*T)/(2501+1.86*T));
+      const ws=Psy.wsat_at(T,app.pPa);
+      pts.push([xc(T),yc(Math.min(w,ws))]);
+    }
+    plotSeg(pts,ctCol('enth'),ctLw('enth'),.8,ctLs('enth'));
+    const lc=isCustom()?customTheme.lblText:css('--enth');
+    labelOnCurve(pts,`${TwbDisp.toFixed(0)}°`,lc,f,mode);
+  }
+}
+
+/* ===== NEW: Enthalpy (h) labels at saturation curve, OUTSIDE the chart ===== */
+function drawEnthalpyLabelsAtSat(){
+  /* Draw enthalpy (h) values along the saturation curve, positioned OUTSIDE the plot area
+     similar to how ASHRAE Handbook charts show h values diagonally along the sat curve */
+  const base=[5,10,15,20,24,26,28,30,32,35,38,40];
+  const list=(app.units==='SI')?base:base.map(c=>c*9/5+32);
+  const D=app.units==='SI';
+  const lc=isCustom()?customTheme.lblText:css('--enth');
+  const f=Math.max(8,Math.min(11,(parseInt(el.labelPx.value,10)||11)-1));
+  const prevPositions=[];
+  /* Perpendicular offset distance from sat curve (outward, toward upper-left) */
+  const offsetDist=18*dpi;
+
+  for(const TwbDisp of list){
+    const TwbC=D?TwbDisp:(TwbDisp-32)*5/9;
+    const wsat=Psy.wsat_at(TwbC,app.pPa);
+    const h=Psy.h_kJkg(TwbC,wsat);
+    const hDisp=D?h:(h*0.4299);
+
+    /* Saturation point position on canvas */
+    const px=xc(TwbC);
+    const py=yc(wsat);
+
+    /* Only show if the saturation point is near the visible chart */
+    if(px<padL-60*dpi||px>W-padR+10*dpi)continue;
+    if(py<padT-30*dpi||py>H-padB+10*dpi)continue;
+
+    /* Compute the tangent direction of the saturation curve at this point
+       to offset the label perpendicular to the curve (outward) */
+    const dT=0.5;
+    const T1=TwbC-dT,T2=TwbC+dT;
+    const w1=Psy.wsat_at(T1,app.pPa),w2=Psy.wsat_at(T2,app.pPa);
+    const dx=xc(T2)-xc(T1), dy=yc(w2)-yc(w1);
+    const len=Math.sqrt(dx*dx+dy*dy)||1;
+    /* Normal vector pointing outward (upper-left of the sat curve) */
+    const nx=dy/len, ny=-dx/len;
+
+    /* Place label along the perpendicular normal, outside the curve */
+    const labelX=px+nx*offsetDist;
+    const labelY=py+ny*offsetDist;
+
+    /* Avoid overlapping with previous labels */
+    let skip=false;
+    for(const prev of prevPositions){
+      const ddx=labelX-prev[0], ddy=labelY-prev[1];
+      if(Math.sqrt(ddx*ddx+ddy*ddy)<22*dpi){skip=true;break;}
+    }
+    if(skip)continue;
+    prevPositions.push([labelX,labelY]);
+
+    /* Draw small tick mark from saturation curve outward to label */
+    ctx.save();
+    ctx.strokeStyle=lc;
+    ctx.globalAlpha=0.35;
+    ctx.lineWidth=0.7*dpi;
+    ctx.beginPath();
+    ctx.moveTo(px,py);
+    ctx.lineTo(px+nx*(offsetDist-5*dpi),py+ny*(offsetDist-5*dpi));
+    ctx.stroke();
+    ctx.restore();
+
+    /* Compute rotation angle to align text along the sat curve tangent */
+    const angle=Math.atan2(dy,dx);
+
+    /* Draw the h value label rotated along the curve */
+    ctx.save();
+    ctx.translate(labelX,labelY);
+    /* Rotate text to follow curve tangent; flip if upside-down */
+    let drawAngle=angle;
+    if(drawAngle>Math.PI/2)drawAngle-=Math.PI;
+    if(drawAngle<-Math.PI/2)drawAngle+=Math.PI;
+    ctx.rotate(drawAngle);
+    textHalo(`${hDisp.toFixed(1)}`,0,0,lc,'center','middle',f);
+    ctx.restore();
+  }
+
+  /* Draw "h kJ/kg" or "h Btu/lb" unit header along the sat curve near the top */
+  const hUnit=D?'h (kJ/kg)':'h (Btu/lb)';
+  /* Find the highest visible saturation point to position the header */
+  let bestT=null,bestPy=Infinity;
+  for(let T=app.tMin;T<=app.tMax;T+=1){
+    const ws=Psy.wsat_at(T,app.pPa);
+    const py2=yc(ws),px2=xc(T);
+    if(px2>=padL&&px2<=W-padR&&py2>=padT&&py2<=H-padB&&py2<bestPy){bestPy=py2;bestT=T;}
+  }
+  if(bestT!==null){
+    const ws=Psy.wsat_at(bestT,app.pPa);
+    const hpx=xc(bestT),hpy=yc(ws);
+    /* Compute tangent at this top point */
+    const dT2=0.5;
+    const w1b=Psy.wsat_at(bestT-dT2,app.pPa),w2b=Psy.wsat_at(bestT+dT2,app.pPa);
+    const dx2=xc(bestT+dT2)-xc(bestT-dT2), dy2=yc(w2b)-yc(w1b);
+    const len2=Math.sqrt(dx2*dx2+dy2*dy2)||1;
+    const nx2=dy2/len2, ny2=-dx2/len2;
+    const hLx=hpx+nx2*(offsetDist+16*dpi), hLy=hpy+ny2*(offsetDist+16*dpi);
+    const ang2=Math.atan2(dy2,dx2);
+    let da2=ang2;if(da2>Math.PI/2)da2-=Math.PI;if(da2<-Math.PI/2)da2+=Math.PI;
+    ctx.save();ctx.translate(hLx,hLy);ctx.rotate(da2);
+    textHalo(hUnit,0,0,lc,'center','middle',f);
+    ctx.restore();
+  }
+}
+
+function drawV(){
+  const base=[0.74,0.76,0.78,0.80,0.82,0.84,0.86,0.88,0.90,0.92,0.95,1.00,1.05];
+  const vList=(app.units==='SI')?base:base.map(v=>v*Psy.ft3PerM3);
+  const s=stepT(),mode=el.labelMode.value,f=parseInt(el.labelPx.value,10)||11;
+  for(const vDisp of vList){
+    const vSI=(app.units==='SI')?vDisp:(vDisp/Psy.ft3PerM3);const pts=[];
+    for(let T=app.tMin-5;T<=app.tMax+5;T+=s){
+      const Tk=T+273.15;let w=((vSI*app.pPa)/(Psy.Rda*Tk)-1.0)/1.607858;
+      const wsat=Psy.wsat_at(T,app.pPa);
+      if(w<-0.0001){pts.push(null);continue;}
+      w=Math.max(0,w);
+      if(w>wsat+0.0005){pts.push(null);continue;}
+      pts.push([xc(T),yc(Math.min(w,wsat))]);
+    }
+    plotSeg(pts,ctCol('vline'),ctLw('vline'),.8,ctLs('vline'));
+    const lc=isCustom()?customTheme.lblText:css('--vline');
+    labelOnCurve(pts,`${vDisp.toFixed(2)}`,lc,f,mode);
+  }
+}
+
+function drawDP(){const dpTemps=(app.units==='SI')?[-10,-5,0,5,10,15,20,25,30,35,40]:[-10,-5,0,5,10,15,20,25,30,35,40].map(c=>c*9/5+32);const f=parseInt(el.labelPx.value,10)||11;for(const tdpDisp of dpTemps){const tdpC=(app.units==='SI')?tdpDisp:(tdpDisp-32)*5/9;const w=Psy.w_from_Tdp(tdpC,app.pPa);if(w<0)continue;const py=yc(w);if(py<padT||py>H-padB)continue;
+  const satX=Math.max(padL,xc(tdpC));if(satX>W-padR)continue;
+  ctx.save();setDash(ctLs('dp'));ctx.strokeStyle=ctCol('dp');ctx.lineWidth=ctLw('dp');ctx.globalAlpha=.5;ctx.beginPath();ctx.moveTo(satX,py);ctx.lineTo(W-padR,py);ctx.stroke();ctx.restore();
+  const lc=isCustom()?customTheme.lblText:css('--dpline');
+  textHalo(`${tdpDisp.toFixed(0)}°`,satX+6*dpi,py-3*dpi,lc,'left','alphabetic',f-2);}}
+
+function drawComfortZones(){const zone=app.comfortZone||'none';if(zone==='none'||!layerOn('comfort'))return;const adj=app.comfortAdj||0;
+  /* ASHRAE Standard 55 comfort zones — PMV ±0.5 boundaries
+     ET* side boundaries per ASHRAE 55a-1995 / 55-2004+
+     Summer: ET*=23°C & 26°C, Winter: ET*=20°C & 23.5°C
+     Upper humidity limit: W = 0.012 kg/kg (no lower limit per 55-2004+)
+     Data points: at 60% RH / Twb upper boundary and 2°C Tdp lower reference */
+  const zones=[];
+  if(zone==='summer'||zone==='both')zones.push({label:'Summer 0.5 clo (ASHRAE 55)',
+    poly:[
+      /* left boundary (ET*≈23°C, PMV=-0.5): Tdb decreases as W rises */
+      [24.0+adj,0],[23.5+adj,.004],[23.0+adj,.007],[22.5+adj,.010],[22.2+adj,.012],
+      /* top: W=0.012 */
+      [26.0+adj,.012],
+      /* right boundary (ET*≈26°C, PMV=+0.5): Tdb decreases as W rises */
+      [26.2+adj,.010],[26.6+adj,.007],[27.0+adj,.004],[27.5+adj,0]
+    ],
+    color:'rgba(34,197,94,.07)',border:'rgba(34,197,94,.4)'});
+  if(zone==='winter'||zone==='both')zones.push({label:'Winter 1.0 clo (ASHRAE 55)',
+    poly:[
+      /* left boundary (ET*≈20°C, PMV=-0.5) */
+      [21.0+adj,0],[20.5+adj,.004],[20.0+adj,.009],[19.5+adj,.012],
+      /* top: W=0.012 */
+      [23.3+adj,.012],
+      /* right boundary (ET*≈23.5°C, PMV=+0.5) */
+      [23.5+adj,.011],[24.0+adj,.007],[24.5+adj,.004],[25.0+adj,0]
+    ],
+    color:'rgba(59,130,246,.06)',border:'rgba(59,130,246,.35)'});
+  for(const z of zones){ctx.save();ctx.globalAlpha=1;ctx.fillStyle=z.color;ctx.strokeStyle=z.border;ctx.lineWidth=1.5*dpi;ctx.setLineDash([4*dpi,3*dpi]);
+    ctx.beginPath();
+    for(let i=0;i<z.poly.length;i++){const [T,w]=z.poly[i];const ws=Psy.wsat_at(T,app.pPa);const wc=Math.min(w,ws);const px=xc(T),py=yc(wc);if(i===0)ctx.moveTo(px,py);else ctx.lineTo(px,py);}
+    ctx.closePath();ctx.fill();ctx.stroke();ctx.restore();
+    const cx=z.poly.reduce((s,p)=>s+p[0],0)/z.poly.length;const cy=z.poly.reduce((s,p)=>s+p[1],0)/z.poly.length;
+    textHalo(z.label,xc(cx),yc(cy),z.border,'center','middle',8);}}
+
+function drawSHRLine(){if(!app.points.length)return;const ref=app.points[0];const shr=parseFloat(el.shrVal?.value||.75);if(!isFinite(shr))return;const slope=(shr===0)?Infinity:(shr===1)?0:(1.006*(1-shr))/(2501*shr);ctx.save();ctx.setLineDash([6*dpi,4*dpi]);ctx.strokeStyle=css('--warn');ctx.lineWidth=1.5*dpi;ctx.globalAlpha=.7;const px0=xc(ref.T),py0=yc(ref.w);ctx.beginPath();let started=false;for(let dT=-60;dT<=60;dT+=.5){const T=ref.T+dT,w=ref.w+slope*dT;if(w<0)continue;const px=xc(T),py=yc(w);if(px>=padL&&px<=W-padR&&py>=padT&&py<=H-padB){if(!started){ctx.moveTo(px,py);started=true;}else ctx.lineTo(px,py);}}ctx.stroke();ctx.restore();textHalo(`SHR=${shr.toFixed(2)}`,px0+20*dpi,py0-10*dpi,css('--warn'),'left','alphabetic',10);}
+
+function drawPoints(){ctx.globalAlpha=1;const ptc=isCustom()?customTheme.pt:css('--pt');const ptSz=isCustom()?customTheme.ptSize:4;for(let i=0;i<app.points.length;i++){const p=app.points[i],px=xc(p.T),py=yc(p.w);
+  if(app.tool.processMode && app.tool.start===i){ctx.save();ctx.strokeStyle=css('--accent');ctx.lineWidth=2.5*dpi;ctx.setLineDash([4*dpi,3*dpi]);ctx.globalAlpha=.8;ctx.beginPath();ctx.arc(px,py,(ptSz+8)*dpi,0,Math.PI*2);ctx.stroke();ctx.restore();textHalo('START',px,py+(ptSz+14)*dpi,css('--accent'),'center','top',9);}
+  if(app.tool.mixMode && app.tool.mixStart===i){ctx.save();ctx.strokeStyle=css('--mix');ctx.lineWidth=2.5*dpi;ctx.setLineDash([4*dpi,3*dpi]);ctx.globalAlpha=.8;ctx.beginPath();ctx.arc(px,py,(ptSz+8)*dpi,0,Math.PI*2);ctx.stroke();ctx.restore();textHalo('MIX A',px,py+(ptSz+14)*dpi,css('--mix'),'center','top',9);}
+  /* hover highlight when point is selectable in process/mix mode */
+  if(app._hovPickIdx===i && (app.tool.processMode||app.tool.mixMode)){
+    const hCol=app.tool.mixMode?css('--mix'):css('--accent');
+    ctx.save();
+    /* outer glow */
+    const glow=ctx.createRadialGradient(px,py,(ptSz+2)*dpi,px,py,(ptSz+16)*dpi);
+    glow.addColorStop(0,hCol+'55');glow.addColorStop(1,'transparent');
+    ctx.fillStyle=glow;ctx.fillRect(px-20*dpi,py-20*dpi,40*dpi,40*dpi);
+    /* pulsing ring */
+    ctx.strokeStyle=hCol;ctx.lineWidth=2*dpi;ctx.globalAlpha=.9;
+    ctx.setLineDash([]);ctx.beginPath();ctx.arc(px,py,(ptSz+6)*dpi,0,Math.PI*2);ctx.stroke();
+    /* inner bright ring */
+    ctx.strokeStyle='#ffffff';ctx.lineWidth=1*dpi;ctx.globalAlpha=.4;
+    ctx.beginPath();ctx.arc(px,py,(ptSz+4)*dpi,0,Math.PI*2);ctx.stroke();
+    ctx.restore();
+    /* tooltip label */
+    const clickTxt=app.tool.processMode?(app.tool.start!=null?'Click to end process':'Click to start process'):(app.tool.mixStart!=null?'Click to mix':'Click to select');
+    textHalo(clickTxt,px,py-(ptSz+16)*dpi,hCol,'center','bottom',9);
+  }
+  const grad=ctx.createRadialGradient(px,py,0,px,py,8*dpi);grad.addColorStop(0,ptc+'60');grad.addColorStop(1,'transparent');ctx.fillStyle=grad;ctx.fillRect(px-12*dpi,py-12*dpi,24*dpi,24*dpi);ctx.fillStyle=ptc;ctx.beginPath();ctx.arc(px,py,ptSz*dpi,0,Math.PI*2);ctx.fill();ctx.strokeStyle=ptc;ctx.lineWidth=1.5*dpi;ctx.beginPath();ctx.arc(px,py,(ptSz+2)*dpi,0,Math.PI*2);ctx.stroke();
+  const lx=(p.lx??10)*dpi, ly=(p.ly??-6)*dpi;
+  const tag=p.locked?'🔒 ':'';const labelStr=tag+(p.label||`P${i+1}`);
+  if(app._hovLabel===i){
+    ctx.save();ctx.font=`500 ${11*dpi}px JetBrains Mono,monospace`;
+    const tw=ctx.measureText(labelStr).width;
+    ctx.fillStyle=ptc;ctx.globalAlpha=.1;
+    ctx.beginPath();const rx=px+lx-3*dpi,ry=py+ly-12*dpi,rw=tw+6*dpi,rh2=16*dpi,cr=3*dpi;
+    ctx.moveTo(rx+cr,ry);ctx.lineTo(rx+rw-cr,ry);ctx.quadraticCurveTo(rx+rw,ry,rx+rw,ry+cr);ctx.lineTo(rx+rw,ry+rh2-cr);ctx.quadraticCurveTo(rx+rw,ry+rh2,rx+rw-cr,ry+rh2);ctx.lineTo(rx+cr,ry+rh2);ctx.quadraticCurveTo(rx,ry+rh2,rx,ry+rh2-cr);ctx.lineTo(rx,ry+cr);ctx.quadraticCurveTo(rx,ry,rx+cr,ry);ctx.fill();
+    ctx.strokeStyle=ptc;ctx.globalAlpha=.35;ctx.lineWidth=dpi;ctx.setLineDash([3*dpi,2*dpi]);ctx.stroke();ctx.restore();}
+  textHalo(labelStr,px+lx,py+ly,ptc,'left','alphabetic',11);
+  const dist=Math.sqrt(lx*lx+ly*ly);
+  if(dist>18*dpi){ctx.save();ctx.strokeStyle=ptc;ctx.globalAlpha=.25;ctx.lineWidth=.7*dpi;ctx.setLineDash([2*dpi,2*dpi]);ctx.beginPath();ctx.moveTo(px,py);ctx.lineTo(px+lx,py+ly);ctx.stroke();ctx.restore();}}}
+
+function processType(a,b){const dT=b.T-a.T,dW=b.w-a.w,eps=.0001;if(Math.abs(dW)<eps&&dT>eps)return{type:'Sensible Heating',cls:'heat',color:css('--heat')};if(Math.abs(dW)<eps&&dT<-eps)return{type:'Sensible Cooling',cls:'cool',color:css('--cool')};if(dT<-eps&&dW<-eps)return{type:'Cool & Dehumid',cls:'cool',color:css('--cool')};if(dT>eps&&dW>eps)return{type:'Heat & Humidify',cls:'heat',color:css('--heat')};if(Math.abs(dT)<eps&&dW>eps)return{type:'Humidification',cls:'humid',color:css('--humid')};if(Math.abs(dT)<eps&&dW<-eps)return{type:'Dehumidification',cls:'dehum',color:css('--dehum')};if(dT<-eps&&dW>eps){const h1=Psy.h_kJkg(a.T,a.w),h2=Psy.h_kJkg(b.T,b.w);if(Math.abs(h2-h1)<2)return{type:'Evaporative Cool',cls:'evap',color:css('--evap')};return{type:'Cool & Humidify',cls:'cool',color:css('--cool')};}if(dT>eps&&dW<-eps)return{type:'Heat & Dehumid',cls:'heat',color:css('--heat')};return{type:'Process',cls:'',color:css('--muted')};}
+
+function drawArrow(ax,ay,bx,by,color){ctx.globalAlpha=1;const grad=ctx.createLinearGradient(ax,ay,bx,by);grad.addColorStop(0,color+'99');grad.addColorStop(1,color);ctx.strokeStyle=grad;const aw=isCustom()?customTheme.arrowW:2.5;ctx.lineWidth=aw*dpi;ctx.lineCap='round';ctx.beginPath();ctx.moveTo(ax,ay);ctx.lineTo(bx,by);ctx.stroke();const ang=Math.atan2(by-ay,bx-ax),hl=14*dpi;ctx.beginPath();ctx.moveTo(bx,by);ctx.lineTo(bx-hl*Math.cos(ang-Math.PI/6),by-hl*Math.sin(ang-Math.PI/6));ctx.lineTo(bx-hl*Math.cos(ang+Math.PI/6),by-hl*Math.sin(ang+Math.PI/6));ctx.closePath();ctx.fillStyle=color;ctx.fill();}
+function drawProcesses(){app.processes.forEach((seg,idx)=>{const a=app.points[seg[0]],b=app.points[seg[1]];if(!a||!b)return;const pt=processType(a,b);drawArrow(xc(a.T),yc(a.w),xc(b.T),yc(b.w),pt.color);textHalo(`S${idx+1}`,(xc(a.T)+xc(b.T))/2+8*dpi,(yc(a.w)+yc(b.w))/2-4*dpi,pt.color,'left','alphabetic',10);});}
+function drawMixDashes(){const seen=new Set();ctx.save();ctx.setLineDash([6*dpi,5*dpi]);ctx.lineWidth=1.5*dpi;ctx.strokeStyle=css('--mix');ctx.globalAlpha=.6;for(const p of app.points){if(!(p.derived&&p.derived.type==='mix'))continue;const A=app.points.find(q=>q.id===p.derived.aId),B=app.points.find(q=>q.id===p.derived.bId);if(!A||!B)continue;const key=[Math.min(A.id,B.id),Math.max(A.id,B.id)].join('-');if(seen.has(key))continue;seen.add(key);ctx.beginPath();ctx.moveTo(xc(A.T),yc(A.w));ctx.lineTo(xc(B.T),yc(B.w));ctx.stroke();}ctx.restore();}
+function drawCrosshair(){if(app.hover.x==null||app.hover.y==null)return;const T=invT(app.hover.x),wR=Math.max(0,invW(app.hover.y)),ws=Psy.wsat_at(T,app.pPa);if(wR>ws*1.1||T<app.tMin-1||T>app.tMax+1)return;const px=Math.min(Math.max(app.hover.x,padL),W-padR),py=Math.min(Math.max(app.hover.y,padT),H-padB);ctx.save();ctx.setLineDash([4*dpi,4*dpi]);ctx.strokeStyle=css('--muted');ctx.globalAlpha=.35;ctx.lineWidth=dpi;ctx.beginPath();ctx.moveTo(padL,py);ctx.lineTo(W-padR,py);ctx.moveTo(px,padT);ctx.lineTo(px,H-padB);ctx.stroke();ctx.restore();ctx.save();ctx.strokeStyle=css('--accent');ctx.lineWidth=1.5*dpi;ctx.globalAlpha=.8;ctx.beginPath();ctx.moveTo(px-8*dpi,py);ctx.lineTo(px+8*dpi,py);ctx.moveTo(px,py-8*dpi);ctx.lineTo(px,py+8*dpi);ctx.stroke();ctx.restore();}
+
+/* ============ Helpers ============ */
+function updatePressureLabel(){const kPa=app.pPa/1000,altm=Math.max(-200,Math.min(9000,Psy.invBaroAlt_m(app.pPa)));el.pUsed.textContent=`${kPa.toFixed(1)} kPa · ${altm.toFixed(0)}m`;}
+function updateFlowUnits(){const k=el.flowUnit.value;el.flowUnit.innerHTML='';const add=(v,t)=>{const o=document.createElement('option');o.value=v;o.textContent=t;el.flowUnit.appendChild(o);};if(app.units==='SI'){add('kgps','kg/s');add('Lps','L/s');el.flowUnit.value=(k==='kgps'||k==='Lps')?k:'Lps';}else{add('lbps','lb/s');add('cfm','CFM');el.flowUnit.value=(k==='lbps'||k==='cfm')?k:'cfm';}}
+function updateFlowUnitsUI(){updateFlowUnits();const t=el.flowUnit.options[el.flowUnit.selectedIndex]?.textContent||'flow';byId('mixLblA').textContent='Flow A ('+t+')';byId('mixLblB').textContent='Flow B ('+t+')';}
+function flowToKgps(val,unit,T,w){let v=parseFloat(val)||0;const sp=Psy.v_m3kg(T,w,app.pPa);switch(unit){case'kgps':return v;case'Lps':return(v/1000)/sp;case'cfm':return(v*.00047194745)/sp;case'lbps':return v*.45359237;default:return 0;}}
+function recomputeDerived(){let ch=false;for(let i=0;i<app.points.length;i++){const p=app.points[i];if(p.derived&&p.derived.type==='mix'){const A=app.points.find(q=>q.id===p.derived.aId),B=app.points.find(q=>q.id===p.derived.bId);if(!A||!B){app.points.splice(i,1);app.processes=app.processes.filter(s=>s[0]!==i&&s[1]!==i).map(s=>[s[0]-(s[0]>i),s[1]-(s[1]>i)]);i--;ch=true;continue;}const hA=Psy.h_kJkg(A.T,A.w),hB=Psy.h_kJkg(B.T,B.w);const wM=(p.derived.mA*A.w+p.derived.mB*B.w)/(p.derived.mA+p.derived.mB);const hM=(p.derived.mA*hA+p.derived.mB*hB)/(p.derived.mA+p.derived.mB);p.T=(hM-2501*wM)/(1.006+1.86*wM);p.w=Math.min(wM,Psy.wsat_at(p.T,app.pPa)*.999);ch=true;}}return ch;}
+function onPointsChanged(){if(recomputeDerived())refreshAll();}
+function refreshAll(){refreshTable();refreshSelList();refreshProcLists();redraw();}
+
+function refreshTable(){const tb=el.ptsTbl;if(!tb)return;tb.innerHTML='';const editMode=(byId('ptTblEditMode')?.value)||'RH';const hdr=byId('ptTblSecondHdr');if(hdr)hdr.textContent=editMode==='Twb'?'Twb':'RH%';app.points.forEach((p,i)=>{const D=app.units==='SI';const Td=D?p.T:(p.T*9/5+32);const Wd=D?(p.w*1000):(p.w*Psy.grainsPerLb);const rh=Psy.RH_from_Tw(p.T,p.w,app.pPa)*100;const twb=Psy.twb_from_Tw(p.T,p.w,app.pPa);const twbD=D?twb:(twb*1.8+32);const secondVal=editMode==='Twb'?twbD.toFixed(1):rh.toFixed(1);const tr=document.createElement('tr');tr.innerHTML=`<td style="font-family:var(--mono);color:var(--muted)">${i+1}</td><td><input data-i="${i}" class="lbl" value="${p.label||`P${i+1}`}" ${p.locked?'disabled':''} style="width:75px;font-size:11px"></td><td><input data-i="${i}" class="tdb" type="number" step="0.1" value="${Td.toFixed(1)}" ${p.locked?'disabled':''} style="width:55px"></td><td><input data-i="${i}" class="secv" type="number" step="0.1" value="${secondVal}" ${p.locked?'disabled':''} style="width:50px"></td><td style="font-family:var(--mono);font-size:10px">${D?Wd.toFixed(2):Wd.toFixed(0)}</td><td style="white-space:nowrap"><button class="lck" title="${p.locked?'Unlock':'Lock'}" style="opacity:${p.locked?1:.5}">${p.locked?'🔒':'🔓'}</button><button class="dup" title="Duplicate">⧉</button><button class="del" title="Delete">✕</button></td>`;
+  if(!p.locked){tr.querySelector('.lbl').oninput=e=>{app.points[i].label=e.target.value;refreshSelList();refreshProcLists();redraw();};tr.querySelector('.tdb').onchange=e=>{pushHistory();let T=parseFloat(e.target.value);if(app.units!=='SI')T=(T-32)*5/9;if(editMode==='Twb'){const twbNow=Psy.twb_from_Tw(p.T,p.w,app.pPa);const wwb=Psy.wsat_at(twbNow,app.pPa);const hwb=Psy.h_kJkg(twbNow,wwb);p.T=T;p.w=Math.max(0,(hwb-1.006*T)/(2501+1.86*T));p.w=Math.min(p.w,Psy.wsat_at(T,app.pPa));}else{const rh0=Psy.RH_from_Tw(p.T,p.w,app.pPa);p.T=T;p.w=Psy.w_from_pv(Math.min(app.pPa*.999,Psy.p_ws_Pa(T)*rh0),app.pPa);}refreshAll();onPointsChanged();};tr.querySelector('.secv').onchange=e=>{pushHistory();const val=parseFloat(e.target.value)||0;if(editMode==='Twb'){const Twb=(app.units==='SI')?val:(val-32)*5/9;const wwb=Psy.wsat_at(Twb,app.pPa);const hwb=Psy.h_kJkg(Twb,wwb);p.w=Math.max(0,(hwb-1.006*p.T)/(2501+1.86*p.T));p.w=Math.min(p.w,Psy.wsat_at(p.T,app.pPa));}else{let rh2=Math.max(0,Math.min(100,val))/100;p.w=Psy.w_from_pv(Math.min(app.pPa*.999,Psy.p_ws_Pa(p.T)*rh2),app.pPa);}refreshAll();onPointsChanged();};}
+  tr.querySelector('.lck').onclick=()=>{pushHistory();p.locked=!p.locked;refreshAll();toast(p.locked?`"${p.label}" locked`:`"${p.label}" unlocked`,'info');};
+  tr.querySelector('.dup').onclick=()=>{pushHistory();app.points.push({id:nextPid++,T:p.T,w:p.w,label:p.label+' copy',locked:false,lx:10,ly:-6});refreshAll();toast('Duplicated','success');};tr.querySelector('.del').onclick=()=>{if(p.locked){toast(`"${p.label}" is locked — unlock it first`,'error');return;}pushHistory();app.points.splice(i,1);app.processes=app.processes.filter(s=>s[0]!==i&&s[1]!==i).map(s=>[s[0]-(s[0]>i),s[1]-(s[1]>i)]);refreshAll();onPointsChanged();};tb.appendChild(tr);});}
+function refreshSelList(){const prev=parseInt(el.selPt.value,10)||0;el.selPt.innerHTML='';app.points.forEach((p,i)=>{const o=document.createElement('option');o.value=i;o.textContent=`${i+1}: ${p.label}`;el.selPt.appendChild(o);});if(app.points.length){el.selPt.value=Math.min(prev,app.points.length-1);loadSelected(parseInt(el.selPt.value,10)||0);}}
+function loadSelected(i){const p=app.points[i];if(!p)return;el.selLbl.value=p.label;el.selT.value=(app.units==='SI')?p.T:(p.T*9/5+32);el.selX.value=(Psy.RH_from_Tw(p.T,p.w,app.pPa)*100).toFixed(1);el.editMode.value='RH';const d=!!p.locked;el.selLbl.disabled=d;el.selT.disabled=d;el.selX.disabled=d;el.applyEdit.disabled=d;}
+
+function addPointFromUI(){pushHistory();let Td=parseFloat(el.inT.value),val=parseFloat(el.inX.value);if(isNaN(Td)||isNaN(val))return;const T=(app.units==='SI')?Td:(Td-32)*5/9;let w=0;const mode=el.inMode.value;if(mode==='RH')w=Psy.w_from_pv(Math.min(app.pPa*.999,Psy.p_ws_Pa(T)*Math.max(0,Math.min(100,val))/100),app.pPa);else if(mode==='W')w=(app.units==='SI')?(val/1000):(val/Psy.grainsPerLb);else if(mode==='Twb'){const Twb=(app.units==='SI')?val:(val-32)*5/9;const wwb=Psy.wsat_at(Twb,app.pPa);const hwb=Psy.h_kJkg(Twb,wwb);w=Math.max(0,(hwb-1.006*T)/(2501+1.86*T));w=Math.min(w,Psy.wsat_at(T,app.pPa));}else if(mode==='Tdp')w=Psy.w_from_Tdp((app.units==='SI')?val:(val-32)*5/9,app.pPa);const label=(el.inLbl.value||`Pt${app.points.length+1}`).trim();app.points.push({id:nextPid++,T,w,label,locked:false,lx:10,ly:-6});if(el.connect.value==='yes'&&app.points.length>=2)app.processes.push([app.points.length-2,app.points.length-1]);refreshAll();toast(`"${label}" added`,'success');}
+
+function applyAtm(){pushHistory();let alt=parseFloat(el.alt.value||0);const alt_m=(el.altUnit.value==='m')?alt:(alt/3.28084);let p=Psy.baroPa(Math.min(9000,Math.max(-200,alt_m)));const pov=parseFloat(el.pOverride.value||'');if(!isNaN(pov)){if(el.pUnit.value==='kPa')p=Math.min(106,Math.max(70,pov))*1000;else p=Math.min(15.4,Math.max(10.2,pov))*Psy.kPaPerPsi*1000;}app.pPa=p;updatePressureLabel();onPointsChanged();redraw();toast('Atmosphere updated','success');}
+
+function refreshProcLists(){const fill=sel=>{if(!sel)return;sel.innerHTML='';app.points.forEach((p,i)=>{const o=document.createElement('option');o.value=i;o.textContent=`${i+1}: ${p.label}`;sel.appendChild(o);});};fill(el.procA);fill(el.procB);fill(el.mixA);fill(el.mixB);if(el.adpProc){el.adpProc.innerHTML='';app.processes.forEach((s,i)=>{const a=app.points[s[0]],b=app.points[s[1]];const o=document.createElement('option');o.value=i;o.textContent=`S${i+1}: ${a?.label||'?'} → ${b?.label||'?'}`;el.adpProc.appendChild(o);});}if(el.procSel){el.procSel.innerHTML='';app.processes.forEach((s,i)=>{const o=document.createElement('option');o.value=i;const a=app.points[s[0]],b=app.points[s[1]];o.textContent=`S${i+1}: ${a?.label||'?'} → ${b?.label||'?'}`;el.procSel.appendChild(o);});}updateProcMetrics();}
+function updateProcMetrics(){const i=+el.procSel.value;const s=app.processes[i];const D=app.units==='SI';const uT=D?'°C':'°F',uW=D?'g/kg':'gr/lb',uH=D?'kJ/kg':'Btu/lb',uQ=D?'kW':'kW';const cl=()=>{['mDT','mDW','mDh','mSHR','mQs','mQl','mQt'].forEach(id=>{const e=byId(id);if(e)e.textContent='—';});};if(!s){cl();updateProcessCards();return;}const a=app.points[s[0]],b=app.points[s[1]];if(!a||!b){cl();updateProcessCards();return;}const dT=b.T-a.T,dW=b.w-a.w,dh=Psy.h_kJkg(b.T,b.w)-Psy.h_kJkg(a.T,a.w),SHR=(dh!==0)?(1.006*dT/dh):NaN;let m=parseFloat(el.flowVal.value)||0;const vS=Psy.v_m3kg(a.T,a.w,app.pPa);switch(el.flowUnit.value){case'Lps':m=(m/1000)/vS;break;case'cfm':m=(m*.00047194745)/vS;break;case'lbps':m*=.45359237;break;}const Qt=dh*m,Qs=1.006*dT*m,Ql=Qt-Qs;byId('mDT').textContent=D?`${dT.toFixed(2)} ${uT}`:`${(dT*1.8).toFixed(2)} ${uT}`;byId('mDW').textContent=D?`${(dW*1000).toFixed(2)} ${uW}`:`${(dW*7000).toFixed(0)} ${uW}`;byId('mDh').textContent=D?`${dh.toFixed(2)} ${uH}`:`${(dh*.4299).toFixed(2)} ${uH}`;byId('mSHR').textContent=isFinite(SHR)?SHR.toFixed(3):'—';byId('mQs').textContent=`${Qs.toFixed(3)} ${uQ}`;byId('mQl').textContent=`${Ql.toFixed(3)} ${uQ}`;byId('mQt').textContent=`${Qt.toFixed(3)} ${uQ}`;updateProcessCards();}
+function updateProcessCards(){const c=byId('processCards');if(!c)return;c.innerHTML='';const selIdx=parseInt(el.procSel?.value,10);app.processes.forEach((s,i)=>{const a=app.points[s[0]],b=app.points[s[1]];if(!a||!b)return;const pt=processType(a,b);const d=document.createElement('div');d.className='procCard'+(i===selIdx?' selected':'');d.innerHTML=`<div class="procHead"><span class="procTitle">S${i+1}: ${esc(a.label)} → ${esc(b.label)}</span><span class="badge ${pt.cls}">${pt.type}</span><button class="procDel" title="Delete process" data-pi="${i}">✕</button></div>`;d.addEventListener('click',e=>{if(e.target.closest('.procDel'))return;el.procSel.value=i;updateProcMetrics();});d.querySelector('.procDel').addEventListener('click',e=>{e.stopPropagation();pushHistory();app.processes.splice(i,1);refreshProcLists();redraw();toast('Process deleted','success');});c.appendChild(d);});}
+
+function addMixPoint(){const ia=+el.mixA.value,ib=+el.mixB.value;if(isNaN(ia)||isNaN(ib)||ia===ib){toast('Pick two different points','error');return;}const A=app.points[ia],B=app.points[ib];if(!A||!B)return;const fA=parseFloat(el.mixWA.value),fB=parseFloat(el.mixWB.value);if(!(fA>0)||!(fB>0)){toast('Flows must be positive','error');return;}pushHistory();const unit=el.flowUnit.value||(app.units==='SI'?'Lps':'cfm');const mA=flowToKgps(fA,unit,A.T,A.w),mB=flowToKgps(fB,unit,B.T,B.w);if(mA<=0||mB<=0){toast('Zero mass flow','error');return;}const wMix=(mA*A.w+mB*B.w)/(mA+mB),hMix=(mA*Psy.h_kJkg(A.T,A.w)+mB*Psy.h_kJkg(B.T,B.w))/(mA+mB);let Tmix=(hMix-2501*wMix)/(1.006+1.86*wMix);const label=(el.mixLbl.value||'Mix').trim()||'Mix';app.points.push({id:nextPid++,T:Tmix,w:Math.min(wMix,Psy.wsat_at(Tmix,app.pPa)*.999),label,locked:true,derived:{type:'mix',aId:A.id,bId:B.id,mA,mB}});refreshAll();toast(`Mix "${label}" created`,'success');}
+
+/* ===== Mix Flow Modal ===== */
+let _mixModalIdxA=null,_mixModalIdxB=null;
+
+function _mixUpdateUI(){
+  const A=app.points[_mixModalIdxA],B=app.points[_mixModalIdxB];
+  if(!A||!B)return;
+  const D=app.units==='SI';
+  const unitSel=byId('mixFlowUnit');
+  const uTxt=unitSel.options[unitSel.selectedIndex]?.textContent||(D?'L/s':'CFM');
+  const method=byId('mixFlowMethod').value;
+  const hintA=byId('mixFlowHintA'),hintB=byId('mixFlowHintB');
+
+  if(method==='both'){
+    /* Both flows */
+    byId('mixFlowLblA').textContent=A.label+' — Flow ('+uTxt+')';
+    byId('mixFlowLblB').textContent=B.label+' — Flow ('+uTxt+')';
+    byId('mixFlowValA').step='0.1';byId('mixFlowValB').step='0.1';
+    hintA.classList.remove('visible');hintA.innerHTML='';
+    hintB.classList.remove('visible');hintB.innerHTML='';
+  }else if(method==='flowA_pctB'){
+    /* Flow A entered, B as percentage of A */
+    byId('mixFlowLblA').textContent=A.label+' — Flow ('+uTxt+')';
+    byId('mixFlowLblB').textContent=B.label+' — Percentage of "'+A.label+'"';
+    byId('mixFlowValA').step='0.1';byId('mixFlowValB').step='0.01';byId('mixFlowValB').value='0.5';
+    hintA.classList.remove('visible');hintA.innerHTML='';
+    hintB.classList.add('visible');
+    hintB.innerHTML='Enter as a decimal fraction of "'+esc(A.label)+'" flow.<br>Examples: <code>0.5</code> = 50%, <code>0.75</code> = 75%, <code>1.2</code> = 120%.';
+  }else if(method==='flowB_pctA'){
+    /* Flow B entered, A as percentage of B */
+    byId('mixFlowLblB').textContent=B.label+' — Flow ('+uTxt+')';
+    byId('mixFlowLblA').textContent=A.label+' — Percentage of "'+B.label+'"';
+    byId('mixFlowValB').step='0.1';byId('mixFlowValA').step='0.01';byId('mixFlowValA').value='0.5';
+    hintB.classList.remove('visible');hintB.innerHTML='';
+    hintA.classList.add('visible');
+    hintA.innerHTML='Enter as a decimal fraction of "'+esc(B.label)+'" flow.<br>Examples: <code>0.5</code> = 50%, <code>0.75</code> = 75%, <code>1.2</code> = 120%.';
+  }
+}
+
+function openMixFlowModal(idxA,idxB){
+  _mixModalIdxA=idxA;_mixModalIdxB=idxB;
+  const A=app.points[idxA],B=app.points[idxB];if(!A||!B)return;
+  const D=app.units==='SI';
+  const uT=D?'°C':'°F', uW=D?'g/kg':'gr/lb';
+
+  /* populate point names & properties */
+  byId('mixFlowNameA').textContent=A.label;
+  byId('mixFlowNameB').textContent=B.label;
+  const fmtProps=p=>{const T=D?p.T:(p.T*1.8+32);const W=D?(p.w*1000):(p.w*7000);const rh=Psy.RH_from_Tw(p.T,p.w,app.pPa)*100;return `${T.toFixed(1)}${uT}  ${rh.toFixed(0)}% RH  ${D?W.toFixed(1):W.toFixed(0)} ${uW}`;};
+  byId('mixFlowPropsA').textContent=fmtProps(A);
+  byId('mixFlowPropsB').textContent=fmtProps(B);
+
+  /* populate flow unit selector */
+  const unitSel=byId('mixFlowUnit');
+  unitSel.innerHTML='';
+  if(D){unitSel.innerHTML='<option value="Lps">L/s</option><option value="kgps">kg/s</option>';}
+  else{unitSel.innerHTML='<option value="cfm">CFM</option><option value="lbps">lb/s</option>';}
+
+  /* populate method selector with real point names */
+  const mSel=byId('mixFlowMethod');
+  mSel.innerHTML='';
+  mSel.innerHTML=`<option value="both">Enter both flows</option>`
+    +`<option value="flowA_pctB">Enter "${esc(A.label)}" flow + "${esc(B.label)}" as percentage</option>`
+    +`<option value="flowB_pctA">Enter "${esc(B.label)}" flow + "${esc(A.label)}" as percentage</option>`;
+  mSel.value='both';
+
+  /* defaults */
+  byId('mixFlowValA').value='1';byId('mixFlowValB').value='1';
+  byId('mixFlowLabel').value='Mix';
+
+  /* wire change events for live UI update */
+  mSel.onchange=_mixUpdateUI;
+  unitSel.onchange=_mixUpdateUI;
+
+  /* initial UI */
+  _mixUpdateUI();
+
+  /* show modal */
+  byId('mixFlowOverlay').classList.add('visible');
+  byId('mixFlowValA').focus();
+}
+
+function closeMixFlowModal(){
+  byId('mixFlowOverlay').classList.remove('visible');
+  /* inline exit mix mode — exitMixMode is scoped inside DOMContentLoaded */
+  app.tool.mixMode=false;app.tool.mixStart=null;app._hovPickIdx=-1;
+  const mb=byId('btnMixMode');if(mb)mb.classList.remove('active');
+  const bar=byId('mixModeBar');if(bar)bar.style.display='none';
+  redraw();
+}
+
+function confirmMixFlow(){
+  const A=app.points[_mixModalIdxA],B=app.points[_mixModalIdxB];
+  if(!A||!B){closeMixFlowModal();return;}
+  const method=byId('mixFlowMethod').value;
+  const unit=byId('mixFlowUnit').value;
+  const rawA=parseFloat(byId('mixFlowValA').value);
+  const rawB=parseFloat(byId('mixFlowValB').value);
+  let fA,fB;
+
+  if(method==='both'){
+    fA=rawA;fB=rawB;
+  }else if(method==='flowA_pctB'){
+    /* rawA = flow of A, rawB = fraction of A's flow for B */
+    fA=rawA;fB=rawA*(rawB||0);
+  }else if(method==='flowB_pctA'){
+    /* rawB = flow of B, rawA = fraction of B's flow for A */
+    fB=rawB;fA=rawB*(rawA||0);
+  }
+
+  if(!(fA>0)||!(fB>0)){toast('Flows must be positive','error');return;}
+  const mA=flowToKgps(fA,unit,A.T,A.w),mB=flowToKgps(fB,unit,B.T,B.w);
+  if(mA<=0||mB<=0){toast('Zero mass flow','error');return;}
+
+  pushHistory();
+  const wMix=(mA*A.w+mB*B.w)/(mA+mB),hMix=(mA*Psy.h_kJkg(A.T,A.w)+mB*Psy.h_kJkg(B.T,B.w))/(mA+mB);
+  let Tmix=(hMix-2501*wMix)/(1.006+1.86*wMix);
+  const label=(byId('mixFlowLabel').value||'Mix').trim()||'Mix';
+  const mixIdx=app.points.length;
+  app.points.push({id:nextPid++,T:Tmix,w:Math.min(wMix,Psy.wsat_at(Tmix,app.pPa)*.999),label,locked:true,lx:10,ly:-6,derived:{type:'mix',aId:A.id,bId:B.id,mA,mB}});
+
+  /* auto-add processes:  A → Mix  and  B → Mix */
+  app.processes.push([_mixModalIdxA, mixIdx]);
+  app.processes.push([_mixModalIdxB, mixIdx]);
+
+  refreshAll();
+  toast(`Mix "${label}" created: "${A.label}" + "${B.label}"`,'success');
+  closeMixFlowModal();
+}
+
+function calcADP(){const i=+el.adpProc?.value;const s=app.processes[i];const c=byId('adpResults');if(!c)return;if(!s){c.innerHTML='<p style="font-size:11px;color:var(--muted)">No process</p>';return;}const a=app.points[s[0]],b=app.points[s[1]];if(!a||!b)return;const slope=(b.T!==a.T)?(b.w-a.w)/(b.T-a.T):Infinity;if(!isFinite(slope)){c.innerHTML='<p style="font-size:11px;color:var(--muted)">Vertical — no ADP</p>';return;}let adpT=null;for(let T=-20;T<=60;T+=.02){const wL=a.w+slope*(T-a.T),ws=Psy.wsat_at(T,app.pPa);if(wL<=ws){let lo=T-.02,hi=T;for(let j=0;j<40;j++){const m=(lo+hi)/2;(a.w+slope*(m-a.T)>Psy.wsat_at(m,app.pPa))?lo=m:hi=m;}adpT=(lo+hi)/2;break;}}if(adpT===null){c.innerHTML='<p style="color:var(--muted);font-size:11px">No ADP found</p>';return;}const adpW=Psy.wsat_at(adpT,app.pPa);const BF=(b.T-adpT)/(a.T-adpT);const Td=app.units==='SI'?adpT:(adpT*1.8+32);const Wd=app.units==='SI'?(adpW*1000):(adpW*7000);c.innerHTML=`<div class="metric"><span class="lbl">ADP T</span><span class="val">${Td.toFixed(2)}°</span></div><div class="metric"><span class="lbl">ADP W</span><span class="val">${app.units==='SI'?Wd.toFixed(2):Wd.toFixed(0)}</span></div><div class="metric"><span class="lbl">BPF</span><span class="val">${BF.toFixed(4)}</span></div><div class="metric"><span class="lbl">CF</span><span class="val">${(1-BF).toFixed(4)}</span></div>`;}
+
+function calcVent(){const n=parseFloat(byId('ventPeople').value)||0;const r=parseFloat(byId('ventRate').value)||0;const u=byId('ventUnit').value;const c=byId('ventResults');if(!c||app.points.length<2)return;const oa=app.points.find(p=>p.label.match(/out|oa|ambient/i))||app.points[app.points.length-1];const rm=app.points.find(p=>p.label.match(/room|return|ra/i))||app.points[0];let totalFlow=n*r;let m=flowToKgps(totalFlow,u==='Lps'?'Lps':'cfm',oa.T,oa.w);const dh=Psy.h_kJkg(oa.T,oa.w)-Psy.h_kJkg(rm.T,rm.w);const Qt=dh*m,Qs=1.006*(oa.T-rm.T)*m,Ql=Qt-Qs;c.innerHTML=`<div class="metric"><span class="lbl">OA: ${esc(oa.label)}</span><span class="val">${(app.units==='SI'?oa.T:(oa.T*1.8+32)).toFixed(1)}°</span></div><div class="metric"><span class="lbl">Room: ${esc(rm.label)}</span><span class="val">${(app.units==='SI'?rm.T:(rm.T*1.8+32)).toFixed(1)}°</span></div><div class="metric"><span class="lbl">Qs (kW)</span><span class="val">${Qs.toFixed(3)}</span></div><div class="metric"><span class="lbl">Ql (kW)</span><span class="val">${Ql.toFixed(3)}</span></div><div class="metric"><span class="lbl">Qt (kW)</span><span class="val">${Qt.toFixed(3)}</span></div><div class="metric"><span class="lbl">Flow</span><span class="val">${totalFlow.toFixed(1)} ${u}</span></div>`;}
+
+function calcProperties(){const in1=el.calcIn1.value,v1=parseFloat(el.calcV1.value),in2=el.calcIn2.value,v2=parseFloat(el.calcV2.value);const c=byId('calcResults');if(!c||isNaN(v1)||isNaN(v2)){c.innerHTML='<p style="color:var(--danger);font-size:11px">Enter values</p>';return;}const toC=v=>(app.units==='SI')?v:(v-32)*5/9,toW=v=>(app.units==='SI')?(v/1000):(v/Psy.grainsPerLb);let T=NaN,w=NaN;try{const resolve=(n,v)=>{if(n==='Tdb')return{T:toC(v)};if(n==='RH')return{rh:v/100};if(n==='W')return{w:toW(v)};if(n==='Twb')return{Twb:toC(v)};if(n==='Tdp')return{Tdp:toC(v)};if(n==='h')return{h:(app.units==='SI')?v:(v/.4299)};return{};};const all={...resolve(in1,v1),...resolve(in2,v2)};if('T' in all&&'rh' in all){T=all.T;w=Psy.w_from_pv(Math.min(app.pPa*.999,Psy.p_ws_Pa(T)*all.rh),app.pPa);}else if('T' in all&&'w' in all){T=all.T;w=all.w;}else if('T' in all&&'Twb' in all){T=all.T;const wwb=Psy.wsat_at(all.Twb,app.pPa);const hwb=Psy.h_kJkg(all.Twb,wwb);w=Math.max(0,(hwb-1.006*T)/(2501+1.86*T));}else if('T' in all&&'Tdp' in all){T=all.T;w=Psy.w_from_Tdp(all.Tdp,app.pPa);}else if('T' in all&&'h' in all){T=all.T;w=(all.h-1.006*T)/(2501+1.86*T);}else{c.innerHTML='<p style="color:var(--warn);font-size:11px">Use Tdb + one other</p>';return;}if(isNaN(T)||isNaN(w)||w<0){c.innerHTML='<p style="color:var(--danger)">Invalid</p>';return;}const rh=Psy.RH_from_Tw(T,w,app.pPa)*100,h=Psy.h_kJkg(T,w),v=Psy.v_m3kg(T,w,app.pPa),pv=Psy.pv_from_w(w,app.pPa),tdp=Psy.dewpoint_from_pv(pv),twb=Psy.twb_from_Tw(T,w,app.pPa),rho=Psy.rho(T,w,app.pPa);const D=(app.units==='SI');c.innerHTML=`<div class="metric"><span class="lbl">Tdb</span><span class="val">${(D?T:T*1.8+32).toFixed(2)}°</span></div><div class="metric"><span class="lbl">RH</span><span class="val">${rh.toFixed(1)}%</span></div><div class="metric"><span class="lbl">W</span><span class="val">${D?(w*1000).toFixed(2):(w*7000).toFixed(0)}</span></div><div class="metric"><span class="lbl">Twb</span><span class="val">${(D?twb:twb*1.8+32).toFixed(2)}°</span></div><div class="metric"><span class="lbl">Tdp</span><span class="val">${(D?tdp:tdp*1.8+32).toFixed(2)}°</span></div><div class="metric"><span class="lbl">h</span><span class="val">${(D?h:h*.4299).toFixed(2)}</span></div><div class="metric"><span class="lbl">v</span><span class="val">${(D?v:v*Psy.ft3PerM3).toFixed(3)}</span></div><div class="metric"><span class="lbl">ρ</span><span class="val">${rho.toFixed(3)}</span></div>`;app._lastCalc={T,w};}catch(e){c.innerHTML=`<p style="color:var(--danger)">${e.message}</p>`;}}
+
+function genPsyTable(){const from=parseFloat(byId('tblFrom').value)||10,to=parseFloat(byId('tblTo').value)||40;const wrap=byId('psyTableWrap');if(!wrap)return;const D=app.units==='SI';let html='<table class="ptable"><thead><tr><th>Tdb</th><th>Wsat</th><th>hsat</th><th>vsat</th><th>Pws</th></tr></thead><tbody>';for(let T=(D?from:(from-32)*5/9);T<=(D?to:(to-32)*5/9);T+=1){const ws=Psy.wsat_at(T,app.pPa),hs=Psy.h_kJkg(T,ws),vs=Psy.v_m3kg(T,ws,app.pPa),pws=Psy.p_ws_Pa(T);const Td=D?T:T*1.8+32;html+=`<tr><td>${Td.toFixed(1)}</td><td>${D?(ws*1000).toFixed(2):(ws*7000).toFixed(0)}</td><td>${(D?hs:hs*.4299).toFixed(2)}</td><td>${(D?vs:vs*Psy.ft3PerM3).toFixed(3)}</td><td>${(pws/1000).toFixed(3)} kPa</td></tr>`;}html+='</tbody></table>';wrap.innerHTML=html;}
+
+function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
+function doSave(){const name=(el.projName.value||'Project').replace(/[^\w.-]+/g,'_'),ver=(el.projVer.value||'v1').replace(/[^\w.-]+/g,'_');const data={meta:{name,version:ver,company:byId('companyName').value||'',engineer:byId('engineerName').value||'',savedAt:new Date().toISOString()},state:{theme:app.theme,units:app.units,pPa:app.pPa,tMin:app.tMin,tMax:app.tMax,wMaxDisp:app.wMaxDisp,density:el.density.value,rhStep:parseInt(el.rhStep.value,10),labelMode:el.labelMode.value,labelPx:parseInt(el.labelPx.value,10),style:app.style,comfortZone:app.comfortZone},customTheme:JSON.parse(JSON.stringify(customTheme)),points:app.points.map(p=>({id:p.id,T:p.T,w:p.w,label:p.label,locked:p.locked,lx:p.lx??10,ly:p.ly??-6,derived:p.derived||null})),processes:app.processes.slice()};const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`${name}_${ver}.json`;a.click();toast('Project saved','success');}
+async function doLoad(file){const txt=await file.text();let obj;try{obj=JSON.parse(txt);}catch{toast('Invalid JSON','error');return;}if(!obj?.state){toast('Missing state','error');return;}pushHistory();app.theme=obj.state.theme||'dark';el.theme.value=app.theme;el.root.setAttribute('data-theme',app.theme);app.units=obj.state.units||'SI';el.units.value=app.units;app.style=obj.state.style||'pro';el.style.value=app.style;el.root.setAttribute('data-style',app.style);app.pPa=obj.state.pPa||101325;updatePressureLabel();app.tMin=obj.state.tMin;app.tMax=obj.state.tMax;app.wMaxDisp=obj.state.wMaxDisp;el.tMin.value=app.tMin;el.tMax.value=app.tMax;el.wMax.value=app.wMaxDisp;el.density.value=obj.state.density||'normal';el.rhStep.value=obj.state.rhStep||10;el.labelMode.value=obj.state.labelMode||'mid';el.labelPx.value=obj.state.labelPx||11;app.comfortZone=obj.state.comfortZone||'summer';el.comfortZone.value=app.comfortZone;if(obj.customTheme){Object.assign(customTheme,obj.customTheme);}app.points=(obj.points||[]).map(p=>({id:p.id??nextPid++,T:p.T,w:p.w,label:p.label,locked:!!p.locked,lx:p.lx??10,ly:p.ly??-6,derived:p.derived||null}));nextPid=Math.max(nextPid,...app.points.map(p=>p.id||0))+1;app.processes=obj.processes||[];el.projName.value=obj.meta?.name||'Project';el.projVer.value=obj.meta?.version||'v1';byId('companyName').value=obj.meta?.company||'';byId('engineerName').value=obj.meta?.engineer||'';updateFlowUnitsUI();refreshAll();toast('Project loaded','success');}
+function savePNG(){const a=document.createElement('a');a.href=el.cv.toDataURL('image/png');a.download=`${el.projName.value||'chart'}.png`;a.click();toast('PNG exported','success');}
+function copyPNG(){if(!navigator.clipboard||!window.ClipboardItem){toast('Clipboard not supported','error');return;}el.cv.toBlob(async blob=>{try{await navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);toast('Copied to clipboard','success');}catch(e){toast('Copy failed','error');}});}
+
+/* ===== REPORT GENERATION (Professional HTML + DOCX) ===== */
+function openReportModal(){byId('reportOverlay').classList.add('visible');}
+function closeReportModal(){byId('reportOverlay').classList.remove('visible');}
+function getReportData(includeChart,includeProc){
+  const D=app.units==='SI',uT=D?'°C':'°F',uW=D?'g/kg':'gr/lb',uH=D?'kJ/kg':'Btu/lb',uV=D?'m³/kg':'ft³/lb';
+  const pts=app.points.map((p,i)=>{
+    const Td=D?p.T:(p.T*1.8+32),Wd=D?(p.w*1000):(p.w*7000),rh=Psy.RH_from_Tw(p.T,p.w,app.pPa)*100;
+    const pv=Psy.pv_from_w(p.w,app.pPa),tdp=Psy.dewpoint_from_pv(pv),h=Psy.h_kJkg(p.T,p.w);
+    const v=Psy.v_m3kg(p.T,p.w,app.pPa),twb=Psy.twb_from_Tw(p.T,p.w,app.pPa);
+    let mixNote='';if(p.derived&&p.derived.type==='mix'){const A=app.points.find(q=>q.id===p.derived.aId),B=app.points.find(q=>q.id===p.derived.bId);if(A&&B)mixNote=` [Mix: ${A.label} + ${B.label}]`;}
+    return{idx:i+1,label:esc(p.label)+(p.locked?' 🔒':''),mixNote,Tdb:Td.toFixed(2),RH:rh.toFixed(1),W:D?Wd.toFixed(2):Wd.toFixed(0),Tdp:(D?tdp:tdp*1.8+32).toFixed(2),Twb:(D?twb:twb*1.8+32).toFixed(2),h:(D?h:h*.4299).toFixed(2),v:(D?v:v*Psy.ft3PerM3).toFixed(3),locked:p.locked};
+  });
+  const procs=includeProc?app.processes.map((s,i)=>{
+    const a=app.points[s[0]],b=app.points[s[1]];if(!a||!b)return null;
+    const pt=processType(a,b),dT=b.T-a.T,dW=b.w-a.w,dh=Psy.h_kJkg(b.T,b.w)-Psy.h_kJkg(a.T,a.w);
+    const SHR=(dh!==0)?(1.006*dT/dh):NaN;
+    const colorMap={'heat':'#DC2626','cool':'#2563EB','humid':'#16A34A','dehum':'#7C3AED','evap':'#0891B2','mix':'#CA8A04'};
+    return{id:`S${i+1}`,path:`${esc(a.label)} → ${esc(b.label)}`,type:pt.type,typeColor:colorMap[pt.cls]||'#6B7280',typeCls:pt.cls,
+      dT:(D?dT:dT*1.8).toFixed(2),dW:D?(dW*1000).toFixed(2):(dW*7000).toFixed(0),dh:(D?dh:dh*.4299).toFixed(2),SHR:isFinite(SHR)?SHR.toFixed(3):'—'};
+  }).filter(Boolean):[];
+  let chartPNG=null;
+  if(includeChart){
+    /* draw Y-axis label onto canvas so it appears in the captured image */
+    const yLabel=byId('yAxisLabel');
+    const labelTxt=yLabel?yLabel.textContent:'';
+    if(labelTxt){
+      ctx.save();
+      const fSz=Math.round(12*dpi);
+      ctx.font=`600 ${fSz}px system-ui,-apple-system,Helvetica,Arial,sans-serif`;
+      ctx.textAlign='center';ctx.textBaseline='middle';
+      const cx=W-Math.round(8*dpi);const cy=Math.round((padT+H-padB)/2);
+      ctx.translate(cx,cy);ctx.rotate(-Math.PI/2);
+      /* white stroke outline behind text for contrast on any background */
+      ctx.lineWidth=Math.round(4*dpi);ctx.lineJoin='round';
+      ctx.strokeStyle='#ffffff';ctx.globalAlpha=0.9;
+      ctx.strokeText(labelTxt,0,0);
+      /* dark fill text on top */
+      ctx.globalAlpha=1;ctx.fillStyle='#1b3a5c';
+      ctx.fillText(labelTxt,0,0);
+      ctx.restore();
+    }
+    chartPNG=el.cv.toDataURL('image/png');
+    /* redraw to remove the temporary label from the live canvas */
+    redraw();
+  }
+  return{projectName:el.projName.value||'Project',projectVer:el.projVer.value||'',company:byId('companyName').value||'',engineer:byId('engineerName').value||'',
+    units:app.units,pressureKPa:(app.pPa/1000).toFixed(2),uT,uW,uH,uV,points:pts,processes:procs,chartPNG};
+}
+
+function generateHTMLReport(){
+  const d=getReportData(byId('rptChart').value==='yes',byId('rptProc').value==='yes');
+  const printFriendly=byId('rptPrint').value==='yes';
+  const ptsRows=d.points.map((p,i)=>`<tr class="${i%2?'alt':''}"><td class="num">${p.idx}</td><td class="label">${p.label}${p.mixNote?`<span class="mix-note">${p.mixNote}</span>`:''}</td><td>${p.Tdb}</td><td>${p.RH}</td><td>${p.W}</td><td>${p.Tdp}</td><td>${p.Twb}</td><td>${p.h}</td><td>${p.v}</td></tr>`).join('');
+  const procRows=d.processes.map((pr,i)=>`<tr class="${i%2?'alt':''}"><td class="num">${pr.id}</td><td>${pr.path}</td><td><span class="proc-badge" style="--pc:${pr.typeColor}">${pr.type}</span></td><td>${pr.dT}</td><td>${pr.dW}</td><td>${pr.dh}</td><td>${pr.SHR}</td></tr>`).join('');
+  const procDetailCards=d.processes.map(pr=>`<div class="proc-detail-card"><div class="proc-detail-head"><div class="proc-color-bar" style="background:${pr.typeColor}"></div><div><div class="proc-detail-path">${pr.path}</div><span class="proc-badge-sm" style="--pc:${pr.typeColor}">${pr.type}</span></div></div><div class="proc-detail-metrics"><div class="pdm"><span class="pdm-v">${pr.dT}</span><span class="pdm-l">ΔT</span></div><div class="pdm"><span class="pdm-v">${pr.dW}</span><span class="pdm-l">ΔW</span></div><div class="pdm"><span class="pdm-v">${pr.dh}</span><span class="pdm-l">Δh</span></div><div class="pdm"><span class="pdm-v">${pr.SHR}</span><span class="pdm-l">SHR</span></div></div></div>`).join('');
+  const printCSS=printFriendly?`
+@page{size:A4 portrait;margin:10mm}
+@media print{
+  body{background:#fff!important;font-size:10px}
+  .page{max-width:100%;padding:0}
+  .cover{padding:12px 0 8px;margin-bottom:8px}
+  .cover h1{font-size:22px}
+  .section{margin:8px 0;page-break-inside:avoid}
+  .section-head{margin-bottom:4px}
+  .section-head .sh-icon{width:22px;height:22px;font-size:11px;border-radius:4px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .section-head h2{font-size:14px}
+  .data-table{font-size:9px;border-color:#bbb}
+  .data-table thead th{padding:4px 5px;font-size:8px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .data-table tbody td{padding:3px 5px}
+  .chart-frame{border-color:#ccc;padding:4px}
+  .proc-details-grid{grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:4px}
+  .proc-detail-card{padding:5px 8px}
+  .proc-badge,.proc-badge-sm{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .cover-meta-item{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .notes-box{padding:6px 10px}
+  .notes-box p{font-size:9px;margin:2px 0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .report-footer{margin-top:8px;padding-top:4px}
+  .pdm{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}`:'';
+  const html=`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${esc(d.projectName)} — Psychrometric Report</title>
+<style>
+:root{--brand:#1B3A5C;--accent:#2E75B6;--green:#0F9D58;--bg:#fff;--card:#FFFFFF;--border:#D8DEE8;--text:#1A1A2E;--muted:#5A6B7F;--light:#F0F4F8;--header-bg:#1B3A5C;--row-alt:#F5F8FB}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);line-height:1.45;font-size:12px;-webkit-font-smoothing:antialiased}
+.page{max-width:980px;margin:0 auto;padding:0 16px}
+.cover{padding:24px 0 16px;border-bottom:2px solid var(--border);margin-bottom:16px}
+.cover-accent{height:3px;background:linear-gradient(90deg,var(--accent),var(--green));border-radius:2px;margin-bottom:14px;width:80px}
+.cover-title{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.cover h1{font-size:26px;font-weight:800;color:var(--brand);line-height:1.1;letter-spacing:-.02em}
+.cover h1 span{color:var(--accent)}
+.cover .cover-sub{font-size:14px;font-weight:400;color:var(--muted)}
+.cover-meta{margin-top:12px;display:flex;flex-wrap:wrap;gap:6px}
+.cover-meta-item{padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--light);display:inline-flex;align-items:center;gap:6px}
+.cover-meta-item .cmi-label{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.cover-meta-item .cmi-value{font-size:12px;font-weight:600;color:var(--text)}
+.section{margin:14px 0}
+.section-head{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.section-head .sh-icon{width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:14px;background:linear-gradient(135deg,var(--accent),var(--brand));color:#fff;flex-shrink:0}
+.section-head h2{font-size:16px;font-weight:700;color:var(--brand)}
+.section-head .sh-sub{font-size:11px;color:var(--muted);font-weight:400}
+.section-desc{font-size:11px;color:var(--muted);margin-bottom:8px;line-height:1.5}
+.chart-frame{border:1px solid var(--border);border-radius:6px;padding:6px;background:#fff}
+.chart-frame img{width:100%;display:block;border-radius:4px}
+.chart-caption{text-align:center;font-size:10px;color:var(--muted);margin-top:4px;font-style:italic}
+.data-table{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--border);font-size:11px}
+.data-table thead th{background:var(--header-bg);color:#fff;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.05em;padding:6px 8px;text-align:center;border:1px solid var(--header-bg)}
+.data-table thead th:first-child{text-align:center}.data-table thead th:nth-child(2){text-align:left}
+.data-table tbody td{padding:5px 8px;text-align:center;border:1px solid var(--border);font-variant-numeric:tabular-nums}
+.data-table tbody td.num{font-weight:600;color:var(--muted);font-size:10px}
+.data-table tbody td.label{text-align:left;font-weight:600;color:var(--text)}
+.data-table tbody tr.alt{background:var(--row-alt)}
+.mix-note{font-size:9px;color:var(--muted);font-weight:400;font-style:italic;margin-left:3px}
+.proc-badge{display:inline-block;padding:1px 8px;border-radius:10px;font-size:10px;font-weight:600;background:color-mix(in srgb,var(--pc) 12%,transparent);color:var(--pc);white-space:nowrap}
+.proc-badge-sm{display:inline-block;padding:1px 6px;border-radius:8px;font-size:9px;font-weight:600;background:color-mix(in srgb,var(--pc) 12%,transparent);color:var(--pc)}
+.proc-details-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:8px;margin-top:8px}
+.proc-detail-card{border:1px solid var(--border);border-radius:6px;padding:8px 10px}
+.proc-detail-head{display:flex;align-items:center;gap:8px}
+.proc-color-bar{width:3px;height:28px;border-radius:2px;flex-shrink:0}
+.proc-detail-path{font-size:12px;font-weight:700;color:var(--text)}
+.proc-detail-metrics{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:4px;margin-top:6px}
+.pdm{text-align:center;padding:4px;background:var(--light);border-radius:4px}
+.pdm-v{display:block;font-size:12px;font-weight:700;color:var(--text);font-variant-numeric:tabular-nums}
+.pdm-l{display:block;font-size:8px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.notes-box{border:1px solid var(--border);border-radius:6px;padding:10px 14px;margin-top:6px}
+.notes-box p{font-size:11px;color:var(--muted);margin:4px 0;padding-left:10px;border-left:2px solid var(--green);line-height:1.5}
+.report-footer{margin-top:16px;padding-top:8px;border-top:1px solid var(--border);display:flex;justify-content:space-between;font-size:10px;color:var(--muted)}
+${printCSS}
+</style></head><body>
+<div class="page">
+<div class="cover">
+  <div class="cover-accent"></div>
+  <div class="cover-title">
+    <h1>Psychrometric <span>Analysis</span> Report</h1>
+    <span class="cover-sub">${esc(d.projectName)}${d.projectVer?' — '+esc(d.projectVer):''}</span>
+  </div>
+  <div class="cover-meta">
+    ${d.company?`<div class="cover-meta-item"><span class="cmi-label">Company</span><span class="cmi-value">${esc(d.company)}</span></div>`:''}
+    ${d.engineer?`<div class="cover-meta-item"><span class="cmi-label">Engineer</span><span class="cmi-value">${esc(d.engineer)}</span></div>`:''}
+    <div class="cover-meta-item"><span class="cmi-label">Date</span><span class="cmi-value">${new Date().toLocaleDateString('en-US',{year:'numeric',month:'short',day:'numeric'})}</span></div>
+    <div class="cover-meta-item"><span class="cmi-label">Pressure</span><span class="cmi-value">${d.pressureKPa} kPa</span></div>
+    <div class="cover-meta-item"><span class="cmi-label">Units</span><span class="cmi-value">${d.units==='SI'?'SI':'IP'}</span></div>
+    <div class="cover-meta-item"><span class="cmi-label">Points</span><span class="cmi-value">${d.points.length}</span></div>
+  </div>
+</div>
+${d.chartPNG?`<div class="section">
+  <div class="section-head"><div class="sh-icon">📈</div><div><h2>Psychrometric Chart</h2></div></div>
+  <div class="chart-frame"><img src="${d.chartPNG}" alt="Psychrometric Chart"></div>
+  <div class="chart-caption">Figure 1: ${esc(d.projectName)} — ${d.pressureKPa} kPa</div>
+</div>`:''}
+<div class="section">
+  <div class="section-head"><div class="sh-icon">📍</div><div><h2>State Points</h2><div class="sh-sub">${d.points.length} point(s) at ${d.pressureKPa} kPa</div></div></div>
+  <table class="data-table">
+    <thead><tr><th>#</th><th>Label</th><th>Tdb (${d.uT})</th><th>RH (%)</th><th>W (${d.uW})</th><th>Tdp (${d.uT})</th><th>Twb (${d.uT})</th><th>h (${d.uH})</th><th>v (${d.uV})</th></tr></thead>
+    <tbody>${ptsRows}</tbody>
+  </table>
+</div>
+${d.processes.length?`<div class="section">
+  <div class="section-head"><div class="sh-icon">🔄</div><div><h2>Processes</h2><div class="sh-sub">${d.processes.length} process(es)</div></div></div>
+  <table class="data-table">
+    <thead><tr><th>ID</th><th>Path</th><th>Type</th><th>ΔT (${d.uT})</th><th>ΔW (${d.uW})</th><th>Δh (${d.uH})</th><th>SHR</th></tr></thead>
+    <tbody>${procRows}</tbody>
+  </table>
+  <div class="section-head" style="margin-top:12px"><div class="sh-icon" style="background:linear-gradient(135deg,var(--green),#0D8B4E)">📋</div><div><h2>Process Details</h2></div></div>
+  <div class="proc-details-grid">${procDetailCards}</div>
+</div>`:''}
+<div class="section">
+  <div class="section-head"><div class="sh-icon" style="background:linear-gradient(135deg,#6B7280,#374151)">📝</div><div><h2>Notes</h2></div></div>
+  <div class="notes-box">
+    <p>Calculations based on ASHRAE Fundamentals (2021) — Hyland-Wexler saturation model. Pressure: ${d.pressureKPa} kPa.</p>
+    <p>Auto-generated by PsychroChart Pro 2.6.6.</p>
+  </div>
+</div>
+<div class="report-footer">
+  <span>PsychroChart Pro 2.6.6</span>
+  <span>${new Date().toLocaleString()}</span>
+</div>
+</div></body></html>`;
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([html],{type:'text/html'}));a.download=`${d.projectName||'report'}.html`;a.click();
+  toast('HTML report generated','success');closeReportModal();
+}
+
+function loadDocxLib(){
+  return new Promise((resolve,reject)=>{
+    if(window.docx){resolve(window.docx);return;}
+    const s=document.createElement('script');
+    s.src='https://cdn.jsdelivr.net/npm/docx@9.1.0/build/index.umd.js';
+    s.onload=()=>{
+      /* docx UMD exposes on window.docx */
+      if(window.docx){resolve(window.docx);return;}
+      reject(new Error('docx global not found after load'));
+    };
+    s.onerror=()=>reject(new Error('Network error loading docx library'));
+    document.head.appendChild(s);
+  });
+}
+function base64ToUint8(b64){const bin=atob(b64);const a=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)a[i]=bin.charCodeAt(i);return a;}
+
+async function generateDOCXReport(){
+  const inclChart=byId('rptChart').value==='yes';
+  const inclProc=byId('rptProc').value==='yes';
+  closeReportModal();
+  toast('Loading Word library...','info');
+  let lib;
+  try{lib=await loadDocxLib();}catch(e){toast('Failed to load docx library: '+e.message,'error');console.error(e);return;}
+  const{Document,Packer,Paragraph,TextRun,Table,TableRow,TableCell,ImageRun,Header,Footer,AlignmentType,HeadingLevel,BorderStyle,WidthType,ShadingType,PageNumber,PageBreak,TabStopType,TabStopPosition}=lib;
+  const d=getReportData(inclChart,inclProc);
+
+  const bdr=(c='BBBBBB',sz=1)=>({style:BorderStyle.SINGLE,size:sz,color:c});
+  const nb={style:BorderStyle.NONE,size:0,color:'FFFFFF'};
+  const cm={top:40,bottom:40,left:80,right:80};
+  const PAGE_W=12240,MARGIN={top:1080,right:1080,bottom:1080,left:1080};
+  const CW=PAGE_W-MARGIN.left-MARGIN.right;
+  const dateStr=new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'});
+
+  const children=[];
+
+  /* ── Title ── */
+  children.push(new Paragraph({spacing:{after:100},children:[
+    new TextRun({text:'Psychrometric Analysis Report',font:'Arial',size:32,bold:true}),
+  ]}));
+  children.push(new Paragraph({spacing:{after:60},children:[
+    new TextRun({text:`${d.projectName}${d.projectVer?' — '+d.projectVer:''}`,font:'Arial',size:22,color:'555555'}),
+  ]}));
+  /* Meta info */
+  const meta=[];
+  if(d.company)meta.push('Company: '+d.company);
+  if(d.engineer)meta.push('Engineer: '+d.engineer);
+  meta.push('Date: '+dateStr,'Pressure: '+d.pressureKPa+' kPa','Units: '+(d.units==='SI'?'SI (Metric)':'IP (Imperial)'));
+  children.push(new Paragraph({spacing:{after:200},children:[new TextRun({text:meta.join('   |   '),font:'Arial',size:18,color:'666666'})]}));
+  children.push(new Paragraph({border:{bottom:{style:BorderStyle.SINGLE,size:4,color:'CCCCCC',space:1}},spacing:{after:300},children:[]}));
+
+  /* ── Chart ── */
+  if(d.chartPNG){
+    children.push(new Paragraph({spacing:{before:100,after:100},children:[new TextRun({text:'Psychrometric Chart',font:'Arial',size:26,bold:true})]}));
+    const imgB64=d.chartPNG.replace(/^data:image\/png;base64,/,'');
+    const imgData=base64ToUint8(imgB64);
+    children.push(new Paragraph({alignment:AlignmentType.CENTER,spacing:{after:60},children:[new ImageRun({type:'png',data:imgData,transformation:{width:620,height:400},altText:{title:'Chart',description:'Psychrometric Chart',name:'chart'}})]}));
+    children.push(new Paragraph({alignment:AlignmentType.CENTER,spacing:{after:200},children:[new TextRun({text:'Figure 1: '+d.projectName,font:'Arial',size:16,italics:true,color:'888888'})]}));
+  }
+
+  /* ── State Points Table ── */
+  children.push(new Paragraph({spacing:{before:100,after:80},children:[new TextRun({text:'State Points',font:'Arial',size:26,bold:true})]}));
+  if(d.points.length){
+    const ph=['#','Label','Tdb ('+d.uT+')','RH (%)','W ('+d.uW+')','Tdp ('+d.uT+')','Twb ('+d.uT+')','h ('+d.uH+')','v ('+d.uV+')'];
+    const pw=[480,1500,1020,860,1020,1020,1020,1020,1140];
+    const borders={top:bdr(),bottom:bdr(),left:bdr(),right:bdr()};
+    const hRow=new TableRow({tableHeader:true,children:ph.map((h,ci)=>new TableCell({width:{size:pw[ci],type:WidthType.DXA},borders,shading:{fill:'E8E8E8',type:ShadingType.CLEAR},margins:cm,children:[new Paragraph({alignment:ci===1?AlignmentType.LEFT:AlignmentType.CENTER,children:[new TextRun({text:h,font:'Arial',size:15,bold:true})]})]}))});
+    const dRows=d.points.map((p,i)=>new TableRow({children:[String(p.idx),p.label,p.Tdb,p.RH,p.W,p.Tdp,p.Twb,p.h,p.v].map((v,ci)=>new TableCell({width:{size:pw[ci],type:WidthType.DXA},borders,shading:i%2?{fill:'F5F5F5',type:ShadingType.CLEAR}:undefined,margins:cm,children:[new Paragraph({alignment:ci===1?AlignmentType.LEFT:AlignmentType.CENTER,children:[new TextRun({text:String(v),font:'Arial',size:16})]})]}))
+    }));
+    children.push(new Table({width:{size:CW,type:WidthType.DXA},columnWidths:pw,rows:[hRow,...dRows]}));
+  }
+
+  /* ── Processes Table ── */
+  if(d.processes.length){
+    children.push(new Paragraph({spacing:{before:300,after:80},children:[new TextRun({text:'Processes',font:'Arial',size:26,bold:true})]}));
+    const prH=['ID','Path','Type','\u0394T ('+d.uT+')','\u0394W ('+d.uW+')','\u0394h ('+d.uH+')','SHR'];
+    const prW=[600,2200,1700,1200,1200,1200,980];
+    const borders={top:bdr(),bottom:bdr(),left:bdr(),right:bdr()};
+    const prHR=new TableRow({tableHeader:true,children:prH.map((h,ci)=>new TableCell({width:{size:prW[ci],type:WidthType.DXA},borders,shading:{fill:'E8E8E8',type:ShadingType.CLEAR},margins:cm,children:[new Paragraph({alignment:ci<=2?AlignmentType.LEFT:AlignmentType.CENTER,children:[new TextRun({text:h,font:'Arial',size:15,bold:true})]})]}))});
+    const prDR=d.processes.map((pr,i)=>new TableRow({children:[pr.id,pr.path,pr.type,pr.dT,pr.dW,pr.dh,pr.SHR].map((v,ci)=>new TableCell({width:{size:prW[ci],type:WidthType.DXA},borders,shading:i%2?{fill:'F5F5F5',type:ShadingType.CLEAR}:undefined,margins:cm,children:[new Paragraph({alignment:ci<=2?AlignmentType.LEFT:AlignmentType.CENTER,children:[new TextRun({text:String(v),font:'Arial',size:16})]})]}))
+    }));
+    children.push(new Table({width:{size:CW,type:WidthType.DXA},columnWidths:prW,rows:[prHR,...prDR]}));
+  }
+
+  /* ── Notes ── */
+  children.push(new Paragraph({spacing:{before:300,after:80},children:[new TextRun({text:'Notes',font:'Arial',size:26,bold:true})]}));
+  children.push(new Paragraph({spacing:{after:60},children:[new TextRun({text:'Calculations based on ASHRAE Fundamentals (2021) — Hyland-Wexler saturation model. Pressure: '+d.pressureKPa+' kPa.',font:'Arial',size:18,color:'666666'})]}));
+  children.push(new Paragraph({spacing:{after:60},children:[new TextRun({text:'Auto-generated by PsychroChart Pro 2.6.6.',font:'Arial',size:18,color:'666666'})]}));
+
+  const doc=new Document({
+    styles:{default:{document:{run:{font:'Arial',size:20}}}},
+    sections:[{properties:{page:{size:{width:PAGE_W,height:15840},margin:MARGIN}},
+      headers:{default:new Header({children:[new Paragraph({tabStops:[{type:TabStopType.RIGHT,position:TabStopPosition.MAX}],children:[new TextRun({text:d.projectName||'Report',font:'Arial',size:14,color:'999999'}),new TextRun({text:'\t'+(d.company||''),font:'Arial',size:14,color:'999999'})]})]}),},
+      footers:{default:new Footer({children:[new Paragraph({tabStops:[{type:TabStopType.RIGHT,position:TabStopPosition.MAX}],children:[new TextRun({text:dateStr,font:'Arial',size:12,color:'999999'}),new TextRun({text:'\tPage ',font:'Arial',size:12,color:'999999'}),new TextRun({children:[PageNumber.CURRENT],font:'Arial',size:12,color:'999999'})]})]}),},
+      children
+    }]
+  });
+
+  try{
+    const blob=await Packer.toBlob(doc);
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');a.href=url;a.download=`${d.projectName||'report'}.docx`;document.body.appendChild(a);a.click();document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url),5000);
+    toast('Word report downloaded','success');
+  }catch(e){toast('Error generating DOCX: '+e.message,'error');console.error(e);}
+}
+
+function handleReportGenerate(){
+  const fmt=document.querySelector('input[name="rptFmt"]:checked')?.value||'html';
+  if(fmt==='html')generateHTMLReport();
+  else generateDOCXReport();
+}
+
+/* Legacy alias for the old button handler */
+function generateReport(){openReportModal();}
+
+function fitAll(){pushHistory();if(!app.points.length){app.tMin=app.default.tMin;app.tMax=app.default.tMax;app.wMaxDisp=app.default.wMaxDisp;}else{app.tMin=Math.min(...app.points.map(p=>p.T));app.tMax=Math.max(...app.points.map(p=>p.T));const pad=(app.tMax-app.tMin||10)*.15;app.tMin-=pad;app.tMax+=pad;let wmax=0;for(let T=app.tMin;T<=app.tMax;T+=.5){const ws=Psy.wsat_at(T,app.pPa);if(ws>wmax)wmax=ws;}for(const p of app.points)if(p.w>wmax)wmax=p.w;app.wMaxDisp=(app.units==='SI')?Math.ceil(wmax*1000*1.15):Math.ceil(wmax*7000*1.15);}enforceCalcBounds();el.tMin.value=app.tMin.toFixed(1);el.tMax.value=app.tMax.toFixed(1);el.wMax.value=app.wMaxDisp.toFixed(0);redraw();}
+function pickPoint(px,py){let best=-1,bestD=1e12;app.points.forEach((p,i)=>{const dx=px-xc(p.T),dy=py-yc(p.w),d=dx*dx+dy*dy;if(d<bestD&&d<16*16*dpi*dpi){best=i;bestD=d;}});return best;}
+function pickLabel(px,py){
+  ctx.font=`500 ${11*dpi}px JetBrains Mono,monospace`;
+  let best=-1,bestD=1e12;
+  app.points.forEach((p,i)=>{
+    const ptx=xc(p.T),pty=yc(p.w);
+    const lx=(p.lx??10)*dpi, ly=(p.ly??-6)*dpi;
+    const tag=p.locked?'🔒 ':'';const str=tag+(p.label||`P${i+1}`);
+    const tw=ctx.measureText(str).width;
+    const lCx=ptx+lx+tw/2, lCy=pty+ly-4*dpi;
+    const dx=px-lCx, dy=py-lCy;
+    const hitW=tw/2+6*dpi, hitH=8*dpi;
+    if(Math.abs(dx)<hitW && Math.abs(dy)<hitH){
+      const d=dx*dx+dy*dy;
+      if(d<bestD){bestD=d;best=i;}
+    }
+  });
+  return best;
+}
+
+function buildLayerToggles(){const c=el.layerToggles;if(!c)return;c.innerHTML='';[['grid','Grid','--grid2'],['gridMinor','Minor','--grid'],['sat','Sat','--sat'],['rh','RH','--rh'],['enth','h/WB','--enth'],['vlines','Vol','--vline'],['dp','Tdp','--dpline'],['points','Pts','--pt'],['processes','Proc','--heat'],['mixlinks','Mix','--mix'],['comfort','Comfort','--humid']].forEach(([key,txt,cv])=>{const l=document.createElement('label');const inp=document.createElement('input');inp.type='checkbox';inp.checked=layers[key]!==false;const dot=document.createElement('span');dot.className='ltDot';dot.style.background=`var(${cv})`;l.appendChild(inp);l.appendChild(dot);l.appendChild(document.createTextNode(txt));if(layers[key]!==false)l.classList.add('on');inp.addEventListener('change',()=>{layers[key]=inp.checked;l.classList.toggle('on',inp.checked);redraw();});c.appendChild(l);});}
+
+function setupSplitters(){const root=document.documentElement;function drag(which,e){const ar=byId('app').getBoundingClientRect();if(which==='L'){let w=e.clientX-ar.left;root.style.setProperty('--leftW',Math.max(280,Math.min(560,w))+'px');}else{let w=ar.right-e.clientX;root.style.setProperty('--rightW',Math.max(300,Math.min(600,w))+'px');}redraw();}function bind(el,which){let d=false;on(el,'mousedown',e=>{d=true;document.body.style.userSelect='none';e.preventDefault();});on(window,'mousemove',e=>{if(d)drag(which,e);});on(window,'mouseup',()=>{d=false;document.body.style.userSelect='';});}bind(byId('splitL'),'L');bind(byId('splitR'),'R');}
+
+function showCtxMenu(e){e.preventDefault();const menu=byId('ctxMenu');menu.style.left=e.clientX+'px';menu.style.top=e.clientY+'px';menu.classList.add('visible');
+  const rect=el.cv.getBoundingClientRect();const px=(e.clientX-rect.left)*dpi,py=(e.clientY-rect.top)*dpi;
+  app.ctxT=invT(px);app.ctxW=Math.max(0,invW(py));const ws=Psy.wsat_at(app.ctxT,app.pPa);app.ctxW=Math.min(app.ctxW,ws);
+  app.ctxPtIdx=pickPoint(px,py);
+  const lockItem=byId('ctxLock'),lockText=byId('ctxLockText'),delItem=byId('ctxDeletePt');
+  const editItem=byId('ctxEditPt');
+  if(app.ctxPtIdx>=0){const p=app.points[app.ctxPtIdx];lockItem.style.display='';delItem.style.display='';lockText.textContent=p.locked?`Unlock "${p.label}"`:`Lock "${p.label}"`;
+    if(editItem)editItem.style.display=p.locked?'none':'';
+    const rlItem=byId('ctxResetLabel');if(rlItem)rlItem.style.display='';
+    const spItem=byId('ctxStartProc');if(spItem)spItem.textContent=`Start Process from "${p.label}"`;
+  } else {lockItem.style.display='none';delItem.style.display='none';
+    if(editItem)editItem.style.display='none';
+    const rlItem=byId('ctxResetLabel');if(rlItem)rlItem.style.display='none';
+    const spItem=byId('ctxStartProc');if(spItem)spItem.textContent='Start Process Here';}
+  const endProcItem=byId('ctxEndProc'),endProcText=byId('ctxEndProcText'),endProcSep=byId('ctxEndProcSep');
+  if(app.tool.processMode && app.tool.start!=null && app.ctxPtIdx>=0 && app.ctxPtIdx!==app.tool.start){
+    const endPt=app.points[app.ctxPtIdx];
+    if(endProcItem)endProcItem.style.display='';
+    if(endProcSep)endProcSep.style.display='';
+    if(endProcText)endProcText.textContent=`End Process Here (${endPt.label})`;
+    const spEl=byId('ctxStartProc');if(spEl)spEl.parentElement.style.display='none';
+  } else {
+    if(endProcItem)endProcItem.style.display='none';
+    if(endProcSep)endProcSep.style.display='none';
+    const spEl=byId('ctxStartProc');if(spEl)spEl.parentElement.style.display='';
+  }}
+function hideCtxMenu(){byId('ctxMenu').classList.remove('visible');}
+function handleCtxAction(action){hideCtxMenu();switch(action){
+  case'addPointHere':pushHistory();app.points.push({id:nextPid++,T:app.ctxT,w:app.ctxW,label:`P${app.points.length+1}`,locked:false,lx:10,ly:-6});refreshAll();toast('Point added at cursor','success');break;
+  case'addPointTdb':{const rh=prompt('Enter RH% for this Tdb:','50');if(rh===null)return;pushHistory();const w=Psy.w_from_pv(Math.min(app.pPa*.999,Psy.p_ws_Pa(app.ctxT)*(parseFloat(rh)/100)),app.pPa);app.points.push({id:nextPid++,T:app.ctxT,w,label:`P${app.points.length+1}`,locked:false,lx:10,ly:-6});refreshAll();toast('Point added','success');break;}
+  case'addPointParams':{openAddPtParamModal();break;}
+  case'lockPoint':{if(app.ctxPtIdx<0)return;pushHistory();const p=app.points[app.ctxPtIdx];p.locked=!p.locked;refreshAll();toast(p.locked?`"${p.label}" locked`:`"${p.label}" unlocked`,'success');break;}
+  case'deletePoint':{if(app.ctxPtIdx<0)return;const p=app.points[app.ctxPtIdx];if(p.locked){toast(`"${p.label}" is locked — unlock it first`,'error');break;}pushHistory();const i=app.ctxPtIdx;app.points.splice(i,1);app.processes=app.processes.filter(s=>s[0]!==i&&s[1]!==i).map(s=>[s[0]-(s[0]>i),s[1]-(s[1]>i)]);refreshAll();onPointsChanged();toast(`"${p.label}" deleted`,'success');break;}
+  case'editPoint':{if(app.ctxPtIdx<0)return;const p=app.points[app.ctxPtIdx];if(p.locked){toast(`"${p.label}" is locked — unlock it first`,'error');break;}openEditPointModal(app.ctxPtIdx);break;}
+  case'resetLabel':{if(app.ctxPtIdx<0)return;pushHistory();const p=app.points[app.ctxPtIdx];p.lx=10;p.ly=-6;redraw();toast(`"${p.label}" label reset`,'info');break;}
+  case'startProcess':{
+    app.tool.processMode=true;byId('btnProcessMode').classList.add('active');byId('procModeBar').classList.add('visible');
+    if(app.ctxPtIdx>=0){app.tool.start=app.ctxPtIdx;const p=app.points[app.ctxPtIdx];toast(`Process start: "${p.label}" — now click the end point`,'info');}
+    else{app.tool.start=null;toast('Click first point to start process','info');}
+    break;}
+  case'endProcess':{
+    if(app.tool.start==null||app.ctxPtIdx<0||app.ctxPtIdx===app.tool.start)break;
+    pushHistory();app.processes.push([app.tool.start,app.ctxPtIdx]);
+    const startP=app.points[app.tool.start],endP=app.points[app.ctxPtIdx];
+    toast(`Process created: "${startP.label}" → "${endP.label}"`,'success');
+    app.tool.start=null;app.tool.processMode=false;
+    byId('btnProcessMode').classList.remove('active');byId('procModeBar').classList.remove('visible');
+    refreshProcLists();redraw();
+    break;}
+  case'nearestProps':{const T=app.ctxT,w=app.ctxW,rh=Psy.RH_from_Tw(T,w,app.pPa)*100,h=Psy.h_kJkg(T,w),v=Psy.v_m3kg(T,w,app.pPa),pv=Psy.pv_from_w(w,app.pPa),tdp=Psy.dewpoint_from_pv(pv),twb=Psy.twb_from_Tw(T,w,app.pPa);const D=app.units==='SI';const txt=`Tdb=${(D?T:T*1.8+32).toFixed(2)}° RH=${rh.toFixed(1)}% W=${D?(w*1000).toFixed(2):(w*7000).toFixed(0)} Twb=${(D?twb:twb*1.8+32).toFixed(2)}° Tdp=${(D?tdp:tdp*1.8+32).toFixed(2)}° h=${(D?h:h*.4299).toFixed(2)} v=${(D?v:v*Psy.ft3PerM3).toFixed(3)}`;navigator.clipboard?.writeText(txt);toast('Properties copied','success');break;}
+  case'fitAll':fitAll();break;
+  case'resetZoom':app.tMin=app.default.tMin;app.tMax=app.default.tMax;app.wMaxDisp=app.default.wMaxDisp;enforceCalcBounds();el.tMin.value=app.tMin;el.tMax.value=app.tMax;el.wMax.value=app.wMaxDisp;redraw();break;
+  case'toggleComfort':{const vals=['none','summer','winter','both'];const ci=vals.indexOf(app.comfortZone);app.comfortZone=vals[(ci+1)%vals.length];el.comfortZone.value=app.comfortZone;redraw();toast(`Comfort: ${app.comfortZone}`,'info');break;}
+  case'chartTheme':openThemeEditor();break;
+  case'exportPng':savePNG();break;
+  case'copyPng':copyPNG();break;
+  case'glossary':byId('glossaryOverlay').classList.add('visible');break;
+  case'about':byId('aboutOverlay').classList.add('visible');break;
+}}
+
+function openThemeEditor(){
+  const keys=['sat','rh','enth','vline','dp'];
+  keys.forEach(k=>{const ci=byId('ct_'+k);if(ci)ci.value=customTheme[k];const ls=byId('ct_'+k+'_ls');if(ls)ls.value=customTheme[k+'_ls'];const lw=byId('ct_'+k+'_lw');if(lw)lw.value=customTheme[k+'_lw'];});
+  byId('ct_bg').value=customTheme.bg;byId('ct_grid2').value=customTheme.grid2;byId('ct_grid').value=customTheme.grid;
+  byId('ct_grid2_ls').value=customTheme.grid2_ls;byId('ct_grid_ls').value=customTheme.grid_ls;
+  byId('ct_grid2_lw').value=customTheme.grid2_lw;byId('ct_grid_lw').value=customTheme.grid_lw;
+  byId('ct_border').value=customTheme.border;byId('ct_border_lw').value=customTheme.border_lw;
+  byId('ct_pt').value=customTheme.pt;byId('ct_ptSize').value=customTheme.ptSize;byId('ct_arrowW').value=customTheme.arrowW;
+  byId('ct_axisText').value=customTheme.axisText;byId('ct_axisPx').value=customTheme.axisPx;
+  byId('ct_lblText').value=customTheme.lblText;byId('ct_lblPx').value=customTheme.lblPx;
+  byId('ct_halo').value=customTheme.halo;byId('ct_haloW').value=customTheme.haloW;
+  byId('themeEditorOverlay').classList.add('visible');
+}
+function readThemeEditor(){
+  const keys=['sat','rh','enth','vline','dp'];
+  keys.forEach(k=>{const ci=byId('ct_'+k);if(ci)customTheme[k]=ci.value;const ls=byId('ct_'+k+'_ls');if(ls)customTheme[k+'_ls']=ls.value;const lw=byId('ct_'+k+'_lw');if(lw)customTheme[k+'_lw']=parseFloat(lw.value)||1;});
+  customTheme.bg=byId('ct_bg').value;customTheme.grid2=byId('ct_grid2').value;customTheme.grid=byId('ct_grid').value;
+  customTheme.grid2_ls=byId('ct_grid2_ls').value;customTheme.grid_ls=byId('ct_grid_ls').value;
+  customTheme.grid2_lw=parseFloat(byId('ct_grid2_lw').value)||1;customTheme.grid_lw=parseFloat(byId('ct_grid_lw').value)||1;
+  customTheme.border=byId('ct_border').value;customTheme.border_lw=parseFloat(byId('ct_border_lw').value)||1.5;
+  customTheme.pt=byId('ct_pt').value;customTheme.ptSize=parseFloat(byId('ct_ptSize').value)||4;customTheme.arrowW=parseFloat(byId('ct_arrowW').value)||2.5;
+  customTheme.axisText=byId('ct_axisText').value;customTheme.axisPx=parseFloat(byId('ct_axisPx').value)||10;
+  customTheme.lblText=byId('ct_lblText').value;customTheme.lblPx=parseFloat(byId('ct_lblPx').value)||11;
+  customTheme.halo=byId('ct_halo').value;customTheme.haloW=parseFloat(byId('ct_haloW').value)||3;
+}
+function applyCustomTheme(){readThemeEditor();app.style='custom';el.style.value='custom';el.root.setAttribute('data-style','custom');redraw();toast('Custom theme applied','success');}
+function livePreview(){if(app.style!=='custom')return;readThemeEditor();redraw();}
+function resetCustomTheme(){customTheme=JSON.parse(JSON.stringify(defaultCT));openThemeEditor();applyCustomTheme();toast('Theme reset to defaults','info');}
+
+function updateHUD(px,py){const T=invT(px),wR=Math.max(0,invW(py)),ws=Psy.wsat_at(T,app.pPa);if(wR>ws*1.1||T<app.tMin-1||T>app.tMax+1){el.hud.classList.add('hidden');return;}const w=Math.min(wR,ws);el.hud.classList.remove('hidden');const rh=Psy.RH_from_Tw(T,w,app.pPa)*100,h=Psy.h_kJkg(T,w),v=Psy.v_m3kg(T,w,app.pPa),pv=Psy.pv_from_w(w,app.pPa),tdp=Psy.dewpoint_from_pv(pv),twb=Psy.twb_from_Tw(T,w,app.pPa);const D=app.units==='SI',u=D?'°C':'°F';el.hud.textContent=`Tdb ${(D?T:T*1.8+32).toFixed(1)}${u}  W ${D?(w*1000).toFixed(2):(w*7000).toFixed(0)}  RH ${rh.toFixed(1)}%  h ${(D?h:h*.4299).toFixed(1)}  v ${(D?v:v*Psy.ft3PerM3).toFixed(3)}  Tdp ${(D?tdp:tdp*1.8+32).toFixed(1)}${u}  Twb ${(D?twb:twb*1.8+32).toFixed(1)}${u}`;}
+
+/* ===== EDIT POINT MODAL LOGIC ===== */
+let _epIdx=-1;
+function openEditPointModal(idx){
+  const p=app.points[idx];if(!p||p.locked)return;
+  _epIdx=idx;
+  const D=app.units==='SI', uT=D?'°C':'°F', uW=D?'g/kg':'gr/lb';
+  byId('epTitle').textContent=p.label||`P${idx+1}`;
+  byId('epLabel').value=p.label||'';
+  byId('epTdbLabel').textContent=`Dry Bulb (${uT})`;
+  byId('epTdb').value=(D?p.T:(p.T*9/5+32)).toFixed(2);
+  const rh=Psy.RH_from_Tw(p.T,p.w,app.pPa)*100;
+  byId('epMode').value='RH';
+  byId('epValLabel').textContent='Relative Humidity (%)';
+  byId('epVal').value=rh.toFixed(1);
+  epUpdatePreview();
+  byId('editPtOverlay').classList.add('visible');
+}
+function closeEditPointModal(){byId('editPtOverlay').classList.remove('visible');_epIdx=-1;}
+function epUpdatePreview(){
+  const D=app.units==='SI', uT=D?'°C':'°F';
+  let Td=parseFloat(byId('epTdb').value), val=parseFloat(byId('epVal').value);
+  if(isNaN(Td)||isNaN(val)){epClearPreview();return;}
+  const T=D?Td:(Td-32)*5/9;
+  const mode=byId('epMode').value;
+  let w=0;
+  if(mode==='RH')w=Psy.w_from_pv(Math.min(app.pPa*.999,Psy.p_ws_Pa(T)*Math.max(0,Math.min(100,val))/100),app.pPa);
+  else if(mode==='W')w=D?(val/1000):(val/Psy.grainsPerLb);
+  else if(mode==='Twb'){const Twb=D?val:(val-32)*5/9;const wwb=Psy.wsat_at(Twb,app.pPa);const hwb=Psy.h_kJkg(Twb,wwb);w=Math.max(0,(hwb-1.006*T)/(2501+1.86*T));w=Math.min(w,Psy.wsat_at(T,app.pPa));}
+  else if(mode==='Tdp')w=Psy.w_from_Tdp(D?val:(val-32)*5/9,app.pPa);
+  w=Math.max(0,Math.min(w,Psy.wsat_at(T,app.pPa)));
+  const rh=Psy.RH_from_Tw(T,w,app.pPa)*100;
+  const h=Psy.h_kJkg(T,w), v=Psy.v_m3kg(T,w,app.pPa);
+  const pv=Psy.pv_from_w(w,app.pPa), tdp=Psy.dewpoint_from_pv(pv), twb=Psy.twb_from_Tw(T,w,app.pPa);
+  byId('epRH').textContent=rh.toFixed(1)+'%';
+  byId('epW').textContent=D?(w*1000).toFixed(2):(w*7000).toFixed(0);
+  byId('epWLbl').textContent=D?'W (g/kg)':'W (gr/lb)';
+  byId('epH').textContent=(D?h:(h*.4299)).toFixed(2);
+  byId('epHLbl').textContent=D?'h (kJ/kg)':'h (BTU/lb)';
+  byId('epTwb').textContent=(D?twb:(twb*1.8+32)).toFixed(2)+'°';
+  byId('epTwbLbl').textContent=`Twb (${uT})`;
+  byId('epTdp').textContent=(D?tdp:(tdp*1.8+32)).toFixed(2)+'°';
+  byId('epTdpLbl').textContent=`Tdp (${uT})`;
+  byId('epV').textContent=(D?v:(v*Psy.ft3PerM3)).toFixed(4);
+  byId('epVLbl').textContent=D?'v (m³/kg)':'v (ft³/lb)';
+}
+function epClearPreview(){['epRH','epW','epH','epTwb','epTdp','epV'].forEach(id=>byId(id).textContent='—');}
+function epApply(){
+  if(_epIdx<0)return;const p=app.points[_epIdx];if(!p||p.locked)return;
+  const D=app.units==='SI';
+  let Td=parseFloat(byId('epTdb').value), val=parseFloat(byId('epVal').value);
+  if(isNaN(Td)||isNaN(val)){toast('Invalid input values','error');return;}
+  pushHistory();
+  const T=D?Td:(Td-32)*5/9;
+  const mode=byId('epMode').value;
+  let w=0;
+  if(mode==='RH')w=Psy.w_from_pv(Math.min(app.pPa*.999,Psy.p_ws_Pa(T)*Math.max(0,Math.min(100,val))/100),app.pPa);
+  else if(mode==='W')w=D?(val/1000):(val/Psy.grainsPerLb);
+  else if(mode==='Twb'){const Twb=D?val:(val-32)*5/9;const wwb=Psy.wsat_at(Twb,app.pPa);const hwb=Psy.h_kJkg(Twb,wwb);w=Math.max(0,(hwb-1.006*T)/(2501+1.86*T));w=Math.min(w,Psy.wsat_at(T,app.pPa));}
+  else if(mode==='Tdp')w=Psy.w_from_Tdp(D?val:(val-32)*5/9,app.pPa);
+  w=Math.max(0,Math.min(w,Psy.wsat_at(T,app.pPa)));
+  p.label=byId('epLabel').value||p.label;
+  p.T=T;p.w=w;
+  refreshAll();onPointsChanged();
+  toast(`"${p.label}" updated`,'success');
+  closeEditPointModal();
+}
+
+/* ===== ADD POINT VIA PARAMETERS MODAL ===== */
+function openAddPtParamModal(){
+  const D=app.units==='SI', uT=D?'°C':'°F';
+  byId('apTdbLabel').textContent=`Dry Bulb (${uT})`;
+  byId('apInputMode').value='TdbRH';
+  byId('apSecondLabel').textContent='Relative Humidity (%)';
+  byId('apTdb').value=D?'26':'79';
+  byId('apSecondVal').value='50';
+  byId('apLabel').value=`P${app.points.length+1}`;
+  byId('addPtParamOverlay').classList.add('visible');
+  byId('apTdb').focus();
+}
+function closeAddPtParamModal(){byId('addPtParamOverlay').classList.remove('visible');}
+function apUpdateSecondLabel(){
+  const D=app.units==='SI', uT=D?'°C':'°F';
+  const mode=byId('apInputMode').value;
+  if(mode==='TdbTwb'){byId('apSecondLabel').textContent=`Wet Bulb (${uT})`;}
+  else{byId('apSecondLabel').textContent='Relative Humidity (%)';}
+}
+function apAddPoint(){
+  const D=app.units==='SI';
+  let Td=parseFloat(byId('apTdb').value), val=parseFloat(byId('apSecondVal').value);
+  if(isNaN(Td)||isNaN(val)){toast('Invalid input values','error');return;}
+  const T=D?Td:(Td-32)*5/9;
+  const mode=byId('apInputMode').value;
+  let w=0;
+  if(mode==='TdbRH'){w=Psy.w_from_pv(Math.min(app.pPa*.999,Psy.p_ws_Pa(T)*Math.max(0,Math.min(100,val))/100),app.pPa);}
+  else if(mode==='TdbTwb'){const Twb=D?val:(val-32)*5/9;const wwb=Psy.wsat_at(Twb,app.pPa);const hwb=Psy.h_kJkg(Twb,wwb);w=Math.max(0,(hwb-1.006*T)/(2501+1.86*T));w=Math.min(w,Psy.wsat_at(T,app.pPa));}
+  pushHistory();
+  const label=(byId('apLabel').value||`P${app.points.length+1}`).trim();
+  app.points.push({id:nextPid++,T,w,label,locked:false,lx:10,ly:-6});
+  refreshAll();toast(`"${label}" added`,'success');
+  closeAddPtParamModal();
+}
+
+function bulkImport(){const csv=byId('bulkCSV').value.trim();if(!csv)return;pushHistory();const lines=csv.split('\n');let count=0;for(const line of lines){const parts=line.split(',').map(s=>s.trim());if(parts.length<2)continue;const Td=parseFloat(parts[0]),rh=parseFloat(parts[1]),label=parts[2]||`Pt${app.points.length+1}`;if(isNaN(Td)||isNaN(rh))continue;const T=(app.units==='SI')?Td:(Td-32)*5/9;const w=Psy.w_from_pv(Math.min(app.pPa*.999,Psy.p_ws_Pa(T)*Math.max(0,Math.min(100,rh))/100),app.pPa);app.points.push({id:nextPid++,T,w,label,locked:false,lx:10,ly:-6});count++;}refreshAll();toast(`${count} points imported`,'success');}
+
+/* ============ BOOT ============ */
+window.addEventListener('DOMContentLoaded',()=>{
+  el={root:byId('app'),cv:byId('cv'),hud:byId('hud'),theme:byId('theme'),units:byId('units'),style:byId('style'),alt:byId('alt'),altUnit:byId('altUnit'),pOverride:byId('pOverride'),pUnit:byId('pUnit'),pUsed:byId('pUsed'),tMin:byId('tMin'),tMax:byId('tMax'),wMax:byId('wMax'),density:byId('density'),rhStep:byId('rhStep'),labelMode:byId('labelMode'),labelPx:byId('labelPx'),inT:byId('inT'),inMode:byId('inMode'),inX:byId('inX'),inLbl:byId('inLbl'),connect:byId('connect'),ptsTbl:getOrCreateTBody(byId('ptsTbl')),selPt:byId('selPt'),editMode:byId('editMode'),selLbl:byId('selLbl'),selT:byId('selT'),selX:byId('selX'),applyEdit:byId('applyEdit'),projName:byId('projName'),projVer:byId('projVer'),procSel:byId('procSel'),flowVal:byId('flowVal'),flowUnit:byId('flowUnit'),procA:byId('procA'),procB:byId('procB'),mixA:byId('mixA'),mixB:byId('mixB'),mixLbl:byId('mixLbl'),mixWA:byId('mixWA'),mixWB:byId('mixWB'),comfortZone:byId('comfortZone'),comfortAdj:byId('comfortAdj'),shrShow:byId('shrShow'),shrVal:byId('shrVal'),adpProc:byId('adpProc'),calcIn1:byId('calcIn1'),calcV1:byId('calcV1'),calcIn2:byId('calcIn2'),calcV2:byId('calcV2'),layerToggles:byId('layerToggles')};
+  ctx=el.cv.getContext('2d');
+
+  initTabs();buildLayerToggles();setupSplitters();updateFlowUnitsUI();updatePressureLabel();
+
+  on(byId('btnUndo'),'click',undo);on(byId('btnRedo'),'click',redo);
+  on(byId('btnSave'),'click',doSave);on(byId('btnLoad'),'click',()=>byId('fileLoad')?.click());on(byId('fileLoad'),'change',e=>{const f=e.target.files?.[0];if(f)doLoad(f);});
+  on(byId('btnExportPng'),'click',savePNG);on(byId('btnReport'),'click',generateReport);
+  on(byId('btnShortcuts'),'click',()=>byId('shortcutsOverlay').classList.add('visible'));on(byId('closeShortcuts'),'click',()=>byId('shortcutsOverlay').classList.remove('visible'));
+  on(byId('btnAbout'),'click',()=>byId('aboutOverlay').classList.add('visible'));on(byId('logoClick'),'click',()=>byId('aboutOverlay').classList.add('visible'));on(byId('closeAbout'),'click',()=>byId('aboutOverlay').classList.remove('visible'));
+  /* Glossary modal */
+  on(byId('btnGlossary'),'click',()=>byId('glossaryOverlay').classList.add('visible'));
+  on(byId('closeGlossary'),'click',()=>byId('glossaryOverlay').classList.remove('visible'));
+  /* Theme editor events */
+  on(byId('ctApply'),'click',applyCustomTheme);
+  on(byId('ctResetDefault'),'click',resetCustomTheme);
+  on(byId('closeThemeEditor'),'click',()=>byId('themeEditorOverlay').classList.remove('visible'));
+  /* Mix flow modal events */
+  on(byId('mixFlowOk'),'click',confirmMixFlow);
+  on(byId('mixFlowCancel'),'click',closeMixFlowModal);
+  on(byId('mixFlowOverlay'),'click',e=>{if(e.target===byId('mixFlowOverlay'))closeMixFlowModal();});
+  byId('mixFlowOverlay').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();confirmMixFlow();}});
+
+  /* Edit Point modal events */
+  on(byId('epApply'),'click',epApply);
+  on(byId('epCancel'),'click',closeEditPointModal);
+  on(byId('editPtOverlay'),'click',e=>{if(e.target===byId('editPtOverlay'))closeEditPointModal();});
+  byId('epMode').addEventListener('change',function(){
+    const m=this.value;
+    const D=app.units==='SI', uT=D?'°C':'°F';
+    const labels={'RH':'Relative Humidity (%)','W':D?'Humidity Ratio (g/kg)':'Humidity Ratio (gr/lb)','Twb':`Wet Bulb Temp (${uT})`,'Tdp':`Dew Point Temp (${uT})`};
+    byId('epValLabel').textContent=labels[m]||m;
+    if(_epIdx>=0){
+      const p=app.points[_epIdx];
+      const Td=parseFloat(byId('epTdb').value);
+      const T=D?Td:(Td-32)*5/9;
+      if(m==='RH')byId('epVal').value=(Psy.RH_from_Tw(T,p.w,app.pPa)*100).toFixed(1);
+      else if(m==='W')byId('epVal').value=D?(p.w*1000).toFixed(2):(p.w*7000).toFixed(0);
+      else if(m==='Twb'){const twb=Psy.twb_from_Tw(T,p.w,app.pPa);byId('epVal').value=(D?twb:(twb*1.8+32)).toFixed(2);}
+      else if(m==='Tdp'){const pv=Psy.pv_from_w(p.w,app.pPa);const tdp=Psy.dewpoint_from_pv(pv);byId('epVal').value=(D?tdp:(tdp*1.8+32)).toFixed(2);}
+    }
+    epUpdatePreview();
+  });
+  ['epTdb','epVal'].forEach(id=>byId(id).addEventListener('input',epUpdatePreview));
+  byId('editPtOverlay').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();epApply();}else if(e.key==='Escape')closeEditPointModal();});
+
+  /* Add Point via Parameters modal events */
+  on(byId('apAdd'),'click',apAddPoint);
+  on(byId('apCancel'),'click',closeAddPtParamModal);
+  on(byId('addPtParamOverlay'),'click',e=>{if(e.target===byId('addPtParamOverlay'))closeAddPtParamModal();});
+  byId('apInputMode').addEventListener('change',apUpdateSecondLabel);
+  byId('addPtParamOverlay').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();apAddPoint();}else if(e.key==='Escape')closeAddPtParamModal();});
+
+  /* Point table edit mode toggle */
+  on(byId('ptTblEditMode'),'change',()=>{refreshTable();});
+
+  /* Report modal events */
+  on(byId('rptGenerate'),'click',handleReportGenerate);
+  on(byId('rptCancel'),'click',closeReportModal);
+  on(byId('reportOverlay'),'click',e=>{if(e.target===byId('reportOverlay'))closeReportModal();});
+  byId('reportOverlay').addEventListener('keydown',e=>{if(e.key==='Escape')closeReportModal();});
+  document.querySelectorAll('#reportOverlay label').forEach(lbl=>{lbl.addEventListener('click',()=>{lbl.querySelector('input').checked=true;});});
+
+  byId('themeEditorOverlay').querySelectorAll('input,select').forEach(inp=>{
+    if(inp.classList.contains('close-btn'))return;
+    on(inp,'input',livePreview);on(inp,'change',livePreview);
+  });
+  on(el.theme,'change',()=>{app.theme=el.theme.value;el.root.setAttribute('data-theme',app.theme);redraw();});
+  on(el.units,'change',()=>{pushHistory();app.units=el.units.value;if(app.units==='SI'){app.default={tMin:-10,tMax:55,wMaxDisp:30};el.pUnit.value='kPa';el.altUnit.value='m';}else{app.default={tMin:20,tMax:120,wMaxDisp:1100};el.pUnit.value='psi';el.altUnit.value='ft';}app.tMin=app.default.tMin;app.tMax=app.default.tMax;app.wMaxDisp=app.default.wMaxDisp;enforceCalcBounds();el.tMin.value=app.tMin;el.tMax.value=app.tMax;el.wMax.value=app.wMaxDisp;updateFlowUnitsUI();refreshAll();buildLayerToggles();});
+  on(el.style,'change',()=>{app.style=el.style.value;el.root.setAttribute('data-style',app.style);if(app.style==='custom')openThemeEditor();redraw();});
+  on(byId('applyAtm'),'click',applyAtm);
+  const axisApply=()=>{pushHistory();app.tMin=parseFloat(el.tMin.value)||app.tMin;app.tMax=parseFloat(el.tMax.value)||app.tMax;app.wMaxDisp=parseFloat(el.wMax.value)||app.wMaxDisp;enforceCalcBounds();el.tMin.value=app.tMin.toFixed(1);el.tMax.value=app.tMax.toFixed(1);el.wMax.value=app.wMaxDisp.toFixed(0);redraw();};
+  on(byId('btnRedraw'),'click',axisApply);[el.tMin,el.tMax,el.wMax].forEach(i=>on(i,'change',axisApply));
+  on(byId('btnFit'),'click',fitAll);on(byId('btnResetZoom'),'click',()=>{pushHistory();app.tMin=app.default.tMin;app.tMax=app.default.tMax;app.wMaxDisp=app.default.wMaxDisp;enforceCalcBounds();el.tMin.value=app.tMin;el.tMax.value=app.tMax;el.wMax.value=app.wMaxDisp;redraw();});
+  [el.density,el.rhStep,el.labelMode,el.labelPx].forEach(i=>on(i,'input',redraw));
+  on(byId('addPt'),'click',addPointFromUI);on(el.selPt,'input',e=>loadSelected(parseInt(e.target.value,10)||0));
+  on(byId('applyEdit'),'click',()=>{const i=+el.selPt.value;const p=app.points[i];if(!p||p.locked)return;pushHistory();p.label=el.selLbl.value||p.label;let Td=parseFloat(el.selT.value),val=parseFloat(el.selX.value);if(isNaN(Td)||isNaN(val))return;const T=(app.units==='SI')?Td:(Td-32)*5/9;let w=p.w;if(el.editMode.value==='RH')w=Psy.w_from_pv(Math.min(app.pPa*.999,Psy.p_ws_Pa(T)*Math.max(0,Math.min(100,val))/100),app.pPa);else if(el.editMode.value==='W')w=(app.units==='SI')?(val/1000):(val/7000);else{const Twb=(app.units==='SI')?val:(val-32)*5/9;const wwb=Psy.wsat_at(Twb,app.pPa);const hwb=Psy.h_kJkg(Twb,wwb);w=Math.max(0,(hwb-1.006*T)/(2501+1.86*T));w=Math.min(w,Psy.wsat_at(T,app.pPa));}p.T=T;p.w=w;refreshAll();el.selPt.value=i;loadSelected(i);onPointsChanged();});
+  on(byId('procAdd'),'click',()=>{const a=+byId('procA').value,b=+byId('procB').value;if(isNaN(a)||isNaN(b)||a===b)return;pushHistory();app.processes.push([a,b]);refreshProcLists();redraw();toast('Process added','success');});
+  on(byId('procDel'),'click',()=>{const i=+el.procSel.value;if(isNaN(i))return;pushHistory();app.processes.splice(i,1);refreshProcLists();redraw();});
+  on(byId('procRev'),'click',()=>{const i=+el.procSel.value;if(isNaN(i))return;pushHistory();const s=app.processes[i];app.processes[i]=[s[1],s[0]];refreshProcLists();redraw();});
+  on(el.procSel,'input',updateProcMetrics);on(el.flowVal,'input',updateProcMetrics);on(el.flowUnit,'input',()=>{updateProcMetrics();updateFlowUnitsUI();});
+  on(byId('mixAdd'),'click',addMixPoint);
+  on(byId('adpCalc'),'click',calcADP);
+  on(byId('ventCalc'),'click',calcVent);
+  on(byId('calcBtn'),'click',calcProperties);
+  on(byId('calcAddPt'),'click',()=>{if(!app._lastCalc)return;pushHistory();app.points.push({id:nextPid++,T:app._lastCalc.T,w:app._lastCalc.w,label:`Calc${app.points.length+1}`,locked:false,lx:10,ly:-6});refreshAll();toast('Calc point added','success');});
+  on(byId('tblGen'),'click',genPsyTable);
+  on(byId('bulkImport'),'click',bulkImport);
+  on(el.comfortZone,'change',()=>{app.comfortZone=el.comfortZone.value;redraw();});on(el.comfortAdj,'change',()=>{app.comfortAdj=parseFloat(el.comfortAdj.value)||0;redraw();});
+  on(el.shrShow,'change',()=>{app.shrShow=el.shrShow.value==='on';redraw();});on(el.shrVal,'change',()=>{app.shrVal=parseFloat(el.shrVal.value)||.75;redraw();});
+
+  const pmBtn=byId('btnProcessMode');
+  on(pmBtn,'click',()=>{app.tool.processMode=!app.tool.processMode;pmBtn.classList.toggle('active',app.tool.processMode);byId('procModeBar').classList.toggle('visible',app.tool.processMode);app.tool.start=null;app._hovPickIdx=-1;if(app.tool.processMode){exitMixMode();}});
+
+  const mixBtn=byId('btnMixMode'),mixBar=byId('mixModeBar');
+  function updateMixBar(){if(!app.tool.mixMode){mixBar.style.display='none';return;}mixBar.style.display='block';if(app.tool.mixStart==null){mixBar.textContent='🔀 Mix Mode — Select the FIRST point (click existing or click chart to create). Esc to cancel.';}else{const p=app.points[app.tool.mixStart];mixBar.textContent=`🔀 Mix Mode — First: "${p.label}" — Now select the SECOND point. Esc to cancel.`;}}
+  function enterMixMode(){app.tool.mixMode=true;app.tool.mixStart=null;mixBtn.classList.add('active');app.tool.processMode=false;app.tool.start=null;pmBtn.classList.remove('active');byId('procModeBar').classList.remove('visible');updateMixBar();redraw();}
+  function exitMixMode(){app.tool.mixMode=false;app.tool.mixStart=null;app._hovPickIdx=-1;mixBtn.classList.remove('active');updateMixBar();redraw();}
+  on(mixBtn,'click',()=>{if(app.tool.mixMode){exitMixMode();}else{enterMixMode();}});
+  on(byId('btnZoomIn'),'click',()=>{const cx=W/2;const T0=invT(cx),sp=(app.tMax-app.tMin)/1.2;app.tMin=T0-sp/2;app.tMax=T0+sp/2;app.wMaxDisp/=1.2;enforceCalcBounds();el.tMin.value=app.tMin.toFixed(1);el.tMax.value=app.tMax.toFixed(1);el.wMax.value=app.wMaxDisp.toFixed(0);redraw();});
+  on(byId('btnZoomOut'),'click',()=>{const cx=W/2;const T0=invT(cx),sp=(app.tMax-app.tMin)/0.83;app.tMin=T0-sp/2;app.tMax=T0+sp/2;app.wMaxDisp/=0.83;enforceCalcBounds();el.tMin.value=app.tMin.toFixed(1);el.tMax.value=app.tMax.toFixed(1);el.wMax.value=app.wMaxDisp.toFixed(0);redraw();});
+  on(byId('btnFitScreen'),'click',()=>{pushHistory();if(app.units==='SI'){app.tMin=-10;app.tMax=55;app.wMaxDisp=30;}else{app.tMin=20;app.tMax=120;app.wMaxDisp=210;}enforceCalcBounds();el.tMin.value=app.tMin;el.tMax.value=app.tMax;el.wMax.value=app.wMaxDisp;redraw();toast('ASHRAE standard range','info');});
+
+  on(el.cv,'contextmenu',showCtxMenu);
+  on(document,'click',e=>{if(!byId('ctxMenu').contains(e.target))hideCtxMenu();});
+  byId('ctxMenu').querySelectorAll('.ctx-item').forEach(item=>{on(item,'click',()=>handleCtxAction(item.dataset.action));});
+
+  on(el.cv,'dblclick',e=>{const rect=el.cv.getBoundingClientRect();const px=(e.clientX-rect.left)*dpi,py=(e.clientY-rect.top)*dpi;const idx=pickPoint(px,py);if(idx>=0){pushHistory();const p=app.points[idx];p.locked=!p.locked;refreshAll();toast(p.locked?`"${p.label}" locked 🔒`:`"${p.label}" unlocked 🔓`,'info');}});
+
+  let panActive=false,panLast=[0,0],draggingPt=-1,draggingLabel=-1,labelDragStart=[0,0];
+  on(el.cv,'mousedown',e=>{if(e.button===2)return;if(app.tool.processMode||app.tool.mixMode)return;const rect=el.cv.getBoundingClientRect();const px=(e.clientX-rect.left)*dpi,py=(e.clientY-rect.top)*dpi;
+    const lblIdx=pickLabel(px,py);
+    if(lblIdx>=0){draggingLabel=lblIdx;const p=app.points[lblIdx];labelDragStart=[px-(p.lx??10)*dpi,py-(p.ly??-6)*dpi];el.cv.style.cursor='move';return;}
+    const idx=pickPoint(px,py);
+    if(idx>=0&&!app.points[idx].locked){pushHistory();draggingPt=idx;el.cv.style.cursor='grabbing';}else{panActive=true;panLast=[px,py];el.cv.style.cursor='grabbing';}});
+  on(window,'mouseup',()=>{if(draggingLabel>=0)toast(`Label repositioned`,'info');draggingPt=-1;draggingLabel=-1;panActive=false;app._hovLabel=-1;el.cv.style.cursor='';});
+  on(window,'mousemove',e=>{const rect=el.cv.getBoundingClientRect();const px=(e.clientX-rect.left)*dpi,py=(e.clientY-rect.top)*dpi;if(px>=0&&py>=0&&px<=W&&py<=H){app.hover.x=px;app.hover.y=py;updateHUD(px,py);}else{app.hover.x=null;app.hover.y=null;el.hud.classList.add('hidden');}
+    if(draggingLabel>=0){const p=app.points[draggingLabel];p.lx=(px-labelDragStart[0])/dpi;p.ly=(py-labelDragStart[1])/dpi;redraw();return;}
+    if(panActive){
+      const dx=px-panLast[0],dy=py-panLast[1];panLast=[px,py];
+      /* FIX: compute span BEFORE modifying tMin/tMax to avoid drift */
+      const tSpan=app.tMax-app.tMin;
+      const tDelta=dx*tSpan/(W-padL-padR);
+      app.tMin-=tDelta;
+      app.tMax-=tDelta;
+      app.wMaxDisp+=dy*app.wMaxDisp/(H-padT-padB);
+      enforceCalcBounds();el.tMin.value=app.tMin.toFixed(1);el.tMax.value=app.tMax.toFixed(1);el.wMax.value=app.wMaxDisp.toFixed(0);redraw();
+    }else if(draggingPt>=0){let T=invT(px),w=invW(py);w=Math.max(0,Math.min(w,Psy.wsat_at(T,app.pPa)));T=Math.max(app.tMin,Math.min(app.tMax,T));app.points[draggingPt].T=T;app.points[draggingPt].w=w;refreshAll();onPointsChanged();}else{
+      const lblH=pickLabel(px,py);
+      app._hovLabel=lblH;
+      /* detect hovered point when in process/mix mode */
+      const inSelectMode=app.tool.processMode||app.tool.mixMode;
+      if(inSelectMode){
+        const hpIdx=pickPoint(px,py);
+        if(hpIdx!==app._hovPickIdx){app._hovPickIdx=hpIdx;redraw();}
+        el.cv.style.cursor=lblH>=0?'move':(hpIdx>=0?'pointer':'crosshair');
+      }else{
+        if(app._hovPickIdx>=0){app._hovPickIdx=-1;redraw();}
+        el.cv.style.cursor=lblH>=0?'move':'';
+        redraw();
+      }
+      }});
+  on(el.cv,'mouseleave',()=>{app.hover.x=null;app.hover.y=null;app._hovLabel=-1;app._hovPickIdx=-1;el.hud.classList.add('hidden');redraw();});
+  el.cv.addEventListener('wheel',e=>{e.preventDefault();const rect=el.cv.getBoundingClientRect();const cx=(e.clientX-rect.left)*dpi;const scale=(e.deltaY<0)?1.12:.9;const T0=invT(cx);const sp=(app.tMax-app.tMin)/scale;app.tMin=T0-(cx-padL)/(W-padL-padR)*sp;app.tMax=app.tMin+sp;app.wMaxDisp/=scale;enforceCalcBounds();el.tMin.value=app.tMin.toFixed(1);el.tMax.value=app.tMax.toFixed(1);el.wMax.value=app.wMaxDisp.toFixed(0);redraw();},{passive:false});
+  on(el.cv,'click',e=>{
+    const rect=el.cv.getBoundingClientRect();const px=(e.clientX-rect.left)*dpi,py=(e.clientY-rect.top)*dpi;
+    /* --- Mix Mode --- */
+    if(app.tool.mixMode){
+      let idx=pickPoint(px,py);
+      if(idx<0){let T=invT(px),w=invW(py);w=Math.max(0,Math.min(w,Psy.wsat_at(T,app.pPa)));pushHistory();app.points.push({id:nextPid++,T,w,label:`P${app.points.length+1}`,locked:false,lx:10,ly:-6});idx=app.points.length-1;refreshAll();}
+      if(app.tool.mixStart==null){app.tool.mixStart=idx;const p=app.points[idx];toast(`Mix first point: "${p.label}" — now select second point`,'info');updateMixBar();redraw();return;}
+      if(app.tool.mixStart===idx){app.tool.mixStart=null;updateMixBar();redraw();return;}
+      /* Two points selected — open flow modal */
+      openMixFlowModal(app.tool.mixStart, idx);
+      return;
+    }
+    /* --- Process Mode --- */
+    if(!app.tool.processMode)return;
+    let idx=pickPoint(px,py);if(idx<0){let T=invT(px),w=invW(py);w=Math.max(0,Math.min(w,Psy.wsat_at(T,app.pPa)));pushHistory();app.points.push({id:nextPid++,T,w,label:`P${app.points.length+1}`,locked:false,lx:10,ly:-6});idx=app.points.length-1;refreshAll();}if(app.tool.start==null){app.tool.start=idx;}else{if(app.tool.start===idx){app.tool.start=null;return;}pushHistory();app.processes.push([app.tool.start,idx]);app.tool.start=null;app.tool.processMode=false;app._hovPickIdx=-1;pmBtn.classList.remove('active');byId('procModeBar').classList.remove('visible');refreshProcLists();redraw();toast('Process created','success');}});
+
+  on(window,'keydown',e=>{
+    if(e.target.tagName==='INPUT'||e.target.tagName==='SELECT'||e.target.tagName==='TEXTAREA')return;
+    if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();undo();return;}
+    if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='y'){e.preventDefault();redo();return;}
+    if(e.key==='Escape'){app.tool.processMode=false;app.tool.start=null;pmBtn.classList.remove('active');byId('procModeBar').classList.remove('visible');exitMixMode();byId('shortcutsOverlay').classList.remove('visible');byId('aboutOverlay').classList.remove('visible');byId('themeEditorOverlay').classList.remove('visible');byId('glossaryOverlay').classList.remove('visible');byId('mixFlowOverlay').classList.remove('visible');byId('addPtParamOverlay').classList.remove('visible');hideCtxMenu();return;}
+    if(e.key==='p'||e.key==='P'){app.tool.processMode=!app.tool.processMode;pmBtn.classList.toggle('active',app.tool.processMode);byId('procModeBar').classList.toggle('visible',app.tool.processMode);app.tool.start=null;app._hovPickIdx=-1;if(app.tool.processMode)exitMixMode();return;}
+    if(e.key==='m'||e.key==='M'){if(app.tool.mixMode){exitMixMode();}else{enterMixMode();}return;}
+    if(e.key==='f'||e.key==='F'){fitAll();return;}
+    if(e.key==='r'||e.key==='R'){app.tMin=app.default.tMin;app.tMax=app.default.tMax;app.wMaxDisp=app.default.wMaxDisp;enforceCalcBounds();el.tMin.value=app.tMin;el.tMax.value=app.tMax;el.wMax.value=app.wMaxDisp;redraw();return;}
+    if(e.key==='g'||e.key==='G'){layers.grid=!layers.grid;layers.gridMinor=!layers.gridMinor;buildLayerToggles();redraw();return;}
+    if(e.key==='c'||e.key==='C'){const vals=['none','summer','winter','both'];app.comfortZone=vals[(vals.indexOf(app.comfortZone)+1)%vals.length];el.comfortZone.value=app.comfortZone;redraw();return;}
+    if(e.key==='d'||e.key==='D'){layers.dp=!layers.dp;buildLayerToggles();redraw();return;}
+    if(e.key==='?'){byId('shortcutsOverlay').classList.toggle('visible');return;}
+    if(e.key==='Delete'){const i=parseInt(el.selPt?.value,10);if(!isNaN(i)&&app.points[i]&&!app.points[i].locked){pushHistory();app.points.splice(i,1);app.processes=app.processes.filter(s=>s[0]!==i&&s[1]!==i).map(s=>[s[0]-(s[0]>i),s[1]-(s[1]>i)]);refreshAll();onPointsChanged();}return;}
+    if(e.key>='1'&&e.key<='7'){const lk=['sat','rh','enth','vlines','dp','points','processes'][parseInt(e.key)-1];if(lk){layers[lk]=!layers[lk];buildLayerToggles();redraw();}return;}
+    if(e.code==='Space'){e.preventDefault();el.cv.style.cursor='grab';}
+  });
+  on(window,'keyup',e=>{if(e.code==='Space')el.cv.style.cursor='';});
+
+  new ResizeObserver(()=>redraw()).observe(byId('chartWrap'));
+
+  app.points.push({id:nextPid++,T:24.5,w:.011,label:'Room',locked:false,lx:10,ly:-6},{id:nextPid++,T:32,w:.0105,label:'Supply Air',locked:false,lx:10,ly:-6},{id:nextPid++,T:35,w:.0142,label:'Outdoor',locked:false,lx:10,ly:-6});
+  app.processes.push([2,1],[1,0]);
+  refreshAll();toast('PSYCHRO·PRO loaded — press ? for shortcuts, 📖 for glossary','info');
+});
+</script>
+</body>
+</html>
