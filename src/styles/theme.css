@@ -1,0 +1,974 @@
+/* ============================================================================
+   PsychroChart Ultra 3.0 — Precision Scientific Instrument Theme System
+   Swiss-Precision HVAC CAD / ASHRAE Technical Color & Typography Tokens
+   ============================================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+/* ----------------------------------------------------------------------------
+   1. Global Structural, Geometry, Motion & Typography Tokens
+   ---------------------------------------------------------------------------- */
+:root {
+  /* Layout geometry */
+  --topBarH: 46px;
+  --tabH: 36px;
+  --leftW: 360px;
+  --rightW: 396px;
+
+  /* Border radii — crisp instrument geometry */
+  --r-xs: 4px;
+  --r-sm: 6px;
+  --r-md: 8px;
+  --r-lg: 10px;
+  --r-xl: 12px;
+  --r: 10px;
+  --r2: 6px;
+
+  /* Motion */
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --dur-fast: 120ms;
+  --dur-med: 180ms;
+
+  /* Typography */
+  --sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, 'Liberation Mono', monospace;
+}
+
+/* ----------------------------------------------------------------------------
+   2. Default Theme: `studio-dark` & `custom` (Deep Graphite & Layered Slate)
+   ---------------------------------------------------------------------------- */
+:root,
+:root:has(#app[data-theme="studio-dark"]),
+:root:has(#app[data-theme="custom"]),
+#app[data-theme="studio-dark"],
+#app[data-theme="custom"],
+[data-theme="studio-dark"],
+[data-theme="custom"] {
+  /* Surfaces — Studio Dark (Deep Graphite Charcoal & Layered Slate) */
+  --bg: #0c1017;
+  --plotBg: #0f1520;
+  --panel: #111722;
+  --panel2: #161e2d;
+  --panelHover: #1c2638;
+  --panelText: #e6edf7;
+
+  /* Ink hierarchy */
+  --fg: #e6edf7;
+  --fgStrong: #f8fafc;
+  --muted: #8b9cb5;
+  --dim: #7b8fa8;
+
+  /* Hairline dividers & glass surfaces */
+  --border: rgba(148, 163, 184, 0.12);
+  --borderStrong: rgba(148, 163, 184, 0.22);
+  --glass: rgba(17, 23, 34, 0.84);
+  --glassStrong: rgba(17, 23, 34, 0.94);
+  --glassBorder: rgba(148, 163, 184, 0.14);
+
+  /* Inputs */
+  --inputBg: #0b0f16;
+  --inputBgHover: #0e141f;
+  --inputBorder: rgba(148, 163, 184, 0.46);
+  --inputBorderHover: rgba(148, 163, 184, 0.64);
+  --inputFocus: #0ea5e9;
+  --focusRing: rgba(14, 165, 233, 0.20);
+
+  /* Primary & semantic instrument accents */
+  --accent: #0ea5e9;
+  --accentHover: #0284c7;
+  --accentDim: #0369a1;
+  --accentSoft: rgba(14, 165, 233, 0.12);
+  --accentBorder: rgba(14, 165, 233, 0.34);
+  --accentFg: #041524;
+
+  --chip: #10b981;
+  --chipHover: #059669;
+  --chipSoft: rgba(16, 185, 129, 0.12);
+  --chipBorder: rgba(16, 185, 129, 0.34);
+  --chipFg: #042016;
+
+  --success: #10b981;
+  --successSoft: rgba(16, 185, 129, 0.12);
+  --successBorder: rgba(16, 185, 129, 0.34);
+
+  --warn: #f59e0b;
+  --warnSoft: rgba(245, 158, 11, 0.12);
+  --warnBorder: rgba(245, 158, 11, 0.34);
+  --warnFg: #0c1017;
+
+  --danger: #f87171;
+  --dangerSoft: rgba(248, 113, 113, 0.12);
+  --dangerBorder: rgba(248, 113, 113, 0.34);
+  --dangerFg: #0b0f16;
+
+  /* Psychrometric curve & process legend palette (synchronized with contracts.js) */
+  --sat: #22d3ee;
+  --rh: #38bdf8;
+  --wb: #f59e0b;
+  --enth: #fb923c;
+  --vline: #84cc16;
+  --dpline: #94a3b8;
+  --pt: #f43f5e;
+  --grid: rgba(148, 163, 184, 0.06);
+  --grid2: rgba(148, 163, 184, 0.16);
+  --halo: rgba(12, 16, 23, 0.92);
+  --plotBorder: #475569;
+
+  --heat: #f87171;
+  --heatBg: rgba(248, 113, 113, 0.13);
+  --cool: #38bdf8;
+  --coolBg: rgba(56, 189, 248, 0.13);
+  --humid: #34d399;
+  --humidBg: rgba(52, 211, 153, 0.13);
+  --dehum: #fbbf24;
+  --dehumBg: rgba(251, 191, 36, 0.13);
+  --evap: #22d3ee;
+  --evapBg: rgba(34, 211, 238, 0.13);
+  --mix: #facc15;
+  --mixBg: rgba(250, 204, 21, 0.13);
+  --desiccant: #fb923c;
+  --desiccantBg: rgba(251, 146, 60, 0.13);
+  --erv: #2dd4bf;
+  --ervBg: rgba(45, 212, 191, 0.13);
+  --neutral: #94a3b8;
+  --neutralBg: rgba(148, 163, 184, 0.13);
+
+  /* Elevation & overlays */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.32);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.42);
+  --shadow-lg: 0 14px 36px rgba(0, 0, 0, 0.56);
+  --shadow: var(--shadow-lg);
+  --shadow2: var(--shadow-md);
+  --backdrop: rgba(6, 9, 15, 0.68);
+
+  /* Scrollbars & native select chevron */
+  --scrollThumb: rgba(148, 163, 184, 0.22);
+  --scrollThumbHover: rgba(148, 163, 184, 0.38);
+  --selectArrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5L6 7.5L9 4.5' fill='none' stroke='%238b9cb5' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+
+  color-scheme: dark;
+}
+
+/* ----------------------------------------------------------------------------
+   3. Theme: `drafting-light` (Architectural Paper & Crisp Slate Ink)
+   ---------------------------------------------------------------------------- */
+:root:has(#app[data-theme="drafting-light"]),
+#app[data-theme="drafting-light"],
+[data-theme="drafting-light"] {
+  --bg: #f8fafc;
+  --plotBg: #ffffff;
+  --panel: #ffffff;
+  --panel2: #f1f5f9;
+  --panelHover: #e2e8f0;
+  --panelText: #0f172a;
+
+  --fg: #0f172a;
+  --fgStrong: #020617;
+  --muted: #475569;
+  --dim: #57667a;
+
+  --border: rgba(15, 23, 42, 0.10);
+  --borderStrong: rgba(15, 23, 42, 0.18);
+  --glass: rgba(255, 255, 255, 0.88);
+  --glassStrong: rgba(255, 255, 255, 0.96);
+  --glassBorder: rgba(15, 23, 42, 0.12);
+
+  --inputBg: #ffffff;
+  --inputBgHover: #f8fafc;
+  --inputBorder: rgba(15, 23, 42, 0.42);
+  --inputBorderHover: rgba(15, 23, 42, 0.60);
+  --inputFocus: #0369a1;
+  --focusRing: rgba(3, 105, 161, 0.18);
+
+  --accent: #0369a1;
+  --accentHover: #075985;
+  --accentDim: #0c4a6e;
+  --accentSoft: rgba(3, 105, 161, 0.09);
+  --accentBorder: rgba(3, 105, 161, 0.30);
+  --accentFg: #ffffff;
+
+  --chip: #047857;
+  --chipHover: #065f46;
+  --chipSoft: rgba(4, 120, 87, 0.10);
+  --chipBorder: rgba(4, 120, 87, 0.30);
+  --chipFg: #ffffff;
+
+  --success: #065f46;
+  --successSoft: rgba(6, 95, 70, 0.10);
+  --successBorder: rgba(6, 95, 70, 0.30);
+
+  --warn: #92400e;
+  --warnSoft: rgba(146, 64, 14, 0.10);
+  --warnBorder: rgba(146, 64, 14, 0.30);
+  --warnFg: #ffffff;
+
+  --danger: #b91c1c;
+  --dangerSoft: rgba(185, 28, 28, 0.09);
+  --dangerBorder: rgba(185, 28, 28, 0.30);
+  --dangerFg: #ffffff;
+
+  --sat: #0e7490;
+  --rh: #0284c7;
+  --wb: #b45309;
+  --enth: #c2410c;
+  --vline: #4d7c0f;
+  --dpline: #64748b;
+  --pt: #be123c;
+  --grid: rgba(51, 65, 85, 0.07);
+  --grid2: rgba(51, 65, 85, 0.18);
+  --halo: rgba(255, 255, 255, 0.95);
+  --plotBorder: #334155;
+
+  --heat: #b91c1c;
+  --heatBg: rgba(185, 28, 28, 0.09);
+  --cool: #1d4ed8;
+  --coolBg: rgba(29, 78, 216, 0.09);
+  --humid: #065f46;
+  --humidBg: rgba(6, 95, 70, 0.10);
+  --dehum: #9a3412;
+  --dehumBg: rgba(154, 52, 18, 0.10);
+  --evap: #155e75;
+  --evapBg: rgba(21, 94, 117, 0.10);
+  --mix: #854d0e;
+  --mixBg: rgba(133, 77, 14, 0.10);
+  --desiccant: #9a3412;
+  --desiccantBg: rgba(154, 52, 18, 0.10);
+  --erv: #115e59;
+  --ervBg: rgba(17, 94, 89, 0.10);
+  --neutral: #475569;
+  --neutralBg: rgba(71, 85, 105, 0.10);
+
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.08);
+  --shadow-lg: 0 12px 32px rgba(15, 23, 42, 0.12);
+  --shadow: var(--shadow-lg);
+  --shadow2: var(--shadow-md);
+  --backdrop: rgba(15, 23, 42, 0.34);
+
+  --scrollThumb: rgba(15, 23, 42, 0.16);
+  --scrollThumbHover: rgba(15, 23, 42, 0.30);
+  --selectArrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5L6 7.5L9 4.5' fill='none' stroke='%23475569' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+
+  color-scheme: light;
+}
+
+/* ----------------------------------------------------------------------------
+   4. Theme: `ashrae-classic` (Warm Handbook Ivory & Engineering Navy)
+   ---------------------------------------------------------------------------- */
+:root:has(#app[data-theme="ashrae-classic"]),
+#app[data-theme="ashrae-classic"],
+[data-theme="ashrae-classic"] {
+  --bg: #f7f5ee;
+  --plotBg: #fdfcf8;
+  --panel: #fdfcf8;
+  --panel2: #f1ede2;
+  --panelHover: #e8e2d3;
+  --panelText: #1c1917;
+
+  --fg: #1c1917;
+  --fgStrong: #0c0a09;
+  --muted: #57534e;
+  --dim: #625c57;
+
+  --border: rgba(28, 25, 23, 0.11);
+  --borderStrong: rgba(28, 25, 23, 0.22);
+  --glass: rgba(253, 252, 248, 0.90);
+  --glassStrong: rgba(253, 252, 248, 0.97);
+  --glassBorder: rgba(28, 25, 23, 0.14);
+
+  --inputBg: #ffffff;
+  --inputBgHover: #faf8f1;
+  --inputBorder: rgba(28, 25, 23, 0.44);
+  --inputBorderHover: rgba(28, 25, 23, 0.62);
+  --inputFocus: #1e40af;
+  --focusRing: rgba(30, 64, 175, 0.16);
+
+  --accent: #1e40af;
+  --accentHover: #1e3a8a;
+  --accentDim: #172554;
+  --accentSoft: rgba(30, 64, 175, 0.09);
+  --accentBorder: rgba(30, 64, 175, 0.28);
+  --accentFg: #ffffff;
+
+  --chip: #15803d;
+  --chipHover: #166534;
+  --chipSoft: rgba(21, 128, 61, 0.09);
+  --chipBorder: rgba(21, 128, 61, 0.28);
+  --chipFg: #ffffff;
+
+  --success: #166534;
+  --successSoft: rgba(22, 101, 52, 0.09);
+  --successBorder: rgba(22, 101, 52, 0.30);
+
+  --warn: #92400e;
+  --warnSoft: rgba(146, 64, 14, 0.10);
+  --warnBorder: rgba(146, 64, 14, 0.30);
+  --warnFg: #ffffff;
+
+  --danger: #b91c1c;
+  --dangerSoft: rgba(185, 28, 28, 0.09);
+  --dangerBorder: rgba(185, 28, 28, 0.28);
+  --dangerFg: #ffffff;
+
+  --sat: #111827;
+  --rh: #1e40af;
+  --wb: #15803d;
+  --enth: #9a3412;
+  --vline: #b91c1c;
+  --dpline: #57534e;
+  --pt: #b91c1c;
+  --grid: rgba(28, 25, 23, 0.06);
+  --grid2: rgba(28, 25, 23, 0.16);
+  --halo: rgba(253, 252, 248, 0.95);
+  --plotBorder: #1c1917;
+
+  --heat: #b91c1c;
+  --heatBg: rgba(185, 28, 28, 0.10);
+  --cool: #1e40af;
+  --coolBg: rgba(30, 64, 175, 0.10);
+  --humid: #166534;
+  --humidBg: rgba(22, 101, 52, 0.10);
+  --dehum: #9a3412;
+  --dehumBg: rgba(154, 52, 18, 0.10);
+  --evap: #155e75;
+  --evapBg: rgba(21, 94, 117, 0.10);
+  --mix: #854d0e;
+  --mixBg: rgba(133, 77, 14, 0.10);
+  --desiccant: #9a3412;
+  --desiccantBg: rgba(154, 52, 18, 0.10);
+  --erv: #115e59;
+  --ervBg: rgba(17, 94, 89, 0.10);
+  --neutral: #57534e;
+  --neutralBg: rgba(87, 83, 78, 0.10);
+
+  --shadow-sm: 0 1px 2px rgba(28, 25, 23, 0.05);
+  --shadow-md: 0 3px 10px rgba(28, 25, 23, 0.07);
+  --shadow-lg: 0 10px 28px rgba(28, 25, 23, 0.11);
+  --shadow: var(--shadow-lg);
+  --shadow2: var(--shadow-md);
+  --backdrop: rgba(28, 25, 23, 0.34);
+
+  --scrollThumb: rgba(28, 25, 23, 0.18);
+  --scrollThumbHover: rgba(28, 25, 23, 0.32);
+  --selectArrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5L6 7.5L9 4.5' fill='none' stroke='%2357534e' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+
+  color-scheme: light;
+}
+
+/* ----------------------------------------------------------------------------
+   5. Theme: `blueprint-cad` (Architectural Blueprint Navy & Drafting Cyan)
+   ---------------------------------------------------------------------------- */
+:root:has(#app[data-theme="blueprint-cad"]),
+#app[data-theme="blueprint-cad"],
+[data-theme="blueprint-cad"] {
+  --bg: #081b33;
+  --plotBg: #0b2444;
+  --panel: #0c2240;
+  --panel2: #112c52;
+  --panelHover: #173766;
+  --panelText: #f0f9ff;
+
+  --fg: #f0f9ff;
+  --fgStrong: #ffffff;
+  --muted: #93c5fd;
+  --dim: #72a2d6;
+
+  --border: rgba(125, 211, 252, 0.15);
+  --borderStrong: rgba(125, 211, 252, 0.28);
+  --glass: rgba(12, 34, 64, 0.86);
+  --glassStrong: rgba(12, 34, 64, 0.95);
+  --glassBorder: rgba(125, 211, 252, 0.18);
+
+  --inputBg: #07172c;
+  --inputBgHover: #0a1e39;
+  --inputBorder: rgba(125, 211, 252, 0.44);
+  --inputBorderHover: rgba(125, 211, 252, 0.64);
+  --inputFocus: #38bdf8;
+  --focusRing: rgba(56, 189, 248, 0.24);
+
+  --accent: #38bdf8;
+  --accentHover: #0ea5e9;
+  --accentDim: #0284c7;
+  --accentSoft: rgba(56, 189, 248, 0.14);
+  --accentBorder: rgba(56, 189, 248, 0.38);
+  --accentFg: #06182c;
+
+  --chip: #10b981;
+  --chipHover: #059669;
+  --chipSoft: rgba(16, 185, 129, 0.14);
+  --chipBorder: rgba(16, 185, 129, 0.36);
+  --chipFg: #041d15;
+
+  --success: #4ade80;
+  --successSoft: rgba(74, 222, 128, 0.14);
+  --successBorder: rgba(74, 222, 128, 0.34);
+
+  --warn: #fde047;
+  --warnSoft: rgba(253, 224, 71, 0.14);
+  --warnBorder: rgba(253, 224, 71, 0.36);
+  --warnFg: #06182c;
+
+  --danger: #fda4af;
+  --dangerSoft: rgba(253, 164, 175, 0.14);
+  --dangerBorder: rgba(253, 164, 175, 0.36);
+  --dangerFg: #06182c;
+
+  --sat: #f8fafc;
+  --rh: #7dd3fc;
+  --wb: #fde047;
+  --enth: #fdba74;
+  --vline: #86efac;
+  --dpline: #cbd5e1;
+  --pt: #fde047;
+  --grid: rgba(186, 230, 253, 0.08);
+  --grid2: rgba(186, 230, 253, 0.22);
+  --halo: rgba(11, 36, 68, 0.92);
+  --plotBorder: #7dd3fc;
+
+  --heat: #fda4af;
+  --heatBg: rgba(253, 164, 175, 0.15);
+  --cool: #7dd3fc;
+  --coolBg: rgba(125, 211, 252, 0.15);
+  --humid: #4ade80;
+  --humidBg: rgba(74, 222, 128, 0.15);
+  --dehum: #fde047;
+  --dehumBg: rgba(253, 224, 71, 0.15);
+  --evap: #22d3ee;
+  --evapBg: rgba(34, 211, 238, 0.15);
+  --mix: #fde047;
+  --mixBg: rgba(253, 224, 71, 0.15);
+  --desiccant: #fdba74;
+  --desiccantBg: rgba(253, 186, 116, 0.15);
+  --erv: #5eead4;
+  --ervBg: rgba(94, 234, 212, 0.15);
+  --neutral: #93c5fd;
+  --neutralBg: rgba(147, 197, 253, 0.14);
+
+  --shadow-sm: 0 1px 2px rgba(2, 10, 22, 0.45);
+  --shadow-md: 0 4px 16px rgba(2, 10, 22, 0.55);
+  --shadow-lg: 0 14px 36px rgba(2, 10, 22, 0.68);
+  --shadow: var(--shadow-lg);
+  --shadow2: var(--shadow-md);
+  --backdrop: rgba(4, 14, 28, 0.72);
+
+  --scrollThumb: rgba(125, 211, 252, 0.24);
+  --scrollThumbHover: rgba(125, 211, 252, 0.42);
+  --selectArrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5L6 7.5L9 4.5' fill='none' stroke='%2393c5fd' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+
+  color-scheme: dark;
+}
+
+/* ----------------------------------------------------------------------------
+   6. Theme: `carrier-classic` (Willis Carrier Green/Red Wall Chart Chrome)
+   ---------------------------------------------------------------------------- */
+:root:has(#app[data-theme="carrier-classic"]),
+#app[data-theme="carrier-classic"],
+[data-theme="carrier-classic"] {
+  --bg: #f6faf7;
+  --plotBg: #fcfdfb;
+  --panel: #ffffff;
+  --panel2: #eef5f0;
+  --panelHover: #e1ede5;
+  --panelText: #0f172a;
+
+  --fg: #0f172a;
+  --fgStrong: #052e16;
+  --muted: #37483e;
+  --dim: #46584d;
+
+  --border: rgba(20, 83, 45, 0.12);
+  --borderStrong: rgba(20, 83, 45, 0.24);
+  --glass: rgba(255, 255, 255, 0.90);
+  --glassStrong: rgba(255, 255, 255, 0.97);
+  --glassBorder: rgba(20, 83, 45, 0.16);
+
+  --inputBg: #ffffff;
+  --inputBgHover: #f6faf7;
+  --inputBorder: rgba(20, 83, 45, 0.42);
+  --inputBorderHover: rgba(20, 83, 45, 0.62);
+  --inputFocus: #15803d;
+  --focusRing: rgba(21, 128, 61, 0.18);
+
+  --accent: #166534;
+  --accentHover: #14532d;
+  --accentDim: #052e16;
+  --accentSoft: rgba(21, 128, 61, 0.09);
+  --accentBorder: rgba(21, 128, 61, 0.30);
+  --accentFg: #ffffff;
+
+  --chip: #15803d;
+  --chipHover: #166534;
+  --chipSoft: rgba(21, 128, 61, 0.10);
+  --chipBorder: rgba(21, 128, 61, 0.32);
+  --chipFg: #ffffff;
+
+  --success: #166534;
+  --successSoft: rgba(22, 101, 52, 0.09);
+  --successBorder: rgba(22, 101, 52, 0.30);
+
+  --warn: #92400e;
+  --warnSoft: rgba(146, 64, 14, 0.10);
+  --warnBorder: rgba(146, 64, 14, 0.30);
+  --warnFg: #ffffff;
+
+  --danger: #b91c1c;
+  --dangerSoft: rgba(185, 28, 28, 0.09);
+  --dangerBorder: rgba(185, 28, 28, 0.30);
+  --dangerFg: #ffffff;
+
+  --sat: #0f172a;
+  --rh: #1d4ed8;
+  --wb: #b91c1c;
+  --enth: #dc2626;
+  --vline: #15803d;
+  --dpline: #475569;
+  --pt: #dc2626;
+  --grid: rgba(21, 128, 61, 0.10);
+  --grid2: rgba(21, 128, 61, 0.24);
+  --halo: rgba(252, 253, 251, 0.95);
+  --plotBorder: #14532d;
+
+  --heat: #b91c1c;
+  --heatBg: rgba(185, 28, 28, 0.09);
+  --cool: #1d4ed8;
+  --coolBg: rgba(29, 78, 216, 0.09);
+  --humid: #166534;
+  --humidBg: rgba(22, 101, 52, 0.10);
+  --dehum: #92400e;
+  --dehumBg: rgba(146, 64, 14, 0.10);
+  --evap: #155e75;
+  --evapBg: rgba(21, 94, 117, 0.10);
+  --mix: #854d0e;
+  --mixBg: rgba(133, 77, 14, 0.10);
+  --desiccant: #9a3412;
+  --desiccantBg: rgba(154, 52, 18, 0.10);
+  --erv: #115e59;
+  --ervBg: rgba(17, 94, 89, 0.10);
+  --neutral: #475569;
+  --neutralBg: rgba(71, 85, 105, 0.10);
+
+  --shadow-sm: 0 1px 2px rgba(20, 83, 45, 0.06);
+  --shadow-md: 0 4px 12px rgba(20, 83, 45, 0.08);
+  --shadow-lg: 0 12px 30px rgba(20, 83, 45, 0.12);
+  --shadow: var(--shadow-lg);
+  --shadow2: var(--shadow-md);
+  --backdrop: rgba(5, 46, 22, 0.34);
+
+  --scrollThumb: rgba(20, 83, 45, 0.18);
+  --scrollThumbHover: rgba(20, 83, 45, 0.34);
+  --selectArrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5L6 7.5L9 4.5' fill='none' stroke='%23166534' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+
+  color-scheme: light;
+}
+
+/* ----------------------------------------------------------------------------
+   7. Theme: `trane-hvac` (Trane Engineering White & Deep Navy Chrome)
+   ---------------------------------------------------------------------------- */
+:root:has(#app[data-theme="trane-hvac"]),
+#app[data-theme="trane-hvac"],
+[data-theme="trane-hvac"] {
+  --bg: #f8fafc;
+  --plotBg: #ffffff;
+  --panel: #ffffff;
+  --panel2: #eff4f9;
+  --panelHover: #e2ebf4;
+  --panelText: #0f172a;
+
+  --fg: #0f172a;
+  --fgStrong: #091e36;
+  --muted: #415268;
+  --dim: #506278;
+
+  --border: rgba(15, 59, 110, 0.11);
+  --borderStrong: rgba(15, 59, 110, 0.22);
+  --glass: rgba(255, 255, 255, 0.90);
+  --glassStrong: rgba(255, 255, 255, 0.97);
+  --glassBorder: rgba(15, 59, 110, 0.15);
+
+  --inputBg: #ffffff;
+  --inputBgHover: #f8fafc;
+  --inputBorder: rgba(15, 59, 110, 0.42);
+  --inputBorderHover: rgba(15, 59, 110, 0.62);
+  --inputFocus: #0f3b6e;
+  --focusRing: rgba(15, 59, 110, 0.18);
+
+  --accent: #0f3b6e;
+  --accentHover: #0c2d54;
+  --accentDim: #08203d;
+  --accentSoft: rgba(15, 59, 110, 0.09);
+  --accentBorder: rgba(15, 59, 110, 0.28);
+  --accentFg: #ffffff;
+
+  --chip: #0369a1;
+  --chipHover: #075985;
+  --chipSoft: rgba(3, 105, 161, 0.09);
+  --chipBorder: rgba(3, 105, 161, 0.30);
+  --chipFg: #ffffff;
+
+  --success: #166534;
+  --successSoft: rgba(22, 101, 52, 0.09);
+  --successBorder: rgba(22, 101, 52, 0.30);
+
+  --warn: #9a3412;
+  --warnSoft: rgba(154, 52, 18, 0.10);
+  --warnBorder: rgba(154, 52, 18, 0.30);
+  --warnFg: #ffffff;
+
+  --danger: #b91c1c;
+  --dangerSoft: rgba(185, 28, 28, 0.09);
+  --dangerBorder: rgba(185, 28, 28, 0.30);
+  --dangerFg: #ffffff;
+
+  --sat: #0f3b6e;
+  --rh: #0369a1;
+  --wb: #b45309;
+  --enth: #c2410c;
+  --vline: #3f6212;
+  --dpline: #64748b;
+  --pt: #c2410c;
+  --grid: rgba(15, 59, 110, 0.07);
+  --grid2: rgba(15, 59, 110, 0.18);
+  --halo: rgba(255, 255, 255, 0.95);
+  --plotBorder: #0f3b6e;
+
+  --heat: #9a3412;
+  --heatBg: rgba(154, 52, 18, 0.09);
+  --cool: #0369a1;
+  --coolBg: rgba(3, 105, 161, 0.09);
+  --humid: #166534;
+  --humidBg: rgba(22, 101, 52, 0.10);
+  --dehum: #92400e;
+  --dehumBg: rgba(146, 64, 14, 0.10);
+  --evap: #155e75;
+  --evapBg: rgba(21, 94, 117, 0.10);
+  --mix: #854d0e;
+  --mixBg: rgba(133, 77, 14, 0.10);
+  --desiccant: #9a3412;
+  --desiccantBg: rgba(154, 52, 18, 0.10);
+  --erv: #115e59;
+  --ervBg: rgba(17, 94, 89, 0.10);
+  --neutral: #475569;
+  --neutralBg: rgba(71, 85, 105, 0.10);
+
+  --shadow-sm: 0 1px 2px rgba(15, 59, 110, 0.06);
+  --shadow-md: 0 4px 12px rgba(15, 59, 110, 0.08);
+  --shadow-lg: 0 12px 32px rgba(15, 59, 110, 0.12);
+  --shadow: var(--shadow-lg);
+  --shadow2: var(--shadow-md);
+  --backdrop: rgba(9, 30, 54, 0.36);
+
+  --scrollThumb: rgba(15, 59, 110, 0.18);
+  --scrollThumbHover: rgba(15, 59, 110, 0.34);
+  --selectArrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5L6 7.5L9 4.5' fill='none' stroke='%230f3b6e' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+
+  color-scheme: light;
+}
+
+/* ----------------------------------------------------------------------------
+   8. Theme: `cibse-metric` (UK CIBSE Guide C Parchment & Emerald Chrome)
+   ---------------------------------------------------------------------------- */
+:root:has(#app[data-theme="cibse-metric"]),
+#app[data-theme="cibse-metric"],
+[data-theme="cibse-metric"] {
+  --bg: #f6f8f7;
+  --plotBg: #fbfdfc;
+  --panel: #fbfdfc;
+  --panel2: #ecf2ef;
+  --panelHover: #dfe9e5;
+  --panelText: #1e293b;
+
+  --fg: #1e293b;
+  --fgStrong: #0f172a;
+  --muted: #425450;
+  --dim: #4e615c;
+
+  --border: rgba(30, 41, 59, 0.11);
+  --borderStrong: rgba(30, 41, 59, 0.22);
+  --glass: rgba(251, 253, 252, 0.90);
+  --glassStrong: rgba(251, 253, 252, 0.97);
+  --glassBorder: rgba(30, 41, 59, 0.15);
+
+  --inputBg: #ffffff;
+  --inputBgHover: #f6f8f7;
+  --inputBorder: rgba(30, 41, 59, 0.42);
+  --inputBorderHover: rgba(30, 41, 59, 0.62);
+  --inputFocus: #047857;
+  --focusRing: rgba(4, 120, 87, 0.18);
+
+  --accent: #047857;
+  --accentHover: #065f46;
+  --accentDim: #064e3b;
+  --accentSoft: rgba(4, 120, 87, 0.09);
+  --accentBorder: rgba(4, 120, 87, 0.30);
+  --accentFg: #ffffff;
+
+  --chip: #0f766e;
+  --chipHover: #115e59;
+  --chipSoft: rgba(15, 118, 110, 0.10);
+  --chipBorder: rgba(15, 118, 110, 0.30);
+  --chipFg: #ffffff;
+
+  --success: #065f46;
+  --successSoft: rgba(6, 95, 70, 0.10);
+  --successBorder: rgba(6, 95, 70, 0.30);
+
+  --warn: #854d0e;
+  --warnSoft: rgba(133, 77, 14, 0.10);
+  --warnBorder: rgba(133, 77, 14, 0.30);
+  --warnFg: #ffffff;
+
+  --danger: #9d174d;
+  --dangerSoft: rgba(157, 23, 77, 0.09);
+  --dangerBorder: rgba(157, 23, 77, 0.30);
+  --dangerFg: #ffffff;
+
+  --sat: #1e293b;
+  --rh: #047857;
+  --wb: #0e7490;
+  --enth: #be185d;
+  --vline: #854d0e;
+  --dpline: #475569;
+  --pt: #be185d;
+  --grid: rgba(4, 120, 87, 0.07);
+  --grid2: rgba(4, 120, 87, 0.17);
+  --halo: rgba(251, 253, 252, 0.95);
+  --plotBorder: #1e293b;
+
+  --heat: #9d174d;
+  --heatBg: rgba(157, 23, 77, 0.09);
+  --cool: #155e75;
+  --coolBg: rgba(21, 94, 117, 0.09);
+  --humid: #065f46;
+  --humidBg: rgba(6, 95, 70, 0.10);
+  --dehum: #854d0e;
+  --dehumBg: rgba(133, 77, 14, 0.10);
+  --evap: #115e59;
+  --evapBg: rgba(17, 94, 89, 0.10);
+  --mix: #854d0e;
+  --mixBg: rgba(133, 77, 14, 0.10);
+  --desiccant: #9a3412;
+  --desiccantBg: rgba(154, 52, 18, 0.10);
+  --erv: #065f46;
+  --ervBg: rgba(6, 95, 70, 0.10);
+  --neutral: #475569;
+  --neutralBg: rgba(71, 85, 105, 0.10);
+
+  --shadow-sm: 0 1px 2px rgba(30, 41, 59, 0.05);
+  --shadow-md: 0 4px 12px rgba(30, 41, 59, 0.07);
+  --shadow-lg: 0 12px 30px rgba(30, 41, 59, 0.11);
+  --shadow: var(--shadow-lg);
+  --shadow2: var(--shadow-md);
+  --backdrop: rgba(15, 23, 42, 0.34);
+
+  --scrollThumb: rgba(30, 41, 59, 0.18);
+  --scrollThumbHover: rgba(30, 41, 59, 0.34);
+  --selectArrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5L6 7.5L9 4.5' fill='none' stroke='%23047857' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+
+  color-scheme: light;
+}
+
+/* ----------------------------------------------------------------------------
+   9. Theme: `mollier-din` (European DIN Technical White & Cobalt Chrome)
+   ---------------------------------------------------------------------------- */
+:root:has(#app[data-theme="mollier-din"]),
+#app[data-theme="mollier-din"],
+[data-theme="mollier-din"] {
+  --bg: #f8fafc;
+  --plotBg: #ffffff;
+  --panel: #ffffff;
+  --panel2: #f1f5f9;
+  --panelHover: #e2e8f0;
+  --panelText: #0f172a;
+
+  --fg: #0f172a;
+  --fgStrong: #020617;
+  --muted: #475569;
+  --dim: #556478;
+
+  --border: rgba(15, 23, 42, 0.11);
+  --borderStrong: rgba(15, 23, 42, 0.22);
+  --glass: rgba(255, 255, 255, 0.90);
+  --glassStrong: rgba(255, 255, 255, 0.97);
+  --glassBorder: rgba(15, 23, 42, 0.14);
+
+  --inputBg: #ffffff;
+  --inputBgHover: #f8fafc;
+  --inputBorder: rgba(15, 23, 42, 0.44);
+  --inputBorderHover: rgba(15, 23, 42, 0.64);
+  --inputFocus: #1d4ed8;
+  --focusRing: rgba(29, 78, 216, 0.18);
+
+  --accent: #1d4ed8;
+  --accentHover: #1e40af;
+  --accentDim: #1e3a8a;
+  --accentSoft: rgba(29, 78, 216, 0.09);
+  --accentBorder: rgba(29, 78, 216, 0.30);
+  --accentFg: #ffffff;
+
+  --chip: #0f766e;
+  --chipHover: #115e59;
+  --chipSoft: rgba(15, 118, 110, 0.10);
+  --chipBorder: rgba(15, 118, 110, 0.30);
+  --chipFg: #ffffff;
+
+  --success: #0f766e;
+  --successSoft: rgba(15, 118, 110, 0.09);
+  --successBorder: rgba(15, 118, 110, 0.30);
+
+  --warn: #92400e;
+  --warnSoft: rgba(146, 64, 14, 0.10);
+  --warnBorder: rgba(146, 64, 14, 0.30);
+  --warnFg: #ffffff;
+
+  --danger: #b91c1c;
+  --dangerSoft: rgba(185, 28, 28, 0.09);
+  --dangerBorder: rgba(185, 28, 28, 0.30);
+  --dangerFg: #ffffff;
+
+  --sat: #0f172a;
+  --rh: #1d4ed8;
+  --wb: #0f766e;
+  --enth: #b91c1c;
+  --vline: #3f6212;
+  --dpline: #475569;
+  --pt: #b91c1c;
+  --grid: rgba(15, 23, 42, 0.06);
+  --grid2: rgba(15, 23, 42, 0.16);
+  --halo: rgba(255, 255, 255, 0.95);
+  --plotBorder: #0f172a;
+
+  --heat: #b91c1c;
+  --heatBg: rgba(185, 28, 28, 0.09);
+  --cool: #1d4ed8;
+  --coolBg: rgba(29, 78, 216, 0.09);
+  --humid: #115e59;
+  --humidBg: rgba(17, 94, 89, 0.10);
+  --dehum: #9a3412;
+  --dehumBg: rgba(154, 52, 18, 0.10);
+  --evap: #155e75;
+  --evapBg: rgba(21, 94, 117, 0.10);
+  --mix: #854d0e;
+  --mixBg: rgba(133, 77, 14, 0.10);
+  --desiccant: #9a3412;
+  --desiccantBg: rgba(154, 52, 18, 0.10);
+  --erv: #065f46;
+  --ervBg: rgba(6, 95, 70, 0.10);
+  --neutral: #475569;
+  --neutralBg: rgba(71, 85, 105, 0.10);
+
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.08);
+  --shadow-lg: 0 12px 32px rgba(15, 23, 42, 0.12);
+  --shadow: var(--shadow-lg);
+  --shadow2: var(--shadow-md);
+  --backdrop: rgba(15, 23, 42, 0.34);
+
+  --scrollThumb: rgba(15, 23, 42, 0.18);
+  --scrollThumbHover: rgba(15, 23, 42, 0.34);
+  --selectArrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5L6 7.5L9 4.5' fill='none' stroke='%231d4ed8' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+
+  color-scheme: light;
+}
+
+/* ----------------------------------------------------------------------------
+   10. Theme: `print-bw` (IEEE / ASME Pure Monochrome Publication Chrome)
+   ---------------------------------------------------------------------------- */
+:root:has(#app[data-theme="print-bw"]),
+#app[data-theme="print-bw"],
+[data-theme="print-bw"] {
+  --bg: #ffffff;
+  --plotBg: #ffffff;
+  --panel: #ffffff;
+  --panel2: #f5f5f5;
+  --panelHover: #e8e8e8;
+  --panelText: #111111;
+
+  --fg: #111111;
+  --fgStrong: #000000;
+  --muted: #404040;
+  --dim: #525252;
+
+  --border: rgba(0, 0, 0, 0.14);
+  --borderStrong: rgba(0, 0, 0, 0.28);
+  --glass: rgba(255, 255, 255, 0.92);
+  --glassStrong: rgba(255, 255, 255, 0.98);
+  --glassBorder: rgba(0, 0, 0, 0.18);
+
+  --inputBg: #ffffff;
+  --inputBgHover: #fafafa;
+  --inputBorder: rgba(0, 0, 0, 0.48);
+  --inputBorderHover: rgba(0, 0, 0, 0.72);
+  --inputFocus: #111111;
+  --focusRing: rgba(0, 0, 0, 0.16);
+
+  --accent: #262626;
+  --accentHover: #111111;
+  --accentDim: #000000;
+  --accentSoft: rgba(0, 0, 0, 0.07);
+  --accentBorder: rgba(0, 0, 0, 0.32);
+  --accentFg: #ffffff;
+
+  --chip: #404040;
+  --chipHover: #262626;
+  --chipSoft: rgba(0, 0, 0, 0.06);
+  --chipBorder: rgba(0, 0, 0, 0.28);
+  --chipFg: #ffffff;
+
+  --success: #262626;
+  --successSoft: rgba(0, 0, 0, 0.06);
+  --successBorder: rgba(0, 0, 0, 0.28);
+
+  --warn: #404040;
+  --warnSoft: rgba(0, 0, 0, 0.07);
+  --warnBorder: rgba(0, 0, 0, 0.30);
+  --warnFg: #ffffff;
+
+  --danger: #111111;
+  --dangerSoft: rgba(0, 0, 0, 0.08);
+  --dangerBorder: rgba(0, 0, 0, 0.36);
+  --dangerFg: #ffffff;
+
+  --sat: #000000;
+  --rh: #262626;
+  --wb: #404040;
+  --enth: #171717;
+  --vline: #525252;
+  --dpline: #737373;
+  --pt: #000000;
+  --grid: rgba(0, 0, 0, 0.06);
+  --grid2: rgba(0, 0, 0, 0.18);
+  --halo: rgba(255, 255, 255, 0.98);
+  --plotBorder: #000000;
+
+  --heat: #111111;
+  --heatBg: rgba(0, 0, 0, 0.08);
+  --cool: #262626;
+  --coolBg: rgba(0, 0, 0, 0.07);
+  --humid: #404040;
+  --humidBg: rgba(0, 0, 0, 0.06);
+  --dehum: #262626;
+  --dehumBg: rgba(0, 0, 0, 0.07);
+  --evap: #404040;
+  --evapBg: rgba(0, 0, 0, 0.06);
+  --mix: #171717;
+  --mixBg: rgba(0, 0, 0, 0.08);
+  --desiccant: #262626;
+  --desiccantBg: rgba(0, 0, 0, 0.07);
+  --erv: #404040;
+  --ervBg: rgba(0, 0, 0, 0.06);
+  --neutral: #525252;
+  --neutralBg: rgba(0, 0, 0, 0.05);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 3px 10px rgba(0, 0, 0, 0.09);
+  --shadow-lg: 0 10px 26px rgba(0, 0, 0, 0.14);
+  --shadow: var(--shadow-lg);
+  --shadow2: var(--shadow-md);
+  --backdrop: rgba(0, 0, 0, 0.40);
+
+  --scrollThumb: rgba(0, 0, 0, 0.22);
+  --scrollThumbHover: rgba(0, 0, 0, 0.42);
+  --selectArrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5L6 7.5L9 4.5' fill='none' stroke='%23262626' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+
+  color-scheme: light;
+}

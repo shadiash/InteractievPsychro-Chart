@@ -1,0 +1,1607 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PSYCHRO·ULTRA 3.0 — ASHRAE Interactive Psychrometric Engineering Studio</title>
+  <meta name="description" content="Engineering-grade ASHRAE 2021 interactive psychrometric chart studio with real-time PMV/PPD comfort zones, Givoni bioclimatic chart, ASHRAE TC 9.9 data center envelopes, TMY/EPW weather analytics, AHU/ERV/Evaporative/Desiccant cycle wizards, ADP/BPF coil analysis, and vector SVG/PNG/HTML/DOCX reporting." />
+  <meta name="keywords" content="psychrometric chart, ASHRAE 2021, HVAC, PMV PPD, ASHRAE 55, ASHRAE 62.1, TC 9.9, AHU, ERV, evaporative cooling, desiccant, enthalpy, humidity ratio, wet bulb, dew point, TMY, EPW" />
+  <meta name="author" content="Shadi Alashkar &amp; PsychroChart Ultra 3.0 Contributors" />
+  <meta name="theme-color" content="#0c1017" />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230c1017'/%3E%3Cpath d='M5 25 C12 24 19 18 26 6' stroke='%2322d3ee' stroke-width='2.8' fill='none' stroke-linecap='round'/%3E%3Ccircle cx='17' cy='18' r='3' fill='%23f43f5e'/%3E%3Ccircle cx='24' cy='13' r='2.5' fill='%2310b981'/%3E%3Cline x1='17' y1='18' x2='24' y2='13' stroke='%2338bdf8' stroke-width='1.8'/%3E%3C/svg%3E" />
+  <!-- INLINE_CSS -->
+</head>
+<body>
+<div id="app" data-theme="studio-dark">
+  <h1 class="sr-only">PSYCHRO·ULTRA 3.0 — ASHRAE Interactive Psychrometric Engineering Studio</h1>
+
+  <!-- ====================================================================
+       TOP COMMAND BAR
+       ==================================================================== -->
+  <header id="topBar" role="banner">
+    <button type="button" class="tbtn icon" id="btnToggleLeft" title="Toggle Left Panel" aria-label="Toggle Left Panel">◧</button>
+    <div class="logo" id="logoClick" role="button" tabindex="0" title="About PSYCHRO·ULTRA 3.0">
+      <span class="logo-mark" aria-hidden="true">▲</span> PSYCHRO·ULTRA <span class="logo-ver">3.0</span>
+    </div>
+    <div class="sep" aria-hidden="true"></div>
+
+    <div class="topCtrl">
+      <label for="projName">Project</label>
+      <input id="projName" type="text" value="Summer AHU Design" placeholder="Project name" title="Project Name" aria-label="Project Name" />
+    </div>
+    <div class="topCtrl">
+      <label for="projVer">Ver</label>
+      <input id="projVer" type="text" value="v1.0" placeholder="v1" title="Version" aria-label="Project Version" />
+    </div>
+    <div class="sep" aria-hidden="true"></div>
+
+    <div class="topCtrl">
+      <label for="selPreset">Preset</label>
+      <select id="selPreset" title="Load Engineering HVAC Preset" aria-label="HVAC Design Preset">
+        <option value="">Presets…</option>
+        <option value="summer-ahu">Summer AHU Cooling &amp; Reheat</option>
+        <option value="doas-erv">DOAS + Energy Recovery (ERV)</option>
+        <option value="winter-humid">Winter Heating &amp; Humidification</option>
+        <option value="evap-2stage">Two-Stage Evaporative Cooling</option>
+        <option value="desiccant-cleanroom">Desiccant Dehumidification</option>
+        <option value="datacenter-econ">Data Center Economizer (TC 9.9)</option>
+      </select>
+    </div>
+    <div class="topCtrl">
+      <label for="selTheme">Theme</label>
+      <select id="selTheme" title="Visual Theme &amp; Chart Standard" aria-label="Visual Theme">
+        <optgroup label="Famous Engineering Standards">
+          <option value="ashrae-classic">ASHRAE Handbook</option>
+          <option value="carrier-classic">Carrier Classic</option>
+          <option value="trane-hvac">Trane HVAC</option>
+          <option value="cibse-metric">CIBSE Metric</option>
+          <option value="mollier-din">Mollier / DIN</option>
+          <option value="print-bw">Print B&amp;W (Paper)</option>
+        </optgroup>
+        <optgroup label="Studio &amp; CAD Workspaces">
+          <option value="studio-dark" selected>Studio Dark</option>
+          <option value="drafting-light">Drafting Light</option>
+          <option value="blueprint-cad">Blueprint CAD</option>
+          <option value="custom">Custom Studio…</option>
+        </optgroup>
+      </select>
+      <button type="button" class="tbtn icon" id="btnEditCustomTheme" title="Edit Custom Theme Studio" aria-label="Edit Custom Theme Studio" hidden>🎨</button>
+    </div>
+    <div class="topCtrl">
+      <label for="selUnits">Units</label>
+      <select id="selUnits" title="Unit System (U)" aria-label="Unit System">
+        <option value="SI" selected>SI (°C)</option>
+        <option value="IP">IP (°F)</option>
+      </select>
+    </div>
+    <div class="topCtrl topCtrl-baro" title="Active Barometric Pressure &amp; Altitude">
+      <span class="topCtrl-lbl" aria-hidden="true">Atm</span>
+      <span id="pUsed" class="baro-badge" aria-label="Active Barometric Pressure and Altitude">101.325 kPa (0 m)</span>
+    </div>
+
+    <div class="topActions" role="toolbar" aria-label="Project and Export Actions">
+      <button type="button" class="tbtn" id="btnUndo" title="Undo (Ctrl+Z)" aria-label="Undo">↩</button>
+      <button type="button" class="tbtn" id="btnRedo" title="Redo (Ctrl+Y)" aria-label="Redo">↪</button>
+      <button type="button" class="tbtn" id="btnCmdPalette" title="Command Palette (Ctrl+K)" aria-label="Command Palette"><span>Commands</span><kbd>Ctrl+K</kbd></button>
+      <div class="sep" aria-hidden="true"></div>
+      <button type="button" class="tbtn" id="btnSave" title="Save Project JSON (Ctrl+S)" aria-label="Save Project JSON">💾</button>
+      <button type="button" class="tbtn" id="btnLoad" title="Load Project JSON" aria-label="Load Project JSON">📂</button>
+      <input id="fileLoad" type="file" accept=".json,application/json" style="display:none" aria-hidden="true" />
+      <button type="button" class="tbtn" id="btnShareUrl" title="Copy Shareable Project URL" aria-label="Share URL">🔗</button>
+      <div class="sep" aria-hidden="true"></div>
+      <button type="button" class="tbtn" id="btnExportPng" title="Export HiDPI PNG Chart" aria-label="Export PNG">PNG</button>
+      <button type="button" class="tbtn" id="btnExportSvg" title="Export Vector SVG Chart" aria-label="Export SVG">SVG</button>
+      <button type="button" class="tbtn" id="btnExportCsv" title="Export Points &amp; Processes CSV" aria-label="Export CSV">CSV</button>
+      <button type="button" class="tbtn success" id="btnReport" title="Generate Engineering Report (HTML / DOCX / SVG / CSV)" aria-label="Generate Report">Report</button>
+      <div class="sep" aria-hidden="true"></div>
+      <button type="button" class="tbtn" id="btnGlossary" title="ASHRAE Equations &amp; Glossary" aria-label="Glossary">📖</button>
+      <button type="button" class="tbtn" id="btnShortcuts" title="Keyboard Shortcuts (?)" aria-label="Keyboard Shortcuts">⌨</button>
+      <button type="button" class="tbtn" id="btnAbout" title="About PSYCHRO·ULTRA 3.0" aria-label="About">ⓘ</button>
+    </div>
+    <button type="button" class="tbtn icon" id="btnToggleRight" title="Toggle Right Panel" aria-label="Toggle Right Panel">◨</button>
+  </header>
+
+  <!-- ====================================================================
+       LEFT PANEL — ATMOSPHERE / POINTS / CALCULATOR
+       ==================================================================== -->
+  <aside id="leftPanel" class="panel" aria-label="Atmosphere, Points, and Calculator">
+    <div class="panelTabs" role="tablist" aria-label="Left Inspector Tabs">
+      <button type="button" id="tabBtnAtmo" role="tab" aria-selected="true" aria-controls="tabAtmo" class="active" data-tab="tabAtmo">Atmosphere</button>
+      <button type="button" id="tabBtnPoints" role="tab" aria-selected="false" aria-controls="tabPoints" data-tab="tabPoints">Points</button>
+      <button type="button" id="tabBtnCalc" role="tab" aria-selected="false" aria-controls="tabCalc" data-tab="tabCalc">Calculator</button>
+    </div>
+
+    <!-- TAB 1: ATMOSPHERE, CLIMATE, RANGE, VISUALS, COMFORT & SHR -->
+    <div id="tabAtmo" class="tabContent active" role="tabpanel" aria-labelledby="tabBtnAtmo">
+      <div class="section-title">Atmospheric Conditions</div>
+      <div class="row">
+        <div class="field">
+          <label for="alt" title="Site elevation above sea level (computes ASHRAE standard barometric pressure)">Altitude</label>
+          <div class="input-group">
+            <input id="alt" type="number" value="0" step="1" min="-500" max="9000" />
+            <select id="altUnit" aria-label="Altitude Unit">
+              <option value="m" selected>m</option>
+              <option value="ft">ft</option>
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <label for="pOverride" title="Override standard altitude barometric pressure (kPa or psia)">Baro Override</label>
+          <div class="input-group">
+            <input id="pOverride" type="number" step="any" min="30" max="115" placeholder="Auto" />
+            <select id="pUnit" aria-label="Pressure Unit">
+              <option value="kPa" selected>kPa</option>
+              <option value="psi">psia</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="row">
+        <button type="button" id="applyAtm" class="btn chip full">Apply Atmospheric Pressure</button>
+      </div>
+
+      <div class="section-title">ASHRAE Climate Cities &amp; 8760h Weather</div>
+      <div class="row">
+        <div class="field full">
+          <label for="citySelect">Global Design City</label>
+          <select id="citySelect">
+            <option value="">Select ASHRAE city…</option>
+          </select>
+        </div>
+      </div>
+      <div class="row">
+        <button type="button" id="btnPlotCity" class="btn chip">Plot Design Pts</button>
+        <button type="button" id="btnLoadCityTMY" class="btn accent">Load 8760h TMY</button>
+      </div>
+      <div id="epwDropZone" class="dropZone" role="button" tabindex="0" title="Drop an EnergyPlus .EPW or hourly .CSV weather file">
+        <span class="dz-title">☁ Drop .EPW / .CSV Weather File</span>
+        <span class="dz-sub">or click to browse hourly 8760h climate data</span>
+        <input id="epwFileInput" type="file" accept=".epw,.csv,.txt" style="display:none" aria-hidden="true" />
+      </div>
+      <div id="weatherStats" class="weather-stats"></div>
+      <div class="row3">
+        <div class="field">
+          <label for="weatherMode">Display</label>
+          <select id="weatherMode">
+            <option value="heatmap" selected>Density</option>
+            <option value="scatter">Scatter</option>
+            <option value="both">Both</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="weatherOpacity">Opacity</label>
+          <input id="weatherOpacity" type="range" min="0.1" max="1" step="0.05" value="0.65" />
+        </div>
+        <div class="field field-btn">
+          <button type="button" id="btnClearWeather" class="btn danger">Clear</button>
+        </div>
+      </div>
+
+      <div class="section-title">Chart Range</div>
+      <div class="row3">
+        <div class="field">
+          <label for="tMin">Tdb Min</label>
+          <input id="tMin" type="number" value="-10" step="any" />
+        </div>
+        <div class="field">
+          <label for="tMax">Tdb Max</label>
+          <input id="tMax" type="number" value="55" step="any" />
+        </div>
+        <div class="field">
+          <label for="wMax">W Max</label>
+          <input id="wMax" type="number" value="30" step="any" min="2" max="560" />
+        </div>
+      </div>
+      <div class="row">
+        <button type="button" id="btnRedraw" class="btn accent full">Apply Range</button>
+      </div>
+
+      <details class="panel-acc" open>
+        <summary class="section-title">Grid &amp; Curves</summary>
+        <div class="row">
+          <div class="field">
+            <label for="density">Curve Quality</label>
+            <select id="density">
+              <option value="fine">Fine</option>
+              <option value="normal" selected>Normal</option>
+              <option value="fast">Fast</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="rhStep">RH Step (%)</label>
+            <input id="rhStep" type="number" value="10" step="5" min="5" max="25" />
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label for="labelMode">Curve Labels</label>
+            <select id="labelMode">
+              <option value="none">None</option>
+              <option value="end">Ends</option>
+              <option value="mid" selected>Mid</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="labelPx">Label Size (px)</label>
+            <input id="labelPx" type="number" value="11" min="8" max="18" step="1" />
+          </div>
+        </div>
+        <div class="row chk-group">
+          <label class="chk-row full" for="chkEnthRuler" title="Toggle diagonal specific enthalpy scale rail along the saturation curve">
+            <input id="chkEnthRuler" type="checkbox" checked />
+            <span>Enthalpy Protractor Ruler</span>
+          </label>
+        </div>
+
+        <div class="sub-group-hdr">Exact Axis Style</div>
+        <div class="row">
+          <div class="field">
+            <label for="axisFrame" title="Plot border frame style: Full Box, ASHRAE Open (bottom/right + saturation), or CAD Ticks">Axis Frame</label>
+            <select id="axisFrame">
+              <option value="full-box" selected>Full Box</option>
+              <option value="ashrae-open">ASHRAE Open</option>
+              <option value="cad-ticks">CAD Ticks</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="axisTickDir" title="Tick mark orientation relative to chart border axes">Tick Marks</label>
+            <select id="axisTickDir">
+              <option value="out" selected>Outward</option>
+              <option value="in">Inward</option>
+              <option value="cross">Cross</option>
+            </select>
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label for="axisYSide" title="Vertical humidity ratio (W) axis scale placement">W-Axis Side</label>
+            <select id="axisYSide">
+              <option value="both" selected>Both</option>
+              <option value="right">Right Only</option>
+              <option value="left">Left Only</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="axisRulerStyle" title="Enthalpy protractor rail geometry along the saturation curve">Enthalpy Ruler</label>
+            <select id="axisRulerStyle">
+              <option value="ashrae-rail" selected>ASHRAE Rail</option>
+              <option value="carrier-dual">Carrier Dual</option>
+              <option value="minimal">Minimal</option>
+            </select>
+          </div>
+        </div>
+        <div class="row chk-group">
+          <label class="chk-row full" for="chkAxisSubTicks" title="Render fine subdivision ticks between major Tdb and W scale intervals">
+            <input id="chkAxisSubTicks" type="checkbox" checked />
+            <span>Minor Axis Sub-Ticks</span>
+          </label>
+          <label class="chk-row full" for="chkDualPvScale" title="Display secondary partial water vapor pressure (Pv) scale along the humidity axis">
+            <input id="chkDualPvScale" type="checkbox" />
+            <span>Secondary Vapor Pressure (Pv) Scale</span>
+          </label>
+        </div>
+
+        <div class="sub-group-hdr">Process Trend Style</div>
+        <div class="row">
+          <div class="field">
+            <label for="trendArrowStyle" title="Directional arrowhead geometry on HVAC process trend vectors">Process Arrows</label>
+            <select id="trendArrowStyle">
+              <option value="cad-chevron" selected>CAD Chevron</option>
+              <option value="solid-triangle">Solid Triangle</option>
+              <option value="open-vector">Open Vector</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="trendLineWeight" title="Stroke weight profile for process trend vectors and cooling curves">Line Weight</label>
+            <select id="trendLineWeight">
+              <option value="fine">Fine</option>
+              <option value="standard" selected>Standard</option>
+              <option value="bold">Bold</option>
+            </select>
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label for="trendPointMarker" title="Marker symbol drawn for plotted air state points">Point Marker</label>
+            <select id="trendPointMarker">
+              <option value="precision-ring" selected>Precision Ring</option>
+              <option value="crosshair-circle">CAD Crosshair</option>
+              <option value="solid-dot">Solid Dot</option>
+              <option value="diamond">Diamond</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="trendBadgeStyle" title="Information density for process vector callout badges">Process Badges</label>
+            <select id="trendBadgeStyle">
+              <option value="detailed" selected>Detailed</option>
+              <option value="pill">Compact Pill</option>
+              <option value="inline-minimal">Minimal (S1)</option>
+            </select>
+          </div>
+        </div>
+        <div class="row chk-group">
+          <label class="chk-row full" for="chkTrendDecomp" title="Draw dashed sensible (ΔT horizontal) and latent (ΔW vertical) component legs on inclined processes">
+            <input id="chkTrendDecomp" type="checkbox" />
+            <span>Sensible / Latent (ΔT/ΔW) Legs</span>
+          </label>
+        </div>
+      </details>
+
+      <details class="panel-acc" open>
+        <summary class="section-title">ASHRAE 55 Comfort &amp; Zones</summary>
+        <div class="row">
+          <div class="field">
+            <label for="comfortMode">Comfort Zone</label>
+            <select id="comfortMode">
+              <option value="none">None</option>
+              <option value="summer">Summer Only</option>
+              <option value="winter">Winter Only</option>
+              <option value="both" selected>Summer + Winter</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="pmvLimit" title="ASHRAE 55 Predicted Mean Vote comfort threshold (±0.5 ≈ 10% PPD)">PMV Limit (±)</label>
+            <input id="pmvLimit" type="number" value="0.5" step="0.05" min="0.2" max="1.0" />
+          </div>
+        </div>
+        <div class="row3">
+          <div class="field">
+            <label for="pmvCloSummer" title="Summer clothing insulation in clo (0.50 = light indoor attire)">Sum Clo</label>
+            <input id="pmvCloSummer" type="number" value="0.50" step="0.05" min="0.2" max="1.5" />
+          </div>
+          <div class="field">
+            <label for="pmvCloWinter" title="Winter clothing insulation in clo (1.00 = indoor winter attire)">Win Clo</label>
+            <input id="pmvCloWinter" type="number" value="1.00" step="0.05" min="0.4" max="2.0" />
+          </div>
+          <div class="field">
+            <label for="pmvMet" title="Metabolic activity rate in met (1.1 = seated office work)">Met</label>
+            <input id="pmvMet" type="number" value="1.1" step="0.1" min="0.7" max="4.0" />
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label for="pmvVair" title="Relative indoor air velocity around occupants (m/s)">Air Vel (m/s)</label>
+            <input id="pmvVair" type="number" value="0.10" step="0.05" min="0.05" max="2.0" />
+          </div>
+          <div class="field">
+            <label for="pmvMrtOff" title="Mean Radiant Temperature offset relative to dry-bulb temperature (Tr − Tdb)">MRT Offset (°C)</label>
+            <input id="pmvMrtOff" type="number" value="0" step="0.5" min="-20" max="20" />
+          </div>
+        </div>
+        <div class="row chk-group">
+          <label class="chk-row" for="chkGivoni" title="Givoni Bioclimatic passive cooling, thermal mass, and natural ventilation zones">
+            <input id="chkGivoni" type="checkbox" />
+            <span>Givoni Bioclimatic Zones</span>
+          </label>
+          <label class="chk-row" for="chkDataCenter" title="ASHRAE TC 9.9 Data Center Recommended and Allowable A1–A4 IT thermal envelopes">
+            <input id="chkDataCenter" type="checkbox" />
+            <span>ASHRAE TC 9.9 Data Center</span>
+          </label>
+        </div>
+      </details>
+
+      <details class="panel-acc">
+        <summary class="section-title">SHR Reference Protractor</summary>
+        <div class="row3">
+          <div class="field">
+            <label for="shrShow" title="Sensible Heat Ratio (Qs / Qt) reference protractor guide line">SHR Guide</label>
+            <select id="shrShow">
+              <option value="off" selected>Off</option>
+              <option value="on">On</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="shrVal" title="Target Sensible Heat Ratio slope (SHR = Qs / Qt)">SHR Value</label>
+            <input id="shrVal" type="number" value="0.75" step="0.01" min="-2" max="2" />
+          </div>
+          <div class="field">
+            <label for="shrRefPt">Ref Point</label>
+            <select id="shrRefPt">
+              <option value="">Center</option>
+            </select>
+          </div>
+        </div>
+      </details>
+    </div>
+
+    <!-- TAB 2: STATE POINTS MANAGER -->
+    <div id="tabPoints" class="tabContent" role="tabpanel" aria-labelledby="tabBtnPoints">
+      <div class="section-title">Add State Point (Any 2 of 8)</div>
+      <div class="row">
+        <div class="field">
+          <label for="inMode1">Property 1</label>
+          <select id="inMode1">
+            <option value="Tdb" selected>Tdb (Dry Bulb)</option>
+            <option value="Twb">Twb (Wet Bulb)</option>
+            <option value="Tdp">Tdp (Dew Point)</option>
+            <option value="RH">RH (%)</option>
+            <option value="W">W (Humidity Ratio)</option>
+            <option value="h">h (Enthalpy)</option>
+            <option value="v">v (Sp. Volume)</option>
+            <option value="Pv">Pv (Vapor Press.)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="inVal1">Value 1</label>
+          <input id="inVal1" type="number" value="26" step="0.1" />
+        </div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label for="inMode2">Property 2</label>
+          <select id="inMode2">
+            <option value="Tdb">Tdb (Dry Bulb)</option>
+            <option value="Twb">Twb (Wet Bulb)</option>
+            <option value="Tdp">Tdp (Dew Point)</option>
+            <option value="RH" selected>RH (%)</option>
+            <option value="W">W (Humidity Ratio)</option>
+            <option value="h">h (Enthalpy)</option>
+            <option value="v">v (Sp. Volume)</option>
+            <option value="Pv">Pv (Vapor Press.)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="inVal2">Value 2</label>
+          <input id="inVal2" type="number" value="50" step="0.1" />
+        </div>
+      </div>
+      <div class="row3">
+        <div class="field">
+          <label for="inLbl">Label</label>
+          <input id="inLbl" type="text" value="" placeholder="Auto (P1…)" />
+        </div>
+        <div class="field">
+          <label for="inColor">Color</label>
+          <input id="inColor" type="color" value="#f43f5e" />
+        </div>
+        <div class="field">
+          <label for="connect">Auto-Link</label>
+          <select id="connect">
+            <option value="no" selected>No</option>
+            <option value="yes">Link Prev</option>
+          </select>
+        </div>
+      </div>
+      <div class="row">
+        <button type="button" id="addPt" class="btn chip full">+ Add State Point</button>
+      </div>
+
+      <div class="section-title">Active State Points</div>
+      <div class="ptEditModeWrap">
+        <label for="ptTblEditMode">Inline Edit</label>
+        <select id="ptTblEditMode">
+          <option value="RH" selected>Tdb + RH%</option>
+          <option value="Twb">Tdb + Twb</option>
+          <option value="W">Tdb + W</option>
+          <option value="Tdp">Tdb + Tdp</option>
+        </select>
+      </div>
+      <div class="table-scroll">
+        <table class="ptable" id="ptsTbl">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Label</th>
+              <th>Tdb</th>
+              <th id="ptTblSecondHdr">RH%</th>
+              <th>W</th>
+              <th aria-label="Actions"></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div class="section-title">Bulk CSV Import</div>
+      <div class="field">
+        <label for="bulkCSV">CSV Rows (Tdb, RH%, Label — one per line)</label>
+        <textarea id="bulkCSV" rows="3" placeholder="35, 55, OA&#10;24, 50, RA&#10;13, 92, SA"></textarea>
+      </div>
+      <div class="row">
+        <button type="button" id="bulkImport" class="btn accent">Import CSV</button>
+        <button type="button" id="btnClearPts" class="btn danger">Clear All</button>
+      </div>
+    </div>
+
+    <!-- TAB 3: UNIVERSAL CALCULATOR & PSYCHROMETRIC TABLE -->
+    <div id="tabCalc" class="tabContent" role="tabpanel" aria-labelledby="tabBtnCalc">
+      <div class="section-title">Universal Any-2-of-8 Solver</div>
+      <div class="row">
+        <div class="field">
+          <label for="calcIn1">Input 1</label>
+          <select id="calcIn1">
+            <option value="Tdb" selected>Tdb (Dry Bulb)</option>
+            <option value="Twb">Twb (Wet Bulb)</option>
+            <option value="Tdp">Tdp (Dew Point)</option>
+            <option value="RH">RH (%)</option>
+            <option value="W">W (Humidity Ratio)</option>
+            <option value="h">h (Enthalpy)</option>
+            <option value="v">v (Sp. Volume)</option>
+            <option value="Pv">Pv (Vapor Press.)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="calcV1">Value 1</label>
+          <input id="calcV1" type="number" value="26" step="0.1" />
+        </div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label for="calcIn2">Input 2</label>
+          <select id="calcIn2">
+            <option value="Tdb">Tdb (Dry Bulb)</option>
+            <option value="Twb">Twb (Wet Bulb)</option>
+            <option value="Tdp">Tdp (Dew Point)</option>
+            <option value="RH" selected>RH (%)</option>
+            <option value="W">W (Humidity Ratio)</option>
+            <option value="h">h (Enthalpy)</option>
+            <option value="v">v (Sp. Volume)</option>
+            <option value="Pv">Pv (Vapor Press.)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="calcV2">Value 2</label>
+          <input id="calcV2" type="number" value="50" step="0.1" />
+        </div>
+      </div>
+      <div class="row">
+        <button type="button" id="calcBtn" class="btn chip full">Calculate State</button>
+      </div>
+      <div id="calcResults" class="calcResult"></div>
+      <div id="calcComfortSummary" class="comfort-summary"></div>
+      <div class="row">
+        <button type="button" id="calcAddPt" class="btn accent full">+ Plot Calculated Point</button>
+      </div>
+
+      <div class="section-title">Saturation Property Table</div>
+      <div class="row3">
+        <div class="field">
+          <label for="tblFrom">From T</label>
+          <input id="tblFrom" type="number" value="0" step="1" />
+        </div>
+        <div class="field">
+          <label for="tblTo">To T</label>
+          <input id="tblTo" type="number" value="50" step="1" />
+        </div>
+        <div class="field">
+          <label for="tblStep">Step</label>
+          <input id="tblStep" type="number" value="5" step="0.5" min="0.5" max="20" />
+        </div>
+      </div>
+      <div class="row">
+        <button type="button" id="tblGen" class="btn accent">Generate Table</button>
+        <button type="button" id="tblCopyCsv" class="btn">Copy CSV</button>
+      </div>
+      <div id="psyTableWrap" class="table-scroll" style="max-height:280px;margin-top:6px"></div>
+    </div>
+  </aside>
+
+  <!-- RESIZE SPLITTERS -->
+  <div id="splitL" class="split" role="separator" tabindex="0" aria-orientation="vertical" aria-label="Resize Left Panel" aria-valuemin="240" aria-valuemax="560" aria-valuenow="360"></div>
+  <div id="splitR" class="split" role="separator" tabindex="0" aria-orientation="vertical" aria-label="Resize Right Panel" aria-valuemin="260" aria-valuemax="600" aria-valuenow="396"></div>
+
+  <!-- ====================================================================
+       INTERACTIVE DUAL-CANVAS CHART WORKSPACE
+       ==================================================================== -->
+  <main id="chartWrap" role="main" aria-label="Interactive Psychrometric Chart Workspace">
+    <canvas id="cvBase" role="img" aria-label="Psychrometric Chart Grid and Curves"></canvas>
+    <canvas id="cvOverlay" aria-label="Interactive Psychrometric State Points and Processes"></canvas>
+    <div id="yAxisLabel" aria-hidden="true">Humidity Ratio, W (g/kg dry air)</div>
+
+    <div id="chartToolbar" role="toolbar" aria-label="Chart Layers and Tools">
+      <div id="layerToggles" aria-label="Chart Layer Toggles"></div>
+      <div id="chartActions" aria-label="Chart Interactive Tools">
+        <button type="button" id="btnToolSelect" class="active" title="Select / Drag / Pan Tool (V)">Select</button>
+        <button type="button" id="btnToolProcess" title="Draw Process Between Two Points (P)">Process</button>
+        <button type="button" id="btnToolMix" title="Mix Two Air Streams (M)">Mix</button>
+        <button type="button" id="btnToolMeasure" title="Measure ΔT / ΔW / Δh / SHR Between Points (L)">Measure</button>
+        <button type="button" id="btnToolAnnotate" title="Place Engineering Callout Annotation (N)">Annotate</button>
+        <button type="button" id="btnToolBoxZoom" title="Drag Rectangle to Zoom (B)">BoxZoom</button>
+        <span class="tb-sep" aria-hidden="true"></span>
+        <button type="button" id="btnFitPoints" title="Fit All Points (F)">Fit</button>
+        <button type="button" id="btnFitScreen" title="Reset View to Default Range (R)">Reset</button>
+        <button type="button" id="btnZoomIn" title="Zoom In (+)" aria-label="Zoom In">+</button>
+        <button type="button" id="btnZoomOut" title="Zoom Out (−)" aria-label="Zoom Out">−</button>
+      </div>
+    </div>
+
+    <div id="modeBanner" class="mode-banner" role="status" aria-live="polite"></div>
+    <div id="scenarioBanner" class="scenario-banner" role="status" aria-live="polite"></div>
+    <div id="hud" class="hidden" role="status" aria-live="off">—</div>
+  </main>
+
+  <!-- ====================================================================
+       RIGHT PANEL — PROCESSES / SYSTEMS / COIL & VENT / MIX & SCENARIOS
+       ==================================================================== -->
+  <aside id="rightPanel" class="panel" aria-label="Processes, HVAC Systems, Coil, and Mixing">
+    <div class="panelTabs" role="tablist" aria-label="Right Inspector Tabs">
+      <button type="button" id="tabBtnProc" role="tab" aria-selected="true" aria-controls="tabProc" class="active" data-tab="tabProc">Processes</button>
+      <button type="button" id="tabBtnSystems" role="tab" aria-selected="false" aria-controls="tabSystems" data-tab="tabSystems">Systems</button>
+      <button type="button" id="tabBtnCoil" role="tab" aria-selected="false" aria-controls="tabCoil" data-tab="tabCoil">Coil/Vent</button>
+      <button type="button" id="tabBtnMix" role="tab" aria-selected="false" aria-controls="tabMix" data-tab="tabMix">Mix/Scen</button>
+    </div>
+
+    <!-- TAB 1: PROCESSES & ENERGY BALANCE -->
+    <div id="tabProc" class="tabContent active" role="tabpanel" aria-labelledby="tabBtnProc">
+      <div class="section-title">Create Process</div>
+      <div class="row3">
+        <div class="field">
+          <label for="procA">Start Pt</label>
+          <select id="procA"></select>
+        </div>
+        <div class="field">
+          <label for="procB">End Pt</label>
+          <select id="procB"></select>
+        </div>
+        <div class="field field-btn">
+          <button type="button" id="procAdd" class="btn chip">+ Add</button>
+        </div>
+      </div>
+
+      <div class="section-title">Active Processes</div>
+      <div id="processCards"></div>
+      <div id="cycleSummary" class="cycle-summary"></div>
+
+      <div class="section-title">Selected Process Analysis</div>
+      <div class="row">
+        <div class="field">
+          <label for="procSel">Process</label>
+          <select id="procSel"></select>
+        </div>
+        <div class="field">
+          <label for="flowVal">Airflow</label>
+          <div class="input-group">
+            <input id="flowVal" type="number" step="10" value="1000" min="0" />
+            <select id="flowUnit" aria-label="Airflow Unit">
+              <option value="Lps" selected>L/s</option>
+              <option value="kgps">kg/s</option>
+              <option value="m3h">m³/h</option>
+              <option value="cfm">CFM</option>
+              <option value="lbps">lb/s</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="row3">
+        <button type="button" id="procRev" class="btn" title="Reverse process direction">⇄ Reverse</button>
+        <button type="button" id="procCurveToggle" class="btn" title="Toggle curved cooling-coil path">⌒ Curve</button>
+        <button type="button" id="procDel" class="btn danger" title="Delete selected process">Delete</button>
+      </div>
+
+      <div class="row3" style="margin-top:8px">
+        <div class="metric" title="Dry-Bulb Temperature Change"><span class="lbl">ΔT</span><span class="val" id="mDT">—</span></div>
+        <div class="metric" title="Humidity Ratio Change"><span class="lbl">ΔW</span><span class="val" id="mDW">—</span></div>
+        <div class="metric" title="Specific Enthalpy Change"><span class="lbl">Δh</span><span class="val" id="mDh">—</span></div>
+      </div>
+      <div class="row3" style="margin-top:4px">
+        <div class="metric" title="Sensible Heat Ratio (SHR = Qs / Qt)"><span class="lbl">SHR</span><span class="val" id="mSHR">—</span></div>
+        <div class="metric" title="Sensible Heat Transfer Rate (Qs)"><span class="lbl">Qs (Sens)</span><span class="val" id="mQs">—</span></div>
+        <div class="metric" title="Latent Heat Transfer Rate (Ql)"><span class="lbl">Ql (Lat)</span><span class="val" id="mQl">—</span></div>
+      </div>
+      <div class="row3" style="margin-top:4px">
+        <div class="metric" title="Total Heat Transfer Rate (Qt = Qs + Ql)"><span class="lbl">Qt (Total)</span><span class="val" id="mQt">—</span></div>
+        <div class="metric" title="Condensate Removed (−) or Humidification Water Added (+)"><span class="lbl">Cond/H₂O</span><span class="val" id="mWater">—</span></div>
+        <div class="metric" title="Refrigeration Tons (1 TR = 3.517 kW = 12,000 BTU/h)"><span class="lbl">Refrig.</span><span class="val" id="mTons">—</span></div>
+      </div>
+    </div>
+
+    <!-- TAB 2: HVAC SYSTEM WIZARDS (AHU, ERV, EVAP, DESICCANT, HUMIDIFIER) -->
+    <div id="tabSystems" class="tabContent" role="tabpanel" aria-labelledby="tabBtnSystems">
+      <div class="section-title">HVAC Equipment &amp; Cycle Studio</div>
+      <div class="row">
+        <div class="field full">
+          <label for="sysToolSel">Equipment / Cycle Wizard</label>
+          <select id="sysToolSel">
+            <option value="ahu" selected>Full AHU Cycle Builder (OA/RA/Mix/Coil/Reheat/Fan)</option>
+            <option value="erv">Energy / Heat Recovery Wheel (ERV / HRV)</option>
+            <option value="evap">Evaporative Cooler (Direct / Indirect / 2-Stage)</option>
+            <option value="desiccant">Desiccant Dehumidification Wheel</option>
+            <option value="humidifier">Steam / Adiabatic / Ultrasonic Humidifier</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- SYSTEM PANEL: AHU CYCLE BUILDER -->
+      <div id="sysPanelAhu" class="sysPanel active">
+        <div class="section-title">AHU Operating Mode</div>
+        <div class="row">
+          <div class="field">
+            <label for="ahuMode">Cycle Mode</label>
+            <select id="ahuMode">
+              <option value="summer_reheat" selected>Summer Cooling + Reheat</option>
+              <option value="doas_erv">DOAS + ERV Enthalpy Wheel</option>
+              <option value="winter_humid">Winter Heating + Humidification</option>
+              <option value="economizer">Airside Economizer (Free Cool)</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="ahuOaPct">OA Fraction (%)</label>
+            <input id="ahuOaPct" type="number" value="25" step="1" min="0" max="100" />
+          </div>
+        </div>
+        <div class="row">
+          <div class="field"><label for="ahuOaT">OA Tdb</label><input id="ahuOaT" type="number" value="35" step="0.5" /></div>
+          <div class="field"><label for="ahuOaRH">OA RH (%)</label><input id="ahuOaRH" type="number" value="55" step="1" min="0" max="100" /></div>
+        </div>
+        <div class="row">
+          <div class="field"><label for="ahuRaT">RA Tdb</label><input id="ahuRaT" type="number" value="24" step="0.5" /></div>
+          <div class="field"><label for="ahuRaRH">RA RH (%)</label><input id="ahuRaRH" type="number" value="50" step="1" min="0" max="100" /></div>
+        </div>
+        <div class="row3">
+          <div class="field"><label for="ahuFlow">Supply Flow</label><input id="ahuFlow" type="number" value="2000" step="50" min="1" /></div>
+          <div class="field"><label for="ahuCoilAdp" title="Apparatus Dew Point — effective cooling coil surface saturation temperature">Coil ADP</label><input id="ahuCoilAdp" type="number" value="11" step="0.5" /></div>
+          <div class="field"><label for="ahuCoilBpf" title="Coil Bypass Factor (0–1): fraction of air bypassing coil surface without contacting ADP (CF = 1 − BPF)">Coil BPF (0–1)</label><input id="ahuCoilBpf" type="number" value="0.15" step="0.01" min="0" max="0.95" /></div>
+        </div>
+        <div class="row3">
+          <div class="field"><label for="ahuReheatT">Reheat T</label><input id="ahuReheatT" type="number" value="16" step="0.5" /></div>
+          <div class="field"><label for="ahuFanDp" title="Supply fan total static pressure rise (Pa)">Fan ΔP (Pa)</label><input id="ahuFanDp" type="number" value="750" step="50" min="0" /></div>
+          <div class="field"><label for="ahuFanEff" title="Total supply fan + motor efficiency as decimal fraction (0–1)">Fan Eff (0–1)</label><input id="ahuFanEff" type="number" value="0.65" step="0.05" min="0.1" max="0.99" /></div>
+        </div>
+        <div class="row">
+          <div class="field"><label for="ahuErvSens" title="Energy Recovery Ventilator sensible effectiveness as decimal fraction (0–1)">ERV Sens Eff (0–1)</label><input id="ahuErvSens" type="number" value="0.72" step="0.02" min="0" max="0.95" /></div>
+          <div class="field"><label for="ahuErvLat" title="Energy Recovery Ventilator latent moisture effectiveness as decimal fraction (0–1)">ERV Lat Eff (0–1)</label><input id="ahuErvLat" type="number" value="0.65" step="0.02" min="0" max="0.95" /></div>
+        </div>
+        <div class="row">
+          <button type="button" id="ahuBuildBtn" class="btn chip full">Build &amp; Plot Full AHU Cycle</button>
+        </div>
+        <div id="ahuResults" class="calcResult"></div>
+      </div>
+
+      <!-- SYSTEM PANEL: ERV / HRV -->
+      <div id="sysPanelErv" class="sysPanel">
+        <div class="section-title">Energy Recovery Ventilator (ERV)</div>
+        <div class="row">
+          <div class="field"><label for="ervOaPt">Outdoor Air Pt</label><select id="ervOaPt"></select></div>
+          <div class="field"><label for="ervRaPt">Exhaust/RA Pt</label><select id="ervRaPt"></select></div>
+        </div>
+        <div class="row3">
+          <div class="field"><label for="ervSensEff" title="ERV sensible heat recovery effectiveness εs as decimal fraction (0–1)">Sens Eff (0–1)</label><input id="ervSensEff" type="number" value="0.75" step="0.01" min="0" max="0.99" /></div>
+          <div class="field"><label for="ervLatEff" title="ERV latent moisture recovery effectiveness εl as decimal fraction (0–1)">Lat Eff (0–1)</label><input id="ervLatEff" type="number" value="0.65" step="0.01" min="0" max="0.99" /></div>
+          <div class="field"><label for="ervFlow">Airflow</label><input id="ervFlow" type="number" value="1000" step="50" min="1" /></div>
+        </div>
+        <div class="row">
+          <button type="button" id="ervCalcBtn" class="btn accent">Calculate ERV</button>
+          <button type="button" id="ervPlotBtn" class="btn chip">Plot on Chart</button>
+        </div>
+        <div id="ervResults" class="calcResult"></div>
+      </div>
+
+      <!-- SYSTEM PANEL: EVAPORATIVE COOLING -->
+      <div id="sysPanelEvap" class="sysPanel">
+        <div class="section-title">Evaporative Cooling</div>
+        <div class="row">
+          <div class="field"><label for="evapInPt">Entering Air Pt</label><select id="evapInPt"></select></div>
+          <div class="field">
+            <label for="evapMode" title="DEC: Direct Evaporative Cooling (adiabatic) · IEC: Indirect Sensible · IDEC: Two-Stage Indirect + Direct">Stage Type (DEC/IEC/IDEC)</label>
+            <select id="evapMode">
+              <option value="direct" selected>Direct (DEC)</option>
+              <option value="indirect">Indirect (IEC)</option>
+              <option value="two-stage">Two-Stage (IDEC)</option>
+            </select>
+          </div>
+        </div>
+        <div class="row3">
+          <div class="field"><label for="evapEffDir" title="Direct Evaporative Cooler (DEC) saturation effectiveness as decimal fraction (0–1)">DEC Eff (0–1)</label><input id="evapEffDir" type="number" value="0.85" step="0.01" min="0.05" max="0.99" /></div>
+          <div class="field"><label for="evapEffInd" title="Indirect Evaporative Cooler (IEC) wet-bulb approach effectiveness as decimal fraction (0–1)">IEC Eff (0–1)</label><input id="evapEffInd" type="number" value="0.75" step="0.01" min="0.05" max="0.99" /></div>
+          <div class="field"><label for="evapFlow">Airflow</label><input id="evapFlow" type="number" value="1000" step="50" min="1" /></div>
+        </div>
+        <div class="row">
+          <button type="button" id="evapCalcBtn" class="btn accent">Calculate Evap</button>
+          <button type="button" id="evapPlotBtn" class="btn chip">Plot on Chart</button>
+        </div>
+        <div id="evapResults" class="calcResult"></div>
+      </div>
+
+      <!-- SYSTEM PANEL: DESICCANT WHEEL -->
+      <div id="sysPanelDesiccant" class="sysPanel">
+        <div class="section-title">Desiccant Dehumidification Wheel</div>
+        <div class="row">
+          <div class="field"><label for="desInPt">Entering Air Pt</label><select id="desInPt"></select></div>
+          <div class="field"><label for="desFlow">Airflow</label><input id="desFlow" type="number" value="1000" step="50" min="1" /></div>
+        </div>
+        <div class="row">
+          <div class="field"><label for="desEff" title="Desiccant wheel moisture removal effectiveness as decimal fraction (0–1)">Moisture Eff (0–1)</label><input id="desEff" type="number" value="0.65" step="0.01" min="0.05" max="0.95" /></div>
+          <div class="field"><label for="desCarry" title="Thermal carryover from regeneration airstream as decimal fraction (0–1)">Thermal Carryover (0–1)</label><input id="desCarry" type="number" value="0.15" step="0.01" min="0" max="0.50" /></div>
+        </div>
+        <div class="row">
+          <button type="button" id="desCalcBtn" class="btn accent">Calculate Wheel</button>
+          <button type="button" id="desPlotBtn" class="btn chip">Plot on Chart</button>
+        </div>
+        <div id="desResults" class="calcResult"></div>
+      </div>
+
+      <!-- SYSTEM PANEL: HUMIDIFIER -->
+      <div id="sysPanelHumidifier" class="sysPanel">
+        <div class="section-title">Air Humidifier</div>
+        <div class="row">
+          <div class="field"><label for="humInPt">Entering Air Pt</label><select id="humInPt"></select></div>
+          <div class="field">
+            <label for="humMode">Type</label>
+            <select id="humMode">
+              <option value="steam" selected>Isothermal Steam</option>
+              <option value="adiabatic">Adiabatic Spray / Pad</option>
+              <option value="ultrasonic">Ultrasonic Fog</option>
+            </select>
+          </div>
+        </div>
+        <div class="row">
+          <div class="field"><label for="humTargetW">Target W</label><input id="humTargetW" type="number" value="9.0" step="any" min="0.5" max="300" /></div>
+          <div class="field"><label for="humFlow">Airflow</label><input id="humFlow" type="number" value="1000" step="50" min="1" /></div>
+        </div>
+        <div class="row">
+          <button type="button" id="humCalcBtn" class="btn accent">Calculate Humidifier</button>
+          <button type="button" id="humPlotBtn" class="btn chip">Plot on Chart</button>
+        </div>
+        <div id="humResults" class="calcResult"></div>
+      </div>
+    </div>
+
+    <!-- TAB 3: COIL ADP/BPF & ASHRAE 62.1 VENTILATION -->
+    <div id="tabCoil" class="tabContent" role="tabpanel" aria-labelledby="tabBtnCoil">
+      <div class="section-title" title="Apparatus Dew Point (ADP), Bypass Factor (BPF), and Contact Factor (CF = 1 − BPF)">Cooling Coil Analysis (ADP &amp; BPF)</div>
+      <div class="row">
+        <div class="field">
+          <label for="adpProc" title="Cooling process to analyze for Apparatus Dew Point (ADP), Bypass Factor (BPF), and Contact Factor (CF)">Cooling Process</label>
+          <select id="adpProc"></select>
+        </div>
+        <div class="field">
+          <label for="adpWaterDt" title="Chilled water supply-to-return temperature rise across the cooling coil (CHW ΔT)">CHW ΔT</label>
+          <input id="adpWaterDt" type="number" value="5.5" step="0.5" min="1" max="40" />
+        </div>
+      </div>
+      <div class="row">
+        <button type="button" id="adpCalc" class="btn accent">Analyze Coil</button>
+        <button type="button" id="adpPlotBtn" class="btn chip">Plot ADP Point</button>
+      </div>
+      <div id="adpResults" class="calcResult"></div>
+
+      <div class="section-title">ASHRAE 62.1 Ventilation Calculator</div>
+      <div class="row">
+        <div class="field full">
+          <label for="ventSpaceType">Occupancy Category (Table 6-1)</label>
+          <select id="ventSpaceType">
+            <option value="office" selected>Office (Rp 2.5, Ra 0.3)</option>
+            <option value="conference">Conference / Meeting (Rp 2.5, Ra 0.3)</option>
+            <option value="classroom">Classroom (9+) (Rp 5.0, Ra 0.6)</option>
+            <option value="retail">Retail Sales (Rp 3.8, Ra 0.6)</option>
+            <option value="restaurant">Restaurant Dining (Rp 3.8, Ra 0.9)</option>
+            <option value="gym">Gym / Health Club (Rp 10.0, Ra 0.3)</option>
+            <option value="hospital">Hospital Patient Room (Rp 12.5, Ra 0.9)</option>
+            <option value="datacenter">Data Center (Rp 2.5, Ra 0.3)</option>
+            <option value="auditorium">Auditorium (Rp 2.5, Ra 0.3)</option>
+            <option value="hotel">Hotel Bedroom (Rp 2.5, Ra 0.3)</option>
+            <option value="laboratory">Laboratory (Rp 5.0, Ra 0.9)</option>
+            <option value="lobby">Lobby (Rp 3.8, Ra 0.3)</option>
+            <option value="custom">Custom Ventilation Rates</option>
+          </select>
+        </div>
+      </div>
+      <div class="row">
+        <div class="field"><label for="ventPeople">People (Pz)</label><input id="ventPeople" type="number" value="25" step="1" min="0" /></div>
+        <div class="field"><label for="ventArea">Floor Area (Az)</label><input id="ventArea" type="number" value="250" step="10" min="0" /></div>
+      </div>
+      <div class="row">
+        <div class="field"><label for="ventRp" title="ASHRAE 62.1 outdoor airflow rate required per person (Rp)">Rp (per person)</label><input id="ventRp" type="number" value="2.5" step="0.1" min="0" /></div>
+        <div class="field"><label for="ventRa" title="ASHRAE 62.1 outdoor airflow rate required per unit floor area (Ra)">Ra (per area)</label><input id="ventRa" type="number" value="0.3" step="0.05" min="0" /></div>
+      </div>
+      <div class="row">
+        <div class="field"><label for="ventOaPt">Outdoor Air Pt</label><select id="ventOaPt"></select></div>
+        <div class="field"><label for="ventRaPt">Indoor / RA Pt</label><select id="ventRaPt"></select></div>
+      </div>
+      <div class="row">
+        <button type="button" id="ventCalc" class="btn accent full" title="Compute ASHRAE 62.1 Breathing Zone Outdoor Airflow Vbz = Rp·Pz + Ra·Az and OA thermal load">Calculate Vbz &amp; OA Load</button>
+      </div>
+      <div id="ventResults" class="calcResult"></div>
+    </div>
+
+    <!-- TAB 4: MULTI-STREAM MIXING & SCENARIO A/B COMPARISON -->
+    <div id="tabMix" class="tabContent" role="tabpanel" aria-labelledby="tabBtnMix">
+      <div class="section-title">Adiabatic Air Mixing (2 or 3 Streams)</div>
+      <div class="row3">
+        <div class="field"><label for="mixA">Stream A</label><select id="mixA"></select></div>
+        <div class="field"><label for="mixB">Stream B</label><select id="mixB"></select></div>
+        <div class="field"><label for="mixC">Stream C (Opt)</label><select id="mixC"><option value="">None</option></select></div>
+      </div>
+      <div class="row3">
+        <div class="field"><label for="mixWA">Flow A</label><input id="mixWA" type="number" value="25" step="1" min="0" /></div>
+        <div class="field"><label for="mixWB">Flow B</label><input id="mixWB" type="number" value="75" step="1" min="0" /></div>
+        <div class="field"><label for="mixWC">Flow C</label><input id="mixWC" type="number" value="0" step="1" min="0" /></div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label for="mixUnit">Flow Unit</label>
+          <select id="mixUnit">
+            <option value="Lps">L/s</option>
+            <option value="kgps">kg/s</option>
+            <option value="cfm">CFM</option>
+            <option value="lbps">lb/s</option>
+            <option value="pct" selected>Percent (%)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="mixLbl">Mix Label</label>
+          <input id="mixLbl" type="text" value="Mix" />
+        </div>
+      </div>
+      <div class="row">
+        <button type="button" id="mixAdd" class="btn chip full">+ Create Live-Linked Mix Point</button>
+      </div>
+      <div id="mixPreview" class="calcResult"></div>
+
+      <div class="section-title">Design Scenarios &amp; A/B Comparison</div>
+      <div class="row">
+        <div class="field">
+          <label for="scenName">Snapshot Name</label>
+          <input id="scenName" type="text" placeholder="e.g. Base VAV, DOAS+ERV" />
+        </div>
+        <div class="field field-btn">
+          <button type="button" id="btnSaveScen" class="btn accent">Save Snapshot</button>
+        </div>
+      </div>
+      <div id="scenList" class="scen-list"></div>
+      <div id="scenCompareSummary" class="scen-compare"></div>
+    </div>
+  </aside>
+
+  <!-- ====================================================================
+       CONTEXT MENU (Populated dynamically by interaction.js)
+       ==================================================================== -->
+  <div id="ctxMenu" role="menu" aria-label="Chart context menu"></div>
+
+  <!-- TOAST NOTIFICATION STACK -->
+  <div id="toastContainer" role="status" aria-live="polite" aria-atomic="false"></div>
+
+  <!-- ====================================================================
+       MODAL 1: COMMAND PALETTE (Ctrl+K)
+       ==================================================================== -->
+  <div id="cmdPaletteOverlay" class="modal-overlay" role="dialog" aria-modal="true" aria-label="Command Palette">
+    <div class="modal-panel cmd-panel">
+      <div class="cmd-input-wrap">
+        <span class="cmd-icon" aria-hidden="true">⌘</span>
+        <input id="cmdInput" type="text" autocomplete="off" spellcheck="false" placeholder="Search commands, HVAC presets, ASHRAE cities, themes, exports…" aria-label="Command Search" />
+        <span class="cmd-key">ESC</span>
+      </div>
+      <div id="cmdList" role="listbox"></div>
+    </div>
+  </div>
+
+  <!-- ====================================================================
+       MODAL 2: EDIT STATE POINT
+       ==================================================================== -->
+  <div id="editPtOverlay" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="epTitle">
+    <div class="modal-panel" style="max-width:460px">
+      <h2>✏️ Edit Point — <span id="epTitle">State Point</span></h2>
+      <p class="modal-sub">Adjust coordinates, label, color, or engineering note. Live ASHRAE 2021 properties update below.</p>
+      <div class="ep-grid">
+        <div class="ep-field">
+          <label for="epLabel">Label</label>
+          <input type="text" id="epLabel" placeholder="Point name" />
+        </div>
+        <div class="ep-field">
+          <label for="epColor">Marker Color</label>
+          <input type="color" id="epColor" value="#f43f5e" />
+        </div>
+        <div class="ep-field full">
+          <label for="epNote">Engineering Note</label>
+          <input type="text" id="epNote" placeholder="Optional note (e.g. Chilled water coil leaving air)" />
+        </div>
+        <div class="ep-field">
+          <label for="epTdb" id="epTdbLabel">Dry Bulb (°C)</label>
+          <input type="number" id="epTdb" step="0.1" />
+        </div>
+        <div class="ep-field">
+          <label for="epMode">Second Property</label>
+          <select id="epMode">
+            <option value="RH" selected>Relative Humidity (%)</option>
+            <option value="W">Humidity Ratio</option>
+            <option value="Twb">Wet Bulb Temp</option>
+            <option value="Tdp">Dew Point Temp</option>
+            <option value="h">Specific Enthalpy</option>
+          </select>
+        </div>
+        <div class="ep-field full">
+          <label for="epVal" id="epValLabel">Relative Humidity (%)</label>
+          <input type="number" id="epVal" step="0.1" />
+        </div>
+      </div>
+      <div class="section-title">Live ASHRAE Properties</div>
+      <div class="ep-readonly">
+        <div class="ep-ro"><span class="ro-val" id="epRH">—</span><span class="ro-lbl">RH %</span></div>
+        <div class="ep-ro"><span class="ro-val" id="epW">—</span><span class="ro-lbl" id="epWLbl">W (g/kg)</span></div>
+        <div class="ep-ro"><span class="ro-val" id="epH">—</span><span class="ro-lbl" id="epHLbl">h (kJ/kg)</span></div>
+        <div class="ep-ro"><span class="ro-val" id="epTwb">—</span><span class="ro-lbl" id="epTwbLbl">Twb (°C)</span></div>
+        <div class="ep-ro"><span class="ro-val" id="epTdp">—</span><span class="ro-lbl" id="epTdpLbl">Tdp (°C)</span></div>
+        <div class="ep-ro"><span class="ro-val" id="epV">—</span><span class="ro-lbl" id="epVLbl">v (m³/kg)</span></div>
+      </div>
+      <div class="ep-ro" style="margin-top:6px">
+        <span class="ro-val" id="epPmv">—</span>
+        <span class="ro-lbl">ASHRAE 55 Thermal Comfort (PMV / PPD)</span>
+      </div>
+      <div class="ep-actions">
+        <button type="button" class="btn accent" id="epApply">Apply Changes</button>
+        <button type="button" class="btn" id="epCancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====================================================================
+       MODAL 3: ADD POINT VIA PARAMETERS (ANY 2 OF 8)
+       ==================================================================== -->
+  <div id="addPtParamOverlay" class="modal-overlay" role="dialog" aria-modal="true" aria-label="Add Point via Parameters">
+    <div class="modal-panel" style="max-width:460px">
+      <h2>📝 Add State Point via Parameters</h2>
+      <p class="modal-sub">Specify any two independent psychrometric properties to solve and plot the exact moist-air state.</p>
+      <div class="ap-grid">
+        <div class="ap-field">
+          <label for="apMode1">Property 1</label>
+          <select id="apMode1">
+            <option value="Tdb" selected>Tdb (Dry Bulb)</option>
+            <option value="Twb">Twb (Wet Bulb)</option>
+            <option value="Tdp">Tdp (Dew Point)</option>
+            <option value="RH">RH (%)</option>
+            <option value="W">W (Humidity Ratio)</option>
+            <option value="h">h (Enthalpy)</option>
+            <option value="v">v (Sp. Volume)</option>
+            <option value="Pv">Pv (Vapor Press.)</option>
+          </select>
+        </div>
+        <div class="ap-field">
+          <label for="apVal1">Value 1</label>
+          <input type="number" id="apVal1" value="26" step="0.1" />
+        </div>
+        <div class="ap-field">
+          <label for="apMode2">Property 2</label>
+          <select id="apMode2">
+            <option value="Tdb">Tdb (Dry Bulb)</option>
+            <option value="Twb">Twb (Wet Bulb)</option>
+            <option value="Tdp">Tdp (Dew Point)</option>
+            <option value="RH" selected>RH (%)</option>
+            <option value="W">W (Humidity Ratio)</option>
+            <option value="h">h (Enthalpy)</option>
+            <option value="v">v (Sp. Volume)</option>
+            <option value="Pv">Pv (Vapor Press.)</option>
+          </select>
+        </div>
+        <div class="ap-field">
+          <label for="apVal2">Value 2</label>
+          <input type="number" id="apVal2" value="50" step="0.1" />
+        </div>
+        <div class="ap-field">
+          <label for="apLabel">Label</label>
+          <input type="text" id="apLabel" placeholder="Auto (P1…)" />
+        </div>
+        <div class="ap-field">
+          <label for="apColor">Marker Color</label>
+          <input type="color" id="apColor" value="#38bdf8" />
+        </div>
+      </div>
+      <div id="apPreview" class="calcResult" style="margin-top:8px"></div>
+      <div class="ap-actions">
+        <button type="button" class="btn chip" id="apAdd">+ Add State Point</button>
+        <button type="button" class="btn" id="apCancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====================================================================
+       MODAL 4: INTERACTIVE MIX FLOW DIALOG
+       ==================================================================== -->
+  <div id="mixFlowOverlay" class="modal-overlay" role="dialog" aria-modal="true" aria-label="Air Mixing Flow Rates">
+    <div class="modal-panel" style="max-width:450px">
+      <h2>🔀 Air Mixing — Stream Flow Rates</h2>
+      <p class="modal-sub">Define mass or volumetric flow rates for both streams to compute the adiabatic mixed-air condition.</p>
+      <div class="row">
+        <div class="field">
+          <label for="mixFlowMethod">Input Method</label>
+          <select id="mixFlowMethod">
+            <option value="both" selected>Both Absolute Flows</option>
+            <option value="flowA_pctB">Flow A + % Stream B</option>
+            <option value="flowB_pctA">Flow B + % Stream A</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="mixFlowUnit">Flow Unit</label>
+          <select id="mixFlowUnit">
+            <option value="Lps" selected>L/s</option>
+            <option value="kgps">kg/s</option>
+            <option value="cfm">CFM</option>
+            <option value="lbps">lb/s</option>
+          </select>
+        </div>
+      </div>
+      <div class="section-title">Air Streams</div>
+      <div class="mix-flow-card">
+        <div class="mix-flow-card-head">
+          <span class="mix-flow-dot" style="background:var(--accent,#38bdf8)"></span>
+          <span class="mix-flow-name" id="mixFlowNameA">Stream A</span>
+          <span class="mix-flow-props" id="mixFlowPropsA"></span>
+        </div>
+        <div class="row" style="margin-top:6px">
+          <div class="field full">
+            <label for="mixFlowValA" id="mixFlowLblA">Flow A</label>
+            <input id="mixFlowValA" type="number" value="500" step="10" min="0" />
+          </div>
+        </div>
+        <div class="mix-flow-hint" id="mixFlowHintA"></div>
+      </div>
+      <div class="mix-flow-card" style="margin-top:8px">
+        <div class="mix-flow-card-head">
+          <span class="mix-flow-dot" style="background:var(--chip,#10b981)"></span>
+          <span class="mix-flow-name" id="mixFlowNameB">Stream B</span>
+          <span class="mix-flow-props" id="mixFlowPropsB"></span>
+        </div>
+        <div class="row" style="margin-top:6px">
+          <div class="field full">
+            <label for="mixFlowValB" id="mixFlowLblB">Flow B</label>
+            <input id="mixFlowValB" type="number" value="1500" step="10" min="0" />
+          </div>
+        </div>
+        <div class="mix-flow-hint" id="mixFlowHintB"></div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <div class="field full">
+          <label for="mixFlowLabel">Mixed Air Label</label>
+          <input id="mixFlowLabel" type="text" value="Mix" />
+        </div>
+      </div>
+      <div class="ep-actions">
+        <button type="button" class="btn chip" id="mixFlowOk">+ Create Mix Point</button>
+        <button type="button" class="btn" id="mixFlowCancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====================================================================
+       MODAL 5: ENGINEERING REPORT GENERATOR
+       ==================================================================== -->
+  <div id="reportOverlay" class="modal-overlay" role="dialog" aria-modal="true" aria-label="Generate Engineering Report">
+    <div class="modal-panel" style="max-width:520px">
+      <h2>📊 Generate Engineering Report</h2>
+      <p class="modal-sub">Export a complete psychrometric calculation package with high-resolution chart, state points, energy balance, thermal comfort, and weather bin analytics.</p>
+
+      <div class="section-title">Project Metadata</div>
+      <div class="row">
+        <div class="field">
+          <label for="companyName">Company</label>
+          <input id="companyName" type="text" value="" placeholder="Engineering firm or organization" />
+        </div>
+        <div class="field">
+          <label for="engineerName">Engineer</label>
+          <input id="engineerName" type="text" value="" placeholder="Prepared by" />
+        </div>
+      </div>
+      <div class="row">
+        <div class="field full">
+          <label for="projNotes">Design Notes</label>
+          <textarea id="projNotes" rows="2" placeholder="Optional engineering assumptions or design notes..."></textarea>
+        </div>
+      </div>
+
+      <div class="section-title">Output Format</div>
+      <div class="rpt-grid">
+        <label class="rpt-card">
+          <input type="radio" name="rptFmt" value="html" checked class="sr-only" />
+          <span class="rpt-ico" aria-hidden="true">🌐</span>
+          <span class="rpt-name">HTML Report</span>
+          <span class="rpt-desc">Self-contained, print/PDF ready</span>
+        </label>
+        <label class="rpt-card">
+          <input type="radio" name="rptFmt" value="docx" class="sr-only" />
+          <span class="rpt-ico" aria-hidden="true">📄</span>
+          <span class="rpt-name">Word (.docx)</span>
+          <span class="rpt-desc">Editable submittal <span class="rpt-note">(requires internet)</span></span>
+        </label>
+        <label class="rpt-card">
+          <input type="radio" name="rptFmt" value="svg" class="sr-only" />
+          <span class="rpt-ico" aria-hidden="true">✒</span>
+          <span class="rpt-name">Vector SVG</span>
+          <span class="rpt-desc">Scalable CAD / publication chart</span>
+        </label>
+        <label class="rpt-card">
+          <input type="radio" name="rptFmt" value="csv" class="sr-only" />
+          <span class="rpt-ico" aria-hidden="true">📑</span>
+          <span class="rpt-name">CSV Data</span>
+          <span class="rpt-desc">State points &amp; process loads</span>
+        </label>
+      </div>
+
+      <div class="section-title">Report Sections</div>
+      <div class="row">
+        <div class="field">
+          <label for="rptChart">Embedded Chart</label>
+          <select id="rptChart"><option value="yes" selected>Include HiDPI Chart</option><option value="no">Omit</option></select>
+        </div>
+        <div class="field">
+          <label for="rptProc">Process Loads</label>
+          <select id="rptProc"><option value="yes" selected>Include Loads &amp; ADP</option><option value="no">Omit</option></select>
+        </div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label for="rptComfort">ASHRAE 55 PMV/PPD</label>
+          <select id="rptComfort"><option value="yes" selected>Include Comfort Audit</option><option value="no">Omit</option></select>
+        </div>
+        <div class="field">
+          <label for="rptWeather">Weather Bin Stats</label>
+          <select id="rptWeather"><option value="yes" selected>Include if Loaded</option><option value="no">Omit</option></select>
+        </div>
+      </div>
+      <div class="row">
+        <div class="field full">
+          <label for="rptPrint">Color Mode</label>
+          <select id="rptPrint">
+            <option value="yes" selected>Printer-Friendly White Background</option>
+            <option value="no">Match Current Dark/Light Theme</option>
+          </select>
+        </div>
+      </div>
+      <div class="ep-actions">
+        <button type="button" class="btn accent" id="rptGenerate">Generate Report</button>
+        <button type="button" class="btn" id="rptCancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====================================================================
+       MODAL 6: CUSTOM THEME STUDIO
+       ==================================================================== -->
+  <div id="themeEditorOverlay" class="modal-overlay" role="dialog" aria-modal="true" aria-label="Custom Chart Theme Studio">
+    <div class="modal-panel" style="max-width:640px">
+      <h2>🎨 Custom Chart Theme Studio</h2>
+      <p class="modal-sub">Customize colors, dash patterns, stroke widths, and typography. Changes apply live and persist with your project.</p>
+
+      <h3>Load Famous Chart Base</h3>
+      <div id="tePresetBar" class="te-preset-bar" role="group" aria-label="Famous chart visual presets"></div>
+
+      <h3>Psychrometric Curves</h3>
+      <div class="te-grid">
+        <div class="te-row">
+          <label for="ct_sat">Saturation</label>
+          <input type="color" id="ct_sat" value="#22d3ee" />
+          <select id="ct_sat_ls" aria-label="Saturation line style"><option value="solid" selected>Solid</option><option value="dashed">Dashed</option><option value="dotted">Dotted</option><option value="dashdot">Dash-Dot</option></select>
+          <input type="number" id="ct_sat_lw" value="2.5" step="0.1" min="0.3" max="6" title="Line width" aria-label="Saturation line width" />
+        </div>
+        <div class="te-row">
+          <label for="ct_rh">RH Curves</label>
+          <input type="color" id="ct_rh" value="#38bdf8" />
+          <select id="ct_rh_ls" aria-label="Relative humidity line style"><option value="solid" selected>Solid</option><option value="dashed">Dashed</option><option value="dotted">Dotted</option><option value="dashdot">Dash-Dot</option></select>
+          <input type="number" id="ct_rh_lw" value="0.9" step="0.1" min="0.2" max="4" title="Line width" aria-label="Relative humidity line width" />
+        </div>
+        <div class="te-row">
+          <label for="ct_wb">Wet Bulb</label>
+          <input type="color" id="ct_wb" value="#f59e0b" />
+          <select id="ct_wb_ls" aria-label="Wet bulb line style"><option value="solid">Solid</option><option value="dashed" selected>Dashed</option><option value="dotted">Dotted</option><option value="dashdot">Dash-Dot</option></select>
+          <input type="number" id="ct_wb_lw" value="0.85" step="0.1" min="0.2" max="4" title="Line width" aria-label="Wet bulb line width" />
+        </div>
+        <div class="te-row">
+          <label for="ct_enth">Enthalpy</label>
+          <input type="color" id="ct_enth" value="#fb923c" />
+          <select id="ct_enth_ls" aria-label="Enthalpy line style"><option value="solid" selected>Solid</option><option value="dashed">Dashed</option><option value="dotted">Dotted</option><option value="dashdot">Dash-Dot</option></select>
+          <input type="number" id="ct_enth_lw" value="0.9" step="0.1" min="0.2" max="4" title="Line width" aria-label="Enthalpy line width" />
+        </div>
+        <div class="te-row">
+          <label for="ct_vline">Sp. Volume</label>
+          <input type="color" id="ct_vline" value="#84cc16" />
+          <select id="ct_vline_ls" aria-label="Specific volume line style"><option value="solid" selected>Solid</option><option value="dashed">Dashed</option><option value="dotted">Dotted</option><option value="dashdot">Dash-Dot</option></select>
+          <input type="number" id="ct_vline_lw" value="0.8" step="0.1" min="0.2" max="4" title="Line width" aria-label="Specific volume line width" />
+        </div>
+        <div class="te-row">
+          <label for="ct_dp">Dew Point</label>
+          <input type="color" id="ct_dp" value="#94a3b8" />
+          <select id="ct_dp_ls" aria-label="Dew point line style"><option value="solid">Solid</option><option value="dashed">Dashed</option><option value="dotted" selected>Dotted</option><option value="dashdot">Dash-Dot</option></select>
+          <input type="number" id="ct_dp_lw" value="0.8" step="0.1" min="0.2" max="4" title="Line width" aria-label="Dew point line width" />
+        </div>
+      </div>
+
+      <h3>Canvas, Plot Area &amp; Grid</h3>
+      <div class="te-grid">
+        <div class="te-row">
+          <label for="ct_bg">Canvas BG</label>
+          <input type="color" id="ct_bg" value="#0c1017" />
+          <span></span><span></span>
+        </div>
+        <div class="te-row">
+          <label for="ct_plotBg">Plot BG</label>
+          <input type="color" id="ct_plotBg" value="#0f1520" />
+          <span></span><span></span>
+        </div>
+        <div class="te-row">
+          <label for="ct_grid2">Major Grid</label>
+          <input type="color" id="ct_grid2" value="#243044" />
+          <select id="ct_grid2_ls" aria-label="Major grid line style"><option value="solid" selected>Solid</option><option value="dashed">Dashed</option><option value="dotted">Dotted</option></select>
+          <input type="number" id="ct_grid2_lw" value="1.0" step="0.1" min="0.2" max="3" title="Line width" aria-label="Major grid line width" />
+        </div>
+        <div class="te-row">
+          <label for="ct_grid">Minor Grid</label>
+          <input type="color" id="ct_grid" value="#172030" />
+          <select id="ct_grid_ls" aria-label="Minor grid line style"><option value="solid" selected>Solid</option><option value="dashed">Dashed</option><option value="dotted">Dotted</option></select>
+          <input type="number" id="ct_grid_lw" value="0.7" step="0.1" min="0.2" max="3" title="Line width" aria-label="Minor grid line width" />
+        </div>
+        <div class="te-row">
+          <label for="ct_border">Plot Border</label>
+          <input type="color" id="ct_border" value="#475569" />
+          <span></span>
+          <input type="number" id="ct_border_lw" value="1.5" step="0.1" min="0.5" max="4" title="Border width" aria-label="Plot border line width" />
+        </div>
+      </div>
+
+      <h3>State Points, Arrows &amp; Typography</h3>
+      <div class="te-grid">
+        <div class="te-row">
+          <label for="ct_pt">Point / Size</label>
+          <input type="color" id="ct_pt" value="#f43f5e" />
+          <span class="te-sub">Radius (px)</span>
+          <input type="number" id="ct_ptSize" value="4.5" step="0.5" min="2" max="10" title="Point radius (px)" aria-label="State point radius in pixels" />
+        </div>
+        <div class="te-row">
+          <label for="ct_arrowW">Arrow Width</label>
+          <span></span><span></span>
+          <input type="number" id="ct_arrowW" value="2.5" step="0.1" min="1" max="6" title="Process arrow width" aria-label="Process arrow width" />
+        </div>
+        <div class="te-row">
+          <label for="ct_axisText">Axis Text</label>
+          <input type="color" id="ct_axisText" value="#94a3b8" />
+          <span></span>
+          <input type="number" id="ct_axisPx" value="10" step="1" min="7" max="16" title="Font size (px)" aria-label="Axis text font size in pixels" />
+        </div>
+        <div class="te-row">
+          <label for="ct_lblText">Curve Labels</label>
+          <input type="color" id="ct_lblText" value="#94a3b8" />
+          <span></span>
+          <input type="number" id="ct_lblPx" value="11" step="1" min="7" max="16" title="Font size (px)" aria-label="Curve label font size in pixels" />
+        </div>
+        <div class="te-row">
+          <label for="ct_halo">Label Halo</label>
+          <input type="color" id="ct_halo" value="#0c1017" />
+          <span></span>
+          <input type="number" id="ct_haloW" value="3" step="0.5" min="0" max="6" title="Halo width (px)" aria-label="Label halo width in pixels" />
+        </div>
+      </div>
+
+      <div class="ep-actions">
+        <button type="button" class="btn accent" id="ctApply">Apply Custom Theme</button>
+        <button type="button" class="btn" id="ctResetDefault">Reset to Defaults</button>
+      </div>
+      <button type="button" class="close-btn" id="closeThemeEditor">Close (Esc)</button>
+    </div>
+  </div>
+
+  <!-- ====================================================================
+       MODAL 7: ASHRAE EQUATIONS & ENGINEERING GLOSSARY
+       ==================================================================== -->
+  <div id="glossaryOverlay" class="modal-overlay" role="dialog" aria-modal="true" aria-label="ASHRAE Glossary and Equations">
+    <div class="modal-panel" style="max-width:740px">
+      <h2>📖 ASHRAE 2021 Psychrometric Glossary &amp; Equations</h2>
+      <p class="modal-sub">Reference definitions, units, and governing moist-air formulations implemented in PSYCHRO·ULTRA 3.0.</p>
+
+      <h3>Moist-Air Properties</h3>
+      <div class="glossary-grid">
+        <div class="glossary-item">
+          <div class="glossary-icon">🌡</div>
+          <div class="glossary-body">
+            <span class="glossary-abbr">Tdb / DBT</span>
+            <span class="glossary-full">Dry-Bulb Temperature</span>
+            <span class="glossary-desc">Sensible temperature of air measured by a dry, shielded thermometer.</span>
+            <span class="glossary-unit">SI: °C | IP: °F</span>
+          </div>
+        </div>
+        <div class="glossary-item">
+          <div class="glossary-icon">💧</div>
+          <div class="glossary-body">
+            <span class="glossary-abbr">Twb / WBT</span>
+            <span class="glossary-full">Thermodynamic Wet-Bulb Temperature</span>
+            <span class="glossary-desc">Temperature of adiabatic saturation where water evaporates into air to 100% RH at constant pressure.</span>
+            <span class="glossary-unit">SI: °C | IP: °F</span>
+          </div>
+        </div>
+        <div class="glossary-item">
+          <div class="glossary-icon">❄</div>
+          <div class="glossary-body">
+            <span class="glossary-abbr">Tdp / DPT</span>
+            <span class="glossary-full">Dew-Point Temperature</span>
+            <span class="glossary-desc">Temperature at which moist air reaches saturation (RH = 100%) when cooled at constant W and P.</span>
+            <span class="glossary-unit">SI: °C | IP: °F</span>
+          </div>
+        </div>
+        <div class="glossary-item">
+          <div class="glossary-icon">💦</div>
+          <div class="glossary-body">
+            <span class="glossary-abbr">RH / φ</span>
+            <span class="glossary-full">Relative Humidity</span>
+            <span class="glossary-desc">Mole-fraction ratio of partial water vapor pressure Pv to saturation vapor pressure Pws(Tdb).</span>
+            <span class="glossary-unit">% (0–100)</span>
+          </div>
+        </div>
+        <div class="glossary-item">
+          <div class="glossary-icon">⚖</div>
+          <div class="glossary-body">
+            <span class="glossary-abbr">W / ω</span>
+            <span class="glossary-full">Humidity Ratio (Moisture Content)</span>
+            <span class="glossary-desc">Mass of water vapor per unit mass of dry air. Internal engine uses kg/kg.</span>
+            <span class="glossary-unit">SI: g/kg | IP: gr/lb (1 lb = 7000 gr)</span>
+          </div>
+        </div>
+        <div class="glossary-item">
+          <div class="glossary-icon">⚡</div>
+          <div class="glossary-body">
+            <span class="glossary-abbr">h</span>
+            <span class="glossary-full">Specific Enthalpy</span>
+            <span class="glossary-desc">Total sensible + latent thermal energy per unit mass of dry air (0 °C datum in SI; 0 °F datum in IP).</span>
+            <span class="glossary-unit">SI: kJ/kg | IP: Btu/lb</span>
+          </div>
+        </div>
+        <div class="glossary-item">
+          <div class="glossary-icon">📐</div>
+          <div class="glossary-body">
+            <span class="glossary-abbr">v / ρ</span>
+            <span class="glossary-full">Specific Volume &amp; Moist-Air Density</span>
+            <span class="glossary-desc">Volume per unit mass of dry air (v); total moist-air density is ρ = (1 + W) / v.</span>
+            <span class="glossary-unit">SI: m³/kg, kg/m³ | IP: ft³/lb, lb/ft³</span>
+          </div>
+        </div>
+        <div class="glossary-item">
+          <div class="glossary-icon">🏔</div>
+          <div class="glossary-body">
+            <span class="glossary-abbr">Patm / Pv</span>
+            <span class="glossary-full">Barometric &amp; Vapor Partial Pressure</span>
+            <span class="glossary-desc">Standard sea-level pressure = 101.325 kPa (14.696 psia), corrected for elevation per ASHRAE Ch. 1.</span>
+            <span class="glossary-unit">SI: kPa / Pa | IP: psia</span>
+          </div>
+        </div>
+      </div>
+
+      <h3>HVAC Processes, Comfort &amp; Standards</h3>
+      <div class="glossary-grid">
+        <div class="glossary-item">
+          <div class="glossary-icon">📊</div>
+          <div class="glossary-body">
+            <span class="glossary-abbr">SHR / SHF</span>
+            <span class="glossary-full">Sensible Heat Ratio</span>
+            <span class="glossary-desc">Ratio of sensible heat transfer to total heat transfer: SHR = Qs / Qt.</span>
+            <span class="glossary-unit">Dimensionless</span>
+          </div>
+        </div>
+        <div class="glossary-item">
+          <div class="glossary-icon">🎯</div>
+          <div class="glossary-body">
+            <span class="glossary-abbr">ADP / BPF / CF</span>
+            <span class="glossary-full">Apparatus Dew Point &amp; Bypass Factor</span>
+            <span class="glossary-desc">Effective coil surface saturation temperature (ADP); BPF = (T_out − ADP)/(T_in − ADP); CF = 1 − BPF.</span>
+            <span class="glossary-unit">°C / °F &amp; Fraction (0–1)</span>
+          </div>
+        </div>
+        <div class="glossary-item">
+          <div class="glossary-icon">🔥</div>
+          <div class="glossary-body">
+            <span class="glossary-abbr">Qs / Ql / Qt / TR</span>
+            <span class="glossary-full">Sensible, Latent, Total Load &amp; Tons</span>
+            <span class="glossary-desc">Qt = ṁ_da · Δh; Qs = ṁ_da · c_pm · ΔT; Ql = Qt − Qs; 1 Ton (TR) = 3.51685 kW = 12,000 BTU/h.</span>
+            <span class="glossary-unit">SI: kW | IP: BTU/h, TR</span>
+          </div>
+        </div>
+        <div class="glossary-item">
+          <div class="glossary-icon">🏠</div>
+          <div class="glossary-body">
+            <span class="glossary-abbr">PMV / PPD</span>
+            <span class="glossary-full">ASHRAE 55 / ISO 7730 Thermal Comfort</span>
+            <span class="glossary-desc">Fanger's Predicted Mean Vote (−3 cold to +3 hot) and Predicted Percentage Dissatisfied (%). Comfort band: |PMV| ≤ 0.5 (PPD ≤ 10%).</span>
+            <span class="glossary-unit">PMV (−3..+3) | PPD (%)</span>
+          </div>
+        </div>
+        <div class="glossary-item">
+          <div class="glossary-icon">🖥</div>
+          <div class="glossary-body">
+            <span class="glossary-abbr">TC 9.9 (A1–A4)</span>
+            <span class="glossary-full">ASHRAE Data Center Thermal Envelopes</span>
+            <span class="glossary-desc">Recommended (18–27 °C, −9..15 °C Tdp, ≤60% RH) and Allowable A1–A4 IT equipment classes.</span>
+            <span class="glossary-unit">ASHRAE TC 9.9 (2021)</span>
+          </div>
+        </div>
+        <div class="glossary-item">
+          <div class="glossary-icon">🌬</div>
+          <div class="glossary-body">
+            <span class="glossary-abbr">Vbz = Rp·Pz + Ra·Az</span>
+            <span class="glossary-full">ASHRAE 62.1 Breathing Zone OA</span>
+            <span class="glossary-desc">Required outdoor ventilation airflow combining people component (Rp·Pz) and building floor area component (Ra·Az).</span>
+            <span class="glossary-unit">SI: L/s | IP: CFM</span>
+          </div>
+        </div>
+      </div>
+
+      <h3>Governing ASHRAE Fundamentals (2021) Equations</h3>
+      <div class="dev-info glossary-eqs">
+        <div><strong>Barometric Pressure:</strong> <code>P = 101325 · (1 − 2.25577×10⁻⁵ · Z)^5.25588</code> [Pa, Z in m]</div>
+        <div><strong>Saturation Pressure (Hyland–Wexler):</strong> <code>ln(Pws) = C₈/T + C₉ + C₁₀T + C₁₁T² + C₁₂T³ + C₁₃ln(T)</code> (T ≥ 0 °C)</div>
+        <div><strong>Humidity Ratio:</strong> <code>W = 0.621945 · Pv / (P − Pv)</code> [kg_w / kg_da]</div>
+        <div><strong>Specific Enthalpy (SI):</strong> <code>h = 1.006·T + W·(2501 + 1.86·T)</code> [kJ/kg_da]</div>
+        <div><strong>Specific Enthalpy (IP, 0 °F datum):</strong> <code>h_IP = 0.240·T_F + W·(1061 + 0.444·T_F)</code> [Btu/lb_da]</div>
+        <div><strong>Specific Volume:</strong> <code>v = 0.287042·(T + 273.15)·(1 + 1.607858·W) / P_kPa</code> [m³/kg_da]</div>
+        <div><strong>Thermodynamic Wet Bulb:</strong> <code>W = [(2501 − 2.326·Twb)·Ws(Twb) − 1.006·(T − Twb)] / (2501 + 1.86·T − 4.186·Twb)</code></div>
+      </div>
+
+      <button type="button" class="close-btn" id="closeGlossary">Close (Esc)</button>
+    </div>
+  </div>
+
+  <!-- ====================================================================
+       MODAL 8: KEYBOARD SHORTCUTS REFERENCE
+       ==================================================================== -->
+  <div id="shortcutsOverlay" class="modal-overlay" role="dialog" aria-modal="true" aria-label="Keyboard Shortcuts">
+    <div class="modal-panel" style="max-width:560px">
+      <h2>⌨ Keyboard Shortcuts &amp; Canvas Controls</h2>
+      <div class="shortcutGrid">
+        <span class="k">Ctrl+K</span><span class="d">Open Command Palette (search presets, cities, exports)</span>
+        <span class="k">Ctrl+Z</span><span class="d">Undo last state change (100-level stack)</span>
+        <span class="k">Ctrl+Y</span><span class="d">Redo state change (or Ctrl+Shift+Z)</span>
+        <span class="k">Ctrl+S</span><span class="d">Save project JSON file</span>
+        <span class="k">V</span><span class="d">Select / Drag / Pan tool</span>
+        <span class="k">P</span><span class="d">Process tool — click two points to connect</span>
+        <span class="k">M</span><span class="d">Mix tool — click two points to mix air streams</span>
+        <span class="k">L</span><span class="d">Measure tool — inspect ΔT, ΔW, Δh, SHR</span>
+        <span class="k">N</span><span class="d">Annotate tool — place engineering callout note</span>
+        <span class="k">B</span><span class="d">Box Zoom tool — drag rectangle to zoom</span>
+        <span class="k">Shift+Drag</span><span class="d">Constrain point drag along ΔW=0 (Sensible), ΔT=0 (Isothermal), or Δh=0 (Adiabatic)</span>
+        <span class="k">Ctrl+Drag</span><span class="d">Snap dragged dry-bulb to 0.5° grid</span>
+        <span class="k">Alt+Drag</span><span class="d">Marquee box-zoom in any mode</span>
+        <span class="k">Shift+Click</span><span class="d">Chain continuous processes in Process Mode</span>
+        <span class="k">Double-click</span><span class="d">Add point / lock point / edit annotation / reset splitter</span>
+        <span class="k">Space+Drag</span><span class="d">Pan chart canvas in any tool mode</span>
+        <span class="k">Scroll</span><span class="d">Zoom chart in / out around cursor</span>
+        <span class="k">+ / −</span><span class="d">Zoom in / out</span>
+        <span class="k">F</span><span class="d">Fit all state points in view</span>
+        <span class="k">R</span><span class="d">Reset zoom to default chart range</span>
+        <span class="k">G</span><span class="d">Toggle background grid</span>
+        <span class="k">C</span><span class="d">Cycle ASHRAE 55 comfort zones</span>
+        <span class="k">D</span><span class="d">Toggle dew-point lines</span>
+        <span class="k">W</span><span class="d">Toggle weather density heatmap overlay</span>
+        <span class="k">A</span><span class="d">Toggle animated process airflow arrows</span>
+        <span class="k">U</span><span class="d">Switch units between SI (°C, g/kg) and IP (°F, gr/lb)</span>
+        <span class="k">1 – 7</span><span class="d">Toggle core layers (Sat, RH, WB, h, Vol, Pts, Proc)</span>
+        <span class="k">Del / Backspace</span><span class="d">Delete selected point or process</span>
+        <span class="k">Right-click</span><span class="d">Context menu at cursor or point</span>
+        <span class="k">Esc</span><span class="d">Return to Select tool / close active modal</span>
+        <span class="k">?</span><span class="d">Show this keyboard shortcuts reference</span>
+      </div>
+      <button type="button" class="close-btn" id="closeShortcuts">Close (Esc)</button>
+    </div>
+  </div>
+
+  <!-- ====================================================================
+       MODAL 9: ABOUT & ATTRIBUTION
+       ==================================================================== -->
+  <div id="aboutOverlay" class="modal-overlay" role="dialog" aria-modal="true" aria-label="About PSYCHRO·ULTRA 3.0">
+    <div class="modal-panel" style="max-width:580px">
+      <h2>▲ About PSYCHRO·ULTRA 3.0</h2>
+      <p class="modal-sub">Engineering-grade, zero-dependency ASHRAE 2021 interactive psychrometric studio — compiled into a single self-contained HTML application.</p>
+
+      <h3>What's New in Ultra 3.0</h3>
+      <ul>
+        <li><strong>ASHRAE Fundamentals (2021) Physics Engine:</strong> Full Hyland–Wexler saturation model, thermodynamic wet-bulb solver, universal any-2-of-8 state solver, and exact SI/IP conversions (true 0 °F enthalpy datum).</li>
+        <li><strong>Dual-Canvas HiDPI Architecture:</strong> Cached background chart layer + 60 fps foreground overlay with curved cooling-coil paths, animated flow arrows, enthalpy protractor ruler, and scenario ghost overlays.</li>
+        <li><strong>Thermal Comfort &amp; Specialized Envelopes:</strong> Real-time ISO 7730 / ASHRAE 55 Fanger PMV/PPD polygons, Givoni bioclimatic zones, and ASHRAE TC 9.9 data center envelopes.</li>
+        <li><strong>HVAC System Wizards &amp; Climate Studio:</strong> 44+ global ASHRAE design cities, 8760-hour TMY/EPW density maps, full AHU cycle builder, ERV, 2-stage evaporative cooling, desiccant wheel, humidifier, ADP/BPF coil analyzer, and ASHRAE 62.1 ventilation calculator.</li>
+        <li><strong>Professional Deliverables:</strong> HiDPI PNG, scalable Vector SVG, CSV export, Shareable URL hash, JSON v3 (backward-compatible with v2.6.6), and HTML/DOCX engineering reports.</li>
+      </ul>
+
+      <h3>Attribution &amp; Credits</h3>
+      <div class="dev-info">
+        <strong>Original Creator &amp; Lead Author:</strong> Shadi Alashkar (<a href="mailto:alashkar.shadi@gmail.com">alashkar.shadi@gmail.com</a>)<br />
+        <strong>Edition:</strong> PsychroChart Ultra 3.0 (evolved from PsychroChart Pro 2.6.6)<br />
+        <strong>Architecture:</strong> Modular ES6 Studio bundled cleanly into a single offline-capable HTML file
+      </div>
+
+      <h3>MIT License &amp; Engineering Disclaimer</h3>
+      <div class="dev-info" style="color:var(--muted)">
+        <strong>MIT License — Copyright © 2026 Shadi Alashkar</strong><br /><br />
+        Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, subject to the above copyright notice and this permission notice.<br /><br />
+        <strong>THIS SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.</strong> All psychrometric calculations implement ASHRAE Fundamentals equations for engineering convenience; qualified HVAC and mechanical engineers must independently verify results before use in final design, construction, or safety-critical applications.
+      </div>
+      <button type="button" class="close-btn" id="closeAbout">Close (Esc)</button>
+    </div>
+  </div>
+
+</div><!-- /#app -->
+
+<!-- INLINE_JS -->
+</body>
+</html>
