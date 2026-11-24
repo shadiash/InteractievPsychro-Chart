@@ -953,7 +953,7 @@ export class OverlayRenderer {
       }
     }
     if (state.shr && state.shr.show && plot.w >= 170 * dpi && plot.h >= 170 * dpi) {
-      occupiedRects.push([plot.x + 12 * dpi, plot.y + (isExport ? 12 : 54) * dpi, 114 * dpi, 128 * dpi]);
+      occupiedRects.push([plot.x + 12 * dpi, plot.y + 12 * dpi, 114 * dpi, 128 * dpi]);
     }
 
     ctx.save();
@@ -1036,8 +1036,13 @@ export class OverlayRenderer {
     }
 
     // 12. Precision Crosshair
-    if (!isExport && state.ui?.hoverPx != null) {
+    if (!isExport && (state.ui?.hoverPx != null || state.ui?.dragPtId != null)) {
       this._drawCrosshair(ctx, br, plot, state, pal, isDark, dpi);
+    }
+
+    // 13. Live Dynamic Point Telemetry Callout while Dragging
+    if (!isExport && state.ui?.dragPtId != null) {
+      this._drawDragCallout(ctx, br, plot, state, pal, isDark, dpi);
     }
 
     ctx.restore();
@@ -2743,48 +2748,62 @@ export class OverlayRenderer {
   }
 
   /* --------------------------------------------------------------------------
-     9. Precision Crosshair (with Magnetic Saturation Snap)
+     9. Precision Crosshair (with Magnetic Saturation Snap & Active Drag Lock)
      -------------------------------------------------------------------------- */
   _drawCrosshair(ctx, br, plot, state, pal, isDark, dpi) {
     let hx = null;
     let hy = null;
-    const hp = state.ui?.hoverPx;
-    if (typeof hp === 'number' && Number.isFinite(hp)) {
-      hx = hp;
-      hy = state.ui?.hoverPy;
-    } else if (hp && typeof hp === 'object' && Number.isFinite(hp.x) && Number.isFinite(hp.y)) {
-      hx = hp.x;
-      hy = hp.y;
+    const dragPtId = state.ui?.dragPtId;
+    const dragPt = dragPtId != null
+      ? (state.points || []).find(p => p && p.id === dragPtId)
+      : null;
+
+    if (dragPt && Number.isFinite(dragPt.T) && Number.isFinite(dragPt.w)) {
+      hx = br.xc(dragPt.T);
+      hy = br.yc(dragPt.w);
+    } else {
+      const hp = state.ui?.hoverPx;
+      if (typeof hp === 'number' && Number.isFinite(hp)) {
+        hx = hp;
+        hy = state.ui?.hoverPy;
+      } else if (hp && typeof hp === 'object' && Number.isFinite(hp.x) && Number.isFinite(hp.y)) {
+        hx = hp.x;
+        hy = hp.y;
+      }
     }
     if (hx == null || hy == null || !Number.isFinite(hx) || !Number.isFinite(hy)) return;
     if (hx < plot.x - 1 || hx > plot.right + 1 || hy < plot.y - 1 || hy > plot.bottom + 1) return;
 
     const pPa = state.pPa || 101325;
-    const T = _OVL.invT(br, state, hx);
-    const wRaw = _OVL.invW(br, state, hy);
+    const T = dragPt ? dragPt.T : _OVL.invT(br, state, hx);
+    const wRaw = dragPt ? dragPt.w : _OVL.invW(br, state, hy);
     const ws = Psy.wsat_at(T, pPa);
 
     let snappedSat = false;
     let sx = CoreDOM.clamp(hx, plot.x, plot.right);
     let sy = CoreDOM.clamp(hy, plot.y, plot.bottom);
 
-    if (wRaw > ws) {
+    if (!dragPt && wRaw > ws) {
       const satY = br.yc(ws);
       if (Number.isFinite(satY)) {
         snappedSat = true;
         sy = CoreDOM.clamp(satY, plot.y, plot.bottom);
       }
-    } else if (wRaw < 0) {
+    } else if (!dragPt && wRaw < 0) {
       sy = CoreDOM.clamp(br.yc(0), plot.y, plot.bottom);
+    } else if (dragPt && ws > 1e-6 && dragPt.w >= ws * 0.998) {
+      snappedSat = true;
     }
 
-    const guideCol = pal.muted || '#94a3b8';
-    const reticleCol = snappedSat ? (pal.sat || '#22d3ee') : (isDark ? '#38bdf8' : '#0284c7');
+    const guideCol = dragPt ? (dragPt.color || pal.pt || '#38bdf8') : (pal.muted || '#94a3b8');
+    const reticleCol = dragPt
+      ? (dragPt.color || pal.pt || (isDark ? '#38bdf8' : '#0284c7'))
+      : (snappedSat ? (pal.sat || '#22d3ee') : (isDark ? '#38bdf8' : '#0284c7'));
 
     ctx.save();
     // Orthogonal dashed guide lines
-    ctx.strokeStyle = _OVL.withAlpha(guideCol, isDark ? 0.36 : 0.42);
-    ctx.lineWidth = 0.9 * dpi;
+    ctx.strokeStyle = _OVL.withAlpha(guideCol, dragPt ? (isDark ? 0.52 : 0.56) : (isDark ? 0.36 : 0.42));
+    ctx.lineWidth = (dragPt ? 1.05 : 0.9) * dpi;
     ctx.setLineDash([4 * dpi, 4 * dpi]);
     ctx.beginPath();
     ctx.moveTo(plot.x, Math.round(sy) + 0.5);
@@ -2794,7 +2813,7 @@ export class OverlayRenderer {
     ctx.stroke();
 
     // Subtle vertical tether if cursor was snapped down onto saturation curve
-    if (snappedSat && sy - hy > 5 * dpi) {
+    if (!dragPt && snappedSat && sy - hy > 5 * dpi) {
       ctx.strokeStyle = _OVL.withAlpha(reticleCol, 0.35);
       ctx.lineWidth = 1 * dpi;
       ctx.setLineDash([2 * dpi, 2.5 * dpi]);
@@ -2828,12 +2847,163 @@ export class OverlayRenderer {
     ctx.lineWidth = 1.15 * dpi;
     ctx.stroke();
 
-    if (snappedSat) {
+    if (snappedSat && !dragPt) {
       _OVL.textHalo(ctx, 'SAT', sx + 12 * dpi, sy - 9 * dpi, reticleCol, pal, dpi, {
         sizePx: 8,
         weight: '700'
       });
     }
+    ctx.restore();
+  }
+
+  /* --------------------------------------------------------------------------
+     10. Floating Live Point Telemetry Callout during Point Drag
+     -------------------------------------------------------------------------- */
+  _drawDragCallout(ctx, br, plot, state, pal, isDark, dpi) {
+    const dragPtId = state.ui?.dragPtId;
+    if (dragPtId == null) return;
+    const pt = (state.points || []).find(p => p && p.id === dragPtId);
+    if (!pt || !Number.isFinite(pt.T) || !Number.isFinite(pt.w)) return;
+
+    const px = br.xc(pt.T);
+    const py = br.yc(pt.w);
+    if (!Number.isFinite(px) || !Number.isFinite(py)) return;
+
+    const pPa = state.pPa || 101325;
+    const isSI = (state.units || 'SI') === 'SI';
+    const ws = Psy.wsat_at(pt.T, pPa);
+    const wClamped = CoreDOM.clamp(pt.w, 0, ws);
+    const st = typeof Psy.stateFromTw === 'function'
+      ? Psy.stateFromTw(pt.T, wClamped, pPa)
+      : {
+          T: pt.T,
+          w: wClamped,
+          rh: Psy.RH_from_Tw(pt.T, wClamped, pPa) * 100,
+          Twb: Psy.twb_from_Tw(pt.T, wClamped, pPa),
+          Tdp: Psy.dewpoint_from_pv(Psy.pv_from_w(wClamped, pPa)),
+          h: Psy.h_kJkg(pt.T, wClamped),
+          hIP: typeof Psy.h_Btulb === 'function' ? Psy.h_Btulb(pt.T, wClamped) : 0
+        };
+
+    const tStr = isSI ? `${st.T.toFixed(1)}°C` : `${CoreDOM.cToF(st.T).toFixed(1)}°F`;
+    const rhStr = `${st.rh.toFixed(1)}%`;
+    const wStr = isSI ? `${(st.w * 1000).toFixed(2)} g/kg` : `${(st.w * 7000).toFixed(1)} gr/lb`;
+    const wbStr = isSI ? `${st.Twb.toFixed(1)}°C` : `${CoreDOM.cToF(st.Twb).toFixed(1)}°F`;
+    const dpStr = isSI ? `${st.Tdp.toFixed(1)}°C` : `${CoreDOM.cToF(st.Tdp).toFixed(1)}°F`;
+    const hStr = isSI ? `${st.h.toFixed(1)} kJ/kg` : `${st.hIP.toFixed(1)} Btu/lb`;
+
+    const ptCol = pt.color || pal.pt || (isDark ? '#38bdf8' : '#0284c7');
+    const snapTag = state.ui?.dragSnapLabel || (st.rh >= 99.8 ? 'SAT' : '');
+    const title = pt.label || 'Point';
+
+    const boxW = 232 * dpi;
+    const headerH = 19 * dpi;
+    const rowH = 14.5 * dpi;
+    const padB = 7 * dpi;
+    const boxH = headerH + 3 * rowH + padB;
+    const gap = 18 * dpi;
+    const margin = 8 * dpi;
+
+    // Smart placement: prefer upper-right of point, flipping cleanly inside plot bounds
+    let bx = px + gap;
+    if (bx + boxW > plot.right - margin) {
+      bx = px - boxW - gap;
+    }
+    let by = py - boxH * 0.55;
+    if (by < plot.y + margin) {
+      by = py + gap;
+    } else if (by + boxH > plot.bottom - margin) {
+      by = py - boxH - gap;
+    }
+    bx = CoreDOM.clamp(bx, plot.x + margin, Math.max(plot.x + margin, plot.right - boxW - margin));
+    by = CoreDOM.clamp(by, plot.y + margin, Math.max(plot.y + margin, plot.bottom - boxH - margin));
+
+    const boxBg = isDark ? 'rgba(9,15,28,0.94)' : 'rgba(255,255,255,0.96)';
+    const lblCol = pal.muted || (isDark ? '#94a3b8' : '#64748b');
+    const valCol = pal.fg || (isDark ? '#f1f5f9' : '#0f172a');
+
+    ctx.save();
+    // Subtle connector line from dragged point rim to nearest card edge
+    const ancX = CoreDOM.clamp(px, bx, bx + boxW);
+    const ancY = CoreDOM.clamp(py, by, by + boxH);
+    ctx.strokeStyle = _OVL.withAlpha(ptCol, 0.65);
+    ctx.lineWidth = 1.1 * dpi;
+    ctx.setLineDash([2.5 * dpi, 2.5 * dpi]);
+    ctx.beginPath();
+    ctx.moveTo(px, py);
+    ctx.lineTo(ancX, ancY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Card surface + crisp border
+    _OVL.roundRect(ctx, bx, by, boxW, boxH, 6 * dpi);
+    ctx.fillStyle = boxBg;
+    ctx.fill();
+    ctx.strokeStyle = _OVL.withAlpha(ptCol, 0.82);
+    ctx.lineWidth = 1.3 * dpi;
+    ctx.stroke();
+
+    // Top point-color accent strip
+    ctx.save();
+    _OVL.roundRect(ctx, bx, by, boxW, boxH, 6 * dpi);
+    ctx.clip();
+    ctx.fillStyle = ptCol;
+    ctx.fillRect(bx, by, boxW, 2.5 * dpi);
+    ctx.restore();
+
+    // Header: point label + optional snap constraint badge
+    ctx.fillStyle = _OVL.readableLabelColor(ptCol, isDark);
+    ctx.font = `700 ${9.5 * dpi}px ${_OVL.FONT_SANS}`;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    const maxTitle = title.length > 16 ? `${title.slice(0, 15)}…` : title;
+    ctx.fillText(maxTitle, bx + 8 * dpi, by + 11.5 * dpi);
+
+    if (snapTag) {
+      ctx.fillStyle = isDark ? '#fbbf24' : '#b45309';
+      ctx.font = `700 ${8.2 * dpi}px ${_OVL.FONT_MONO}`;
+      ctx.textAlign = 'right';
+      ctx.fillText(snapTag, bx + boxW - 8 * dpi, by + 11.5 * dpi);
+    }
+
+    // Subtle divider under header + faint vertical divider between telemetry columns
+    ctx.strokeStyle = _OVL.withAlpha(lblCol, 0.25);
+    ctx.lineWidth = 0.8 * dpi;
+    ctx.beginPath();
+    ctx.moveTo(bx + 7 * dpi, by + headerH);
+    ctx.lineTo(bx + boxW - 7 * dpi, by + headerH);
+    ctx.moveTo(bx + boxW * 0.53, by + headerH + 4 * dpi);
+    ctx.lineTo(bx + boxW * 0.53, by + boxH - 5 * dpi);
+    ctx.stroke();
+
+    // 2-column live telemetry grid (Tdb/RH, W/Twb, Tdp/h)
+    const pairs = [
+      [['Tdb', tStr], ['RH', rhStr]],
+      [['W', wStr],   ['Twb', wbStr]],
+      [['Tdp', dpStr], ['h', hStr]]
+    ];
+    const col1L = bx + 8 * dpi;
+    const col1R = bx + boxW * 0.50;
+    const col2L = bx + boxW * 0.56;
+    const col2R = bx + boxW - 8 * dpi;
+
+    for (let r = 0; r < pairs.length; r++) {
+      const ry = by + headerH + 3.5 * dpi + (r + 0.5) * rowH;
+      const [[k1, v1], [k2, v2]] = pairs[r];
+
+      ctx.fillStyle = lblCol;
+      ctx.font = `600 ${8.5 * dpi}px ${_OVL.FONT_MONO}`;
+      ctx.textAlign = 'left';
+      ctx.fillText(k1, col1L, ry);
+      ctx.fillText(k2, col2L, ry);
+
+      ctx.fillStyle = valCol;
+      ctx.font = `600 ${9 * dpi}px ${_OVL.FONT_MONO}`;
+      ctx.textAlign = 'right';
+      ctx.fillText(v1, col1R, ry);
+      ctx.fillText(v2, col2R, ry);
+    }
+
     ctx.restore();
   }
 

@@ -331,17 +331,21 @@ export function initRightPanel(store, callbacks = {}) {
     if (includePct) {
       options.push(['pct', 'Percent (%)']);
     }
-    sel.innerHTML = '';
-    for (const [val, txt] of options) {
-      const o = document.createElement('option');
-      o.value = val;
-      o.textContent = txt;
-      sel.appendChild(o);
+    const sig = `${units}|${includePct ? 1 : 0}`;
+    if (sel.dataset.sig !== sig || sel.options.length !== options.length) {
+      sel.dataset.sig = sig;
+      sel.innerHTML = '';
+      for (const [val, txt] of options) {
+        const o = document.createElement('option');
+        o.value = val;
+        o.textContent = txt;
+        sel.appendChild(o);
+      }
     }
     const valid = new Set(options.map(o => o[0]));
     if (valid.has(prev)) {
-      sel.value = prev;
-    } else {
+      if (sel.value !== prev) sel.value = prev;
+    } else if (sel.value !== options[0][0]) {
       sel.value = options[0][0];
     }
   }
@@ -754,18 +758,30 @@ export function initRightPanel(store, callbacks = {}) {
     const selProc = getSelectedProcess();
     const selId = selProc ? selProc.id : null;
 
-    container.innerHTML = '';
-
     if (procs.length === 0) {
+      container.dataset.sig = '';
       container.innerHTML = '<div class="hint" style="padding:6px 2px">No processes defined yet. Choose Start &amp; End points above or press <b>P</b> on the chart.</div>';
       return;
     }
 
-    procs.forEach((pr, idx) => {
+    const validProcs = [];
+    for (let idx = 0; idx < procs.length; idx++) {
+      const pr = procs[idx];
       const a = pts.find(p => p.id === pr.aId);
       const b = pts.find(p => p.id === pr.bId);
-      if (!a || !b) return;
+      if (a && b) validProcs.push({ pr, idx, a, b });
+    }
 
+    const sig = `${units}|${selId ?? ''}|${validProcs.map(({ pr }) => `${pr.id}:${pr.aId}:${pr.bId}:${pr.showCurve ? 1 : 0}`).join(',')}`;
+    const existingCards = container.querySelectorAll('.procCard[data-proc-id]');
+    const canPatchInPlace = container.dataset.sig === sig && existingCards.length === validProcs.length;
+
+    if (!canPatchInPlace) {
+      container.dataset.sig = sig;
+      container.innerHTML = '';
+    }
+
+    validProcs.forEach(({ pr, idx, a, b }, cardIdx) => {
       const fUnit = normFlowUnit(pr.flowUnit, units);
       const m = HVAC.calcProcessMetrics(a, b, pPa, pr.flowVal, fUnit);
       const ti = m.typeInfo;
@@ -791,14 +807,6 @@ export function initRightPanel(store, callbacks = {}) {
         borderCol = 'var(--erv, #0d9488)';
       }
 
-      const card = document.createElement('div');
-      card.className = `procCard${isSel ? ' selected' : ''}`;
-      card.tabIndex = 0;
-      card.setAttribute('role', 'button');
-      card.setAttribute('aria-pressed', isSel ? 'true' : 'false');
-      card.setAttribute('aria-label', `Select process S${idx + 1}: ${a.label} to ${b.label}`);
-      card.style.borderLeftColor = isSel ? 'var(--accent)' : borderCol;
-
       const qtTxt = units === 'IP'
         ? `${fmtSign(m.Qt_TR, 2)} TR`
         : `${fmtSign(m.Qt_kW, 2)} kW`;
@@ -812,6 +820,44 @@ export function initRightPanel(store, callbacks = {}) {
         ? 'Toggle curved cooling-coil path & ADP extension'
         : 'Curved coil path applies only to cooling & dehumidification processes';
 
+      if (canPatchInPlace) {
+        const card = existingCards[cardIdx];
+        card.style.borderLeftColor = isSel ? 'var(--accent)' : borderCol;
+        const titleEl = card.querySelector('.procTitle');
+        if (titleEl) {
+          const ttl = `S${idx + 1}: ${a.label} → ${b.label}`;
+          titleEl.textContent = ttl;
+          titleEl.title = ttl;
+        }
+        const badgeEl = card.querySelector('.badge');
+        if (badgeEl) {
+          badgeEl.className = `badge ${badgeCls}`;
+          badgeEl.textContent = badgeText;
+        }
+        const qtEl = card.querySelector('.procQtVal');
+        if (qtEl) qtEl.textContent = qtTxt;
+        const shrEl = card.querySelector('.procShrVal');
+        if (shrEl) shrEl.textContent = shrTxt;
+        const flowEl = card.querySelector('.procFlowVal');
+        if (flowEl) flowEl.textContent = flowTxt;
+        const curveBtn = card.querySelector('.procCurveBtn');
+        if (curveBtn) {
+          curveBtn.title = curveTitle;
+          curveBtn.setAttribute('aria-label', curveTitle);
+          if (!pr.showCurve) curveBtn.style.opacity = isCoolDehum ? '0.9' : '0.45';
+        }
+        return;
+      }
+
+      const card = document.createElement('div');
+      card.className = `procCard${isSel ? ' selected' : ''}`;
+      card.dataset.procId = String(pr.id);
+      card.tabIndex = 0;
+      card.setAttribute('role', 'button');
+      card.setAttribute('aria-pressed', isSel ? 'true' : 'false');
+      card.setAttribute('aria-label', `Select process S${idx + 1}: ${a.label} to ${b.label}`);
+      card.style.borderLeftColor = isSel ? 'var(--accent)' : borderCol;
+
       card.innerHTML = `
         <div class="procHead">
           <span class="procTitle" title="S${idx + 1}: ${esc(a.label)} → ${esc(b.label)}">S${idx + 1}: ${esc(a.label)} → ${esc(b.label)}</span>
@@ -820,9 +866,9 @@ export function initRightPanel(store, callbacks = {}) {
           <button type="button" class="procDel" aria-label="Delete process S${idx + 1}" title="Delete process">✕</button>
         </div>
         <div class="procLoads">
-          <span><b>Qt</b> ${esc(qtTxt)}</span>
-          <span>${esc(shrTxt)}</span>
-          <span style="margin-left:auto;opacity:0.85">${esc(flowTxt)}</span>
+          <span><b>Qt</b> <span class="procQtVal">${esc(qtTxt)}</span></span>
+          <span class="procShrVal">${esc(shrTxt)}</span>
+          <span class="procFlowVal" style="margin-left:auto;opacity:0.85">${esc(flowTxt)}</span>
         </div>
       `;
 
@@ -2542,12 +2588,32 @@ export function initRightPanel(store, callbacks = {}) {
     if (byId('ventResults')?.innerHTML.trim()) renderVentResults();
   }
 
+  function refreshLiveDrag() {
+    renderProcessCards();
+    renderCycleSummary();
+    renderSelectedProcessMetrics();
+    if (byId('adpResults')?.innerHTML.trim()) renderAdpResults();
+    if (byId('mixPreview')) updateMixPreview();
+    if (byId('ventResults')?.innerHTML.trim()) renderVentResults();
+  }
+
+  let _dragSyncRaf = 0;
+  function schedulePointDragSync() {
+    if (_dragSyncRaf) return;
+    _dragSyncRaf = requestAnimationFrame(() => {
+      _dragSyncRaf = 0;
+      refreshLiveDrag();
+    });
+  }
+
   store.on('units-changed', ({ units }) => {
     convertRightPanelInputsOnUnitChange(lastUnits, units);
     lastUnits = units;
     refreshAll();
     rerenderCachedWizardResults();
   });
+
+  store.on('point-drag', schedulePointDragSync);
 
   store.on('change', (evt) => {
     if (evt?.reason === 'units') return; // handled by units-changed

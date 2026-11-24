@@ -121,6 +121,8 @@ export function createStore() {
       hoverPy: null,
       hovPickId: null,
       hovLabelId: null,
+      dragPtId: null,
+      dragSnapLabel: null,
       leftCollapsed: false,
       rightCollapsed: false
     }
@@ -1178,7 +1180,7 @@ export function createStore() {
   function setUI(patch = {}) {
     if (!patch || typeof patch !== 'object') return;
     let nonHoverChanged = false;
-    const hoverKeys = new Set(['hoverPx', 'hoverPy', 'hovPickId', 'hovLabelId']);
+    const hoverKeys = new Set(['hoverPx', 'hoverPy', 'hovPickId', 'hovLabelId', 'dragPtId', 'dragSnapLabel']);
 
     for (const key of Object.keys(patch)) {
       if (!(key in state.ui)) continue;

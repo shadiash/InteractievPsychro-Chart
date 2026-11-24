@@ -1439,6 +1439,11 @@ export function initChartInteraction(store, baseRenderer, overlayRenderer, callb
           dragKind = 'point';
           dragTargetId = pt.id;
           dragOriginTw = { T: pt.T, w: pt.w };
+          if (document.activeElement && document.activeElement !== document.body &&
+              !document.activeElement.closest?.('.inline-ann-editor') &&
+              typeof document.activeElement.blur === 'function') {
+            document.activeElement.blur();
+          }
           document.body.style.userSelect = 'none';
           updateCursor();
         }
@@ -1544,13 +1549,17 @@ export function initChartInteraction(store, baseRenderer, overlayRenderer, callb
         if (pt && isDerivedMixPoint(pt)) {
           dragKind = null;
           dragTargetId = null;
+          ui.dragPtId = null;
+          ui.dragSnapLabel = null;
+          hudEl?.classList.remove('hud-dragging');
           document.body.style.userSelect = '';
           notifyDerivedMixLocked(pt);
           updateCursor();
           return;
         }
         if (pt && !pt.locked) {
-          if (dragMoved && !dragHistoryPushed) {
+          if (!dragMoved) return;
+          if (!dragHistoryPushed) {
             store?.pushHistory?.(`Move Point "${pt.label}"`);
             dragHistoryPushed = true;
           }
@@ -1558,8 +1567,25 @@ export function initChartInteraction(store, baseRenderer, overlayRenderer, callb
           pt.T = solved.T;
           pt.w = solved.w;
           activeSnapLabel = solved.snapLabel;
+          ui.dragPtId = pt.id;
+          ui.dragSnapLabel = activeSnapLabel || null;
           store?.recomputeDerived?.();
-          updateHudAtTw(pt.T, pt.w, activeSnapLabel || pt.label || null);
+          const ptPx = twToPx(pt.T, pt.w);
+          ui.hoverPx = ptPx.x;
+          ui.hoverPy = ptPx.y;
+          const ptBadge = activeSnapLabel
+            ? `${pt.label || 'Point'} · ${activeSnapLabel}`
+            : (pt.label || 'Point');
+          hudEl?.classList.add('hud-dragging');
+          updateHudAtTw(pt.T, pt.w, ptBadge);
+          if (typeof store?.emit === 'function') {
+            store.emit('point-drag', {
+              pointId: pt.id,
+              T: pt.T,
+              w: pt.w,
+              snapLabel: activeSnapLabel || null
+            });
+          }
           emitOverlayDirty('drag-point');
         }
         return;
@@ -1658,6 +1684,9 @@ export function initChartInteraction(store, baseRenderer, overlayRenderer, callb
     dragKind = null;
     dragTargetId = null;
     activeSnapLabel = null;
+    ui.dragPtId = null;
+    ui.dragSnapLabel = null;
+    hudEl?.classList.remove('hud-dragging');
     document.body.style.userSelect = '';
 
     if (finished === 'boxzoom' && ui.boxZoom) {
@@ -1704,8 +1733,26 @@ export function initChartInteraction(store, baseRenderer, overlayRenderer, callb
     if (finished === 'point' && wasMoved && targetId != null) {
       const pt = getPoint(targetId);
       if (pt) {
+        // Keep stored ADP coordinates fresh on any curved cooling coil processes
+        if (HVAC && typeof HVAC.calcADP === 'function') {
+          const pPa = getPressurePa();
+          for (const pr of getProcesses()) {
+            if (!pr || !pr.showCurve) continue;
+            const { a, b } = getProcEndpoints(pr);
+            if (!a || !b) continue;
+            const adp = HVAC.calcADP(a, b, pPa);
+            if (adp && adp.valid) {
+              pr.adpT = adp.T_adp;
+              pr.adpW = adp.w_adp;
+            } else {
+              pr.adpT = null;
+              pr.adpW = null;
+            }
+          }
+        }
         // Commit final position (history already pushed once at drag start)
         store?.updatePoint?.(pt.id, { T: pt.T, w: pt.w }, false);
+        updateHudAtTw(pt.T, pt.w, pt.label || null);
       }
       suppressNextClick = true;
     } else if (finished === 'label' && wasMoved && targetId != null) {

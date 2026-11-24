@@ -2079,6 +2079,11 @@ kbd {
   opacity: 0;
 }
 
+#hud.hud-dragging {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accentSoft), var(--shadow-md);
+}
+
 #hud .hud-item {
   display: inline-flex;
   align-items: baseline;
@@ -2671,6 +2676,11 @@ input[type="checkbox"] {
 
 .ptable tbody tr.selected {
   background: var(--accentSoft);
+}
+
+.ptable tbody tr.dragging-pt {
+  background: var(--accentSoft);
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 
 .ptable input[type="text"],
@@ -5980,7 +5990,7 @@ input[type="checkbox"] {
 <script>
 /* ============================================================================
    PsychroChart Ultra 3.0 — Compiled Single-File Bundle
-   Built: 2026-11-24T20:05:57.737Z
+   Built: 2026-11-24T20:21:27.936Z
    ============================================================================ */
 (() => {
 'use strict';
@@ -11136,6 +11146,8 @@ function createStore() {
       hoverPy: null,
       hovPickId: null,
       hovLabelId: null,
+      dragPtId: null,
+      dragSnapLabel: null,
       leftCollapsed: false,
       rightCollapsed: false
     }
@@ -12193,7 +12205,7 @@ function createStore() {
   function setUI(patch = {}) {
     if (!patch || typeof patch !== 'object') return;
     let nonHoverChanged = false;
-    const hoverKeys = new Set(['hoverPx', 'hoverPy', 'hovPickId', 'hovLabelId']);
+    const hoverKeys = new Set(['hoverPx', 'hoverPy', 'hovPickId', 'hovLabelId', 'dragPtId', 'dragSnapLabel']);
 
     for (const key of Object.keys(patch)) {
       if (!(key in state.ui)) continue;
@@ -17218,7 +17230,7 @@ class OverlayRenderer {
       }
     }
     if (state.shr && state.shr.show && plot.w >= 170 * dpi && plot.h >= 170 * dpi) {
-      occupiedRects.push([plot.x + 12 * dpi, plot.y + (isExport ? 12 : 54) * dpi, 114 * dpi, 128 * dpi]);
+      occupiedRects.push([plot.x + 12 * dpi, plot.y + 12 * dpi, 114 * dpi, 128 * dpi]);
     }
 
     ctx.save();
@@ -17301,8 +17313,13 @@ class OverlayRenderer {
     }
 
     // 12. Precision Crosshair
-    if (!isExport && state.ui?.hoverPx != null) {
+    if (!isExport && (state.ui?.hoverPx != null || state.ui?.dragPtId != null)) {
       this._drawCrosshair(ctx, br, plot, state, pal, isDark, dpi);
+    }
+
+    // 13. Live Dynamic Point Telemetry Callout while Dragging
+    if (!isExport && state.ui?.dragPtId != null) {
+      this._drawDragCallout(ctx, br, plot, state, pal, isDark, dpi);
     }
 
     ctx.restore();
@@ -19008,48 +19025,62 @@ class OverlayRenderer {
   }
 
   /* --------------------------------------------------------------------------
-     9. Precision Crosshair (with Magnetic Saturation Snap)
+     9. Precision Crosshair (with Magnetic Saturation Snap & Active Drag Lock)
      -------------------------------------------------------------------------- */
   _drawCrosshair(ctx, br, plot, state, pal, isDark, dpi) {
     let hx = null;
     let hy = null;
-    const hp = state.ui?.hoverPx;
-    if (typeof hp === 'number' && Number.isFinite(hp)) {
-      hx = hp;
-      hy = state.ui?.hoverPy;
-    } else if (hp && typeof hp === 'object' && Number.isFinite(hp.x) && Number.isFinite(hp.y)) {
-      hx = hp.x;
-      hy = hp.y;
+    const dragPtId = state.ui?.dragPtId;
+    const dragPt = dragPtId != null
+      ? (state.points || []).find(p => p && p.id === dragPtId)
+      : null;
+
+    if (dragPt && Number.isFinite(dragPt.T) && Number.isFinite(dragPt.w)) {
+      hx = br.xc(dragPt.T);
+      hy = br.yc(dragPt.w);
+    } else {
+      const hp = state.ui?.hoverPx;
+      if (typeof hp === 'number' && Number.isFinite(hp)) {
+        hx = hp;
+        hy = state.ui?.hoverPy;
+      } else if (hp && typeof hp === 'object' && Number.isFinite(hp.x) && Number.isFinite(hp.y)) {
+        hx = hp.x;
+        hy = hp.y;
+      }
     }
     if (hx == null || hy == null || !Number.isFinite(hx) || !Number.isFinite(hy)) return;
     if (hx < plot.x - 1 || hx > plot.right + 1 || hy < plot.y - 1 || hy > plot.bottom + 1) return;
 
     const pPa = state.pPa || 101325;
-    const T = _OVL.invT(br, state, hx);
-    const wRaw = _OVL.invW(br, state, hy);
+    const T = dragPt ? dragPt.T : _OVL.invT(br, state, hx);
+    const wRaw = dragPt ? dragPt.w : _OVL.invW(br, state, hy);
     const ws = Psy.wsat_at(T, pPa);
 
     let snappedSat = false;
     let sx = CoreDOM.clamp(hx, plot.x, plot.right);
     let sy = CoreDOM.clamp(hy, plot.y, plot.bottom);
 
-    if (wRaw > ws) {
+    if (!dragPt && wRaw > ws) {
       const satY = br.yc(ws);
       if (Number.isFinite(satY)) {
         snappedSat = true;
         sy = CoreDOM.clamp(satY, plot.y, plot.bottom);
       }
-    } else if (wRaw < 0) {
+    } else if (!dragPt && wRaw < 0) {
       sy = CoreDOM.clamp(br.yc(0), plot.y, plot.bottom);
+    } else if (dragPt && ws > 1e-6 && dragPt.w >= ws * 0.998) {
+      snappedSat = true;
     }
 
-    const guideCol = pal.muted || '#94a3b8';
-    const reticleCol = snappedSat ? (pal.sat || '#22d3ee') : (isDark ? '#38bdf8' : '#0284c7');
+    const guideCol = dragPt ? (dragPt.color || pal.pt || '#38bdf8') : (pal.muted || '#94a3b8');
+    const reticleCol = dragPt
+      ? (dragPt.color || pal.pt || (isDark ? '#38bdf8' : '#0284c7'))
+      : (snappedSat ? (pal.sat || '#22d3ee') : (isDark ? '#38bdf8' : '#0284c7'));
 
     ctx.save();
     // Orthogonal dashed guide lines
-    ctx.strokeStyle = _OVL.withAlpha(guideCol, isDark ? 0.36 : 0.42);
-    ctx.lineWidth = 0.9 * dpi;
+    ctx.strokeStyle = _OVL.withAlpha(guideCol, dragPt ? (isDark ? 0.52 : 0.56) : (isDark ? 0.36 : 0.42));
+    ctx.lineWidth = (dragPt ? 1.05 : 0.9) * dpi;
     ctx.setLineDash([4 * dpi, 4 * dpi]);
     ctx.beginPath();
     ctx.moveTo(plot.x, Math.round(sy) + 0.5);
@@ -19059,7 +19090,7 @@ class OverlayRenderer {
     ctx.stroke();
 
     // Subtle vertical tether if cursor was snapped down onto saturation curve
-    if (snappedSat && sy - hy > 5 * dpi) {
+    if (!dragPt && snappedSat && sy - hy > 5 * dpi) {
       ctx.strokeStyle = _OVL.withAlpha(reticleCol, 0.35);
       ctx.lineWidth = 1 * dpi;
       ctx.setLineDash([2 * dpi, 2.5 * dpi]);
@@ -19093,12 +19124,163 @@ class OverlayRenderer {
     ctx.lineWidth = 1.15 * dpi;
     ctx.stroke();
 
-    if (snappedSat) {
+    if (snappedSat && !dragPt) {
       _OVL.textHalo(ctx, 'SAT', sx + 12 * dpi, sy - 9 * dpi, reticleCol, pal, dpi, {
         sizePx: 8,
         weight: '700'
       });
     }
+    ctx.restore();
+  }
+
+  /* --------------------------------------------------------------------------
+     10. Floating Live Point Telemetry Callout during Point Drag
+     -------------------------------------------------------------------------- */
+  _drawDragCallout(ctx, br, plot, state, pal, isDark, dpi) {
+    const dragPtId = state.ui?.dragPtId;
+    if (dragPtId == null) return;
+    const pt = (state.points || []).find(p => p && p.id === dragPtId);
+    if (!pt || !Number.isFinite(pt.T) || !Number.isFinite(pt.w)) return;
+
+    const px = br.xc(pt.T);
+    const py = br.yc(pt.w);
+    if (!Number.isFinite(px) || !Number.isFinite(py)) return;
+
+    const pPa = state.pPa || 101325;
+    const isSI = (state.units || 'SI') === 'SI';
+    const ws = Psy.wsat_at(pt.T, pPa);
+    const wClamped = CoreDOM.clamp(pt.w, 0, ws);
+    const st = typeof Psy.stateFromTw === 'function'
+      ? Psy.stateFromTw(pt.T, wClamped, pPa)
+      : {
+          T: pt.T,
+          w: wClamped,
+          rh: Psy.RH_from_Tw(pt.T, wClamped, pPa) * 100,
+          Twb: Psy.twb_from_Tw(pt.T, wClamped, pPa),
+          Tdp: Psy.dewpoint_from_pv(Psy.pv_from_w(wClamped, pPa)),
+          h: Psy.h_kJkg(pt.T, wClamped),
+          hIP: typeof Psy.h_Btulb === 'function' ? Psy.h_Btulb(pt.T, wClamped) : 0
+        };
+
+    const tStr = isSI ? `${st.T.toFixed(1)}°C` : `${CoreDOM.cToF(st.T).toFixed(1)}°F`;
+    const rhStr = `${st.rh.toFixed(1)}%`;
+    const wStr = isSI ? `${(st.w * 1000).toFixed(2)} g/kg` : `${(st.w * 7000).toFixed(1)} gr/lb`;
+    const wbStr = isSI ? `${st.Twb.toFixed(1)}°C` : `${CoreDOM.cToF(st.Twb).toFixed(1)}°F`;
+    const dpStr = isSI ? `${st.Tdp.toFixed(1)}°C` : `${CoreDOM.cToF(st.Tdp).toFixed(1)}°F`;
+    const hStr = isSI ? `${st.h.toFixed(1)} kJ/kg` : `${st.hIP.toFixed(1)} Btu/lb`;
+
+    const ptCol = pt.color || pal.pt || (isDark ? '#38bdf8' : '#0284c7');
+    const snapTag = state.ui?.dragSnapLabel || (st.rh >= 99.8 ? 'SAT' : '');
+    const title = pt.label || 'Point';
+
+    const boxW = 232 * dpi;
+    const headerH = 19 * dpi;
+    const rowH = 14.5 * dpi;
+    const padB = 7 * dpi;
+    const boxH = headerH + 3 * rowH + padB;
+    const gap = 18 * dpi;
+    const margin = 8 * dpi;
+
+    // Smart placement: prefer upper-right of point, flipping cleanly inside plot bounds
+    let bx = px + gap;
+    if (bx + boxW > plot.right - margin) {
+      bx = px - boxW - gap;
+    }
+    let by = py - boxH * 0.55;
+    if (by < plot.y + margin) {
+      by = py + gap;
+    } else if (by + boxH > plot.bottom - margin) {
+      by = py - boxH - gap;
+    }
+    bx = CoreDOM.clamp(bx, plot.x + margin, Math.max(plot.x + margin, plot.right - boxW - margin));
+    by = CoreDOM.clamp(by, plot.y + margin, Math.max(plot.y + margin, plot.bottom - boxH - margin));
+
+    const boxBg = isDark ? 'rgba(9,15,28,0.94)' : 'rgba(255,255,255,0.96)';
+    const lblCol = pal.muted || (isDark ? '#94a3b8' : '#64748b');
+    const valCol = pal.fg || (isDark ? '#f1f5f9' : '#0f172a');
+
+    ctx.save();
+    // Subtle connector line from dragged point rim to nearest card edge
+    const ancX = CoreDOM.clamp(px, bx, bx + boxW);
+    const ancY = CoreDOM.clamp(py, by, by + boxH);
+    ctx.strokeStyle = _OVL.withAlpha(ptCol, 0.65);
+    ctx.lineWidth = 1.1 * dpi;
+    ctx.setLineDash([2.5 * dpi, 2.5 * dpi]);
+    ctx.beginPath();
+    ctx.moveTo(px, py);
+    ctx.lineTo(ancX, ancY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Card surface + crisp border
+    _OVL.roundRect(ctx, bx, by, boxW, boxH, 6 * dpi);
+    ctx.fillStyle = boxBg;
+    ctx.fill();
+    ctx.strokeStyle = _OVL.withAlpha(ptCol, 0.82);
+    ctx.lineWidth = 1.3 * dpi;
+    ctx.stroke();
+
+    // Top point-color accent strip
+    ctx.save();
+    _OVL.roundRect(ctx, bx, by, boxW, boxH, 6 * dpi);
+    ctx.clip();
+    ctx.fillStyle = ptCol;
+    ctx.fillRect(bx, by, boxW, 2.5 * dpi);
+    ctx.restore();
+
+    // Header: point label + optional snap constraint badge
+    ctx.fillStyle = _OVL.readableLabelColor(ptCol, isDark);
+    ctx.font = `700 ${9.5 * dpi}px ${_OVL.FONT_SANS}`;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    const maxTitle = title.length > 16 ? `${title.slice(0, 15)}…` : title;
+    ctx.fillText(maxTitle, bx + 8 * dpi, by + 11.5 * dpi);
+
+    if (snapTag) {
+      ctx.fillStyle = isDark ? '#fbbf24' : '#b45309';
+      ctx.font = `700 ${8.2 * dpi}px ${_OVL.FONT_MONO}`;
+      ctx.textAlign = 'right';
+      ctx.fillText(snapTag, bx + boxW - 8 * dpi, by + 11.5 * dpi);
+    }
+
+    // Subtle divider under header + faint vertical divider between telemetry columns
+    ctx.strokeStyle = _OVL.withAlpha(lblCol, 0.25);
+    ctx.lineWidth = 0.8 * dpi;
+    ctx.beginPath();
+    ctx.moveTo(bx + 7 * dpi, by + headerH);
+    ctx.lineTo(bx + boxW - 7 * dpi, by + headerH);
+    ctx.moveTo(bx + boxW * 0.53, by + headerH + 4 * dpi);
+    ctx.lineTo(bx + boxW * 0.53, by + boxH - 5 * dpi);
+    ctx.stroke();
+
+    // 2-column live telemetry grid (Tdb/RH, W/Twb, Tdp/h)
+    const pairs = [
+      [['Tdb', tStr], ['RH', rhStr]],
+      [['W', wStr],   ['Twb', wbStr]],
+      [['Tdp', dpStr], ['h', hStr]]
+    ];
+    const col1L = bx + 8 * dpi;
+    const col1R = bx + boxW * 0.50;
+    const col2L = bx + boxW * 0.56;
+    const col2R = bx + boxW - 8 * dpi;
+
+    for (let r = 0; r < pairs.length; r++) {
+      const ry = by + headerH + 3.5 * dpi + (r + 0.5) * rowH;
+      const [[k1, v1], [k2, v2]] = pairs[r];
+
+      ctx.fillStyle = lblCol;
+      ctx.font = `600 ${8.5 * dpi}px ${_OVL.FONT_MONO}`;
+      ctx.textAlign = 'left';
+      ctx.fillText(k1, col1L, ry);
+      ctx.fillText(k2, col2L, ry);
+
+      ctx.fillStyle = valCol;
+      ctx.font = `600 ${9 * dpi}px ${_OVL.FONT_MONO}`;
+      ctx.textAlign = 'right';
+      ctx.fillText(v1, col1R, ry);
+      ctx.fillText(v2, col2R, ry);
+    }
+
     ctx.restore();
   }
 
@@ -24790,6 +24972,11 @@ function initChartInteraction(store, baseRenderer, overlayRenderer, callbacks = 
           dragKind = 'point';
           dragTargetId = pt.id;
           dragOriginTw = { T: pt.T, w: pt.w };
+          if (document.activeElement && document.activeElement !== document.body &&
+              !document.activeElement.closest?.('.inline-ann-editor') &&
+              typeof document.activeElement.blur === 'function') {
+            document.activeElement.blur();
+          }
           document.body.style.userSelect = 'none';
           updateCursor();
         }
@@ -24895,13 +25082,17 @@ function initChartInteraction(store, baseRenderer, overlayRenderer, callbacks = 
         if (pt && isDerivedMixPoint(pt)) {
           dragKind = null;
           dragTargetId = null;
+          ui.dragPtId = null;
+          ui.dragSnapLabel = null;
+          hudEl?.classList.remove('hud-dragging');
           document.body.style.userSelect = '';
           notifyDerivedMixLocked(pt);
           updateCursor();
           return;
         }
         if (pt && !pt.locked) {
-          if (dragMoved && !dragHistoryPushed) {
+          if (!dragMoved) return;
+          if (!dragHistoryPushed) {
             store?.pushHistory?.(`Move Point "${pt.label}"`);
             dragHistoryPushed = true;
           }
@@ -24909,8 +25100,25 @@ function initChartInteraction(store, baseRenderer, overlayRenderer, callbacks = 
           pt.T = solved.T;
           pt.w = solved.w;
           activeSnapLabel = solved.snapLabel;
+          ui.dragPtId = pt.id;
+          ui.dragSnapLabel = activeSnapLabel || null;
           store?.recomputeDerived?.();
-          updateHudAtTw(pt.T, pt.w, activeSnapLabel || pt.label || null);
+          const ptPx = twToPx(pt.T, pt.w);
+          ui.hoverPx = ptPx.x;
+          ui.hoverPy = ptPx.y;
+          const ptBadge = activeSnapLabel
+            ? `${pt.label || 'Point'} · ${activeSnapLabel}`
+            : (pt.label || 'Point');
+          hudEl?.classList.add('hud-dragging');
+          updateHudAtTw(pt.T, pt.w, ptBadge);
+          if (typeof store?.emit === 'function') {
+            store.emit('point-drag', {
+              pointId: pt.id,
+              T: pt.T,
+              w: pt.w,
+              snapLabel: activeSnapLabel || null
+            });
+          }
           emitOverlayDirty('drag-point');
         }
         return;
@@ -25009,6 +25217,9 @@ function initChartInteraction(store, baseRenderer, overlayRenderer, callbacks = 
     dragKind = null;
     dragTargetId = null;
     activeSnapLabel = null;
+    ui.dragPtId = null;
+    ui.dragSnapLabel = null;
+    hudEl?.classList.remove('hud-dragging');
     document.body.style.userSelect = '';
 
     if (finished === 'boxzoom' && ui.boxZoom) {
@@ -25055,8 +25266,26 @@ function initChartInteraction(store, baseRenderer, overlayRenderer, callbacks = 
     if (finished === 'point' && wasMoved && targetId != null) {
       const pt = getPoint(targetId);
       if (pt) {
+        // Keep stored ADP coordinates fresh on any curved cooling coil processes
+        if (HVAC && typeof HVAC.calcADP === 'function') {
+          const pPa = getPressurePa();
+          for (const pr of getProcesses()) {
+            if (!pr || !pr.showCurve) continue;
+            const { a, b } = getProcEndpoints(pr);
+            if (!a || !b) continue;
+            const adp = HVAC.calcADP(a, b, pPa);
+            if (adp && adp.valid) {
+              pr.adpT = adp.T_adp;
+              pr.adpW = adp.w_adp;
+            } else {
+              pr.adpT = null;
+              pr.adpW = null;
+            }
+          }
+        }
         // Commit final position (history already pushed once at drag start)
         store?.updatePoint?.(pt.id, { T: pt.T, w: pt.w }, false);
+        updateHudAtTw(pt.T, pt.w, pt.label || null);
       }
       suppressNextClick = true;
     } else if (finished === 'label' && wasMoved && targetId != null) {
@@ -28051,12 +28280,15 @@ function initLeftPanel(store, callbacks = {}) {
     // Check if we can update existing rows in-place to preserve typing focus
     const nextSig = `${units}|${editMode}|${pts.map((p, i) => `${p.id ?? i}:${p.locked ? 1 : 0}`).join(',')}`;
     const existingRows = tb.querySelectorAll('tr[data-pt-idx]');
+    const dragPtId = getState().ui?.dragPtId ?? null;
     if (tb.dataset.sig === nextSig && existingRows.length === pts.length) {
       pts.forEach((p, i) => {
         const tr = existingRows[i];
         const disp = computePointRowDisplay(p, editMode, units, pPa);
         const sel = isPointSelected(p, i);
+        const isDraggingThis = dragPtId != null && p.id === dragPtId;
         tr.classList.toggle('selected', sel);
+        tr.classList.toggle('dragging-pt', isDraggingThis);
         tr.style.background = sel ? 'var(--accentSoft, rgba(14,165,233,0.12))' : '';
 
         const cDot = tr.querySelector('.pt-color-dot');
@@ -28069,9 +28301,9 @@ function initLeftPanel(store, callbacks = {}) {
         const lblInp = tr.querySelector('.pt-lbl');
         if (lblInp && document.activeElement !== lblInp) lblInp.value = p.label || `P${i + 1}`;
         const tdbInp = tr.querySelector('.pt-tdb');
-        if (tdbInp && document.activeElement !== tdbInp) tdbInp.value = disp.tDisp;
+        if (tdbInp && (dragPtId != null || document.activeElement !== tdbInp)) tdbInp.value = disp.tDisp;
         const secInp = tr.querySelector('.pt-sec');
-        if (secInp && document.activeElement !== secInp) secInp.value = disp.secDisp;
+        if (secInp && (dragPtId != null || document.activeElement !== secInp)) secInp.value = disp.secDisp;
         const compTd = tr.querySelector('.pt-comp');
         if (compTd) compTd.textContent = disp.compDisp;
       });
@@ -28767,7 +28999,17 @@ function initLeftPanel(store, callbacks = {}) {
     else if (typeof store?.subscribe === 'function') store.subscribe(evt, fn);
   };
 
+  let _dragSyncRaf = 0;
+  function schedulePointDragSync() {
+    if (_dragSyncRaf) return;
+    _dragSyncRaf = requestAnimationFrame(() => {
+      _dragSyncRaf = 0;
+      refreshPointsTable();
+    });
+  }
+
   subscribe('change', syncAllFromStore);
+  subscribe('point-drag', schedulePointDragSync);
   subscribe('theme-changed', () => {
     syncChartCurveControls();
     syncAxisAndTrendControls(true);
@@ -29134,17 +29376,21 @@ function initRightPanel(store, callbacks = {}) {
     if (includePct) {
       options.push(['pct', 'Percent (%)']);
     }
-    sel.innerHTML = '';
-    for (const [val, txt] of options) {
-      const o = document.createElement('option');
-      o.value = val;
-      o.textContent = txt;
-      sel.appendChild(o);
+    const sig = `${units}|${includePct ? 1 : 0}`;
+    if (sel.dataset.sig !== sig || sel.options.length !== options.length) {
+      sel.dataset.sig = sig;
+      sel.innerHTML = '';
+      for (const [val, txt] of options) {
+        const o = document.createElement('option');
+        o.value = val;
+        o.textContent = txt;
+        sel.appendChild(o);
+      }
     }
     const valid = new Set(options.map(o => o[0]));
     if (valid.has(prev)) {
-      sel.value = prev;
-    } else {
+      if (sel.value !== prev) sel.value = prev;
+    } else if (sel.value !== options[0][0]) {
       sel.value = options[0][0];
     }
   }
@@ -29557,18 +29803,30 @@ function initRightPanel(store, callbacks = {}) {
     const selProc = getSelectedProcess();
     const selId = selProc ? selProc.id : null;
 
-    container.innerHTML = '';
-
     if (procs.length === 0) {
+      container.dataset.sig = '';
       container.innerHTML = '<div class="hint" style="padding:6px 2px">No processes defined yet. Choose Start &amp; End points above or press <b>P</b> on the chart.</div>';
       return;
     }
 
-    procs.forEach((pr, idx) => {
+    const validProcs = [];
+    for (let idx = 0; idx < procs.length; idx++) {
+      const pr = procs[idx];
       const a = pts.find(p => p.id === pr.aId);
       const b = pts.find(p => p.id === pr.bId);
-      if (!a || !b) return;
+      if (a && b) validProcs.push({ pr, idx, a, b });
+    }
 
+    const sig = `${units}|${selId ?? ''}|${validProcs.map(({ pr }) => `${pr.id}:${pr.aId}:${pr.bId}:${pr.showCurve ? 1 : 0}`).join(',')}`;
+    const existingCards = container.querySelectorAll('.procCard[data-proc-id]');
+    const canPatchInPlace = container.dataset.sig === sig && existingCards.length === validProcs.length;
+
+    if (!canPatchInPlace) {
+      container.dataset.sig = sig;
+      container.innerHTML = '';
+    }
+
+    validProcs.forEach(({ pr, idx, a, b }, cardIdx) => {
       const fUnit = normFlowUnit(pr.flowUnit, units);
       const m = HVAC.calcProcessMetrics(a, b, pPa, pr.flowVal, fUnit);
       const ti = m.typeInfo;
@@ -29594,14 +29852,6 @@ function initRightPanel(store, callbacks = {}) {
         borderCol = 'var(--erv, #0d9488)';
       }
 
-      const card = document.createElement('div');
-      card.className = `procCard${isSel ? ' selected' : ''}`;
-      card.tabIndex = 0;
-      card.setAttribute('role', 'button');
-      card.setAttribute('aria-pressed', isSel ? 'true' : 'false');
-      card.setAttribute('aria-label', `Select process S${idx + 1}: ${a.label} to ${b.label}`);
-      card.style.borderLeftColor = isSel ? 'var(--accent)' : borderCol;
-
       const qtTxt = units === 'IP'
         ? `${fmtSign(m.Qt_TR, 2)} TR`
         : `${fmtSign(m.Qt_kW, 2)} kW`;
@@ -29615,6 +29865,44 @@ function initRightPanel(store, callbacks = {}) {
         ? 'Toggle curved cooling-coil path & ADP extension'
         : 'Curved coil path applies only to cooling & dehumidification processes';
 
+      if (canPatchInPlace) {
+        const card = existingCards[cardIdx];
+        card.style.borderLeftColor = isSel ? 'var(--accent)' : borderCol;
+        const titleEl = card.querySelector('.procTitle');
+        if (titleEl) {
+          const ttl = `S${idx + 1}: ${a.label} → ${b.label}`;
+          titleEl.textContent = ttl;
+          titleEl.title = ttl;
+        }
+        const badgeEl = card.querySelector('.badge');
+        if (badgeEl) {
+          badgeEl.className = `badge ${badgeCls}`;
+          badgeEl.textContent = badgeText;
+        }
+        const qtEl = card.querySelector('.procQtVal');
+        if (qtEl) qtEl.textContent = qtTxt;
+        const shrEl = card.querySelector('.procShrVal');
+        if (shrEl) shrEl.textContent = shrTxt;
+        const flowEl = card.querySelector('.procFlowVal');
+        if (flowEl) flowEl.textContent = flowTxt;
+        const curveBtn = card.querySelector('.procCurveBtn');
+        if (curveBtn) {
+          curveBtn.title = curveTitle;
+          curveBtn.setAttribute('aria-label', curveTitle);
+          if (!pr.showCurve) curveBtn.style.opacity = isCoolDehum ? '0.9' : '0.45';
+        }
+        return;
+      }
+
+      const card = document.createElement('div');
+      card.className = `procCard${isSel ? ' selected' : ''}`;
+      card.dataset.procId = String(pr.id);
+      card.tabIndex = 0;
+      card.setAttribute('role', 'button');
+      card.setAttribute('aria-pressed', isSel ? 'true' : 'false');
+      card.setAttribute('aria-label', `Select process S${idx + 1}: ${a.label} to ${b.label}`);
+      card.style.borderLeftColor = isSel ? 'var(--accent)' : borderCol;
+
       card.innerHTML = `
         <div class="procHead">
           <span class="procTitle" title="S${idx + 1}: ${esc(a.label)} → ${esc(b.label)}">S${idx + 1}: ${esc(a.label)} → ${esc(b.label)}</span>
@@ -29623,9 +29911,9 @@ function initRightPanel(store, callbacks = {}) {
           <button type="button" class="procDel" aria-label="Delete process S${idx + 1}" title="Delete process">✕</button>
         </div>
         <div class="procLoads">
-          <span><b>Qt</b> ${esc(qtTxt)}</span>
-          <span>${esc(shrTxt)}</span>
-          <span style="margin-left:auto;opacity:0.85">${esc(flowTxt)}</span>
+          <span><b>Qt</b> <span class="procQtVal">${esc(qtTxt)}</span></span>
+          <span class="procShrVal">${esc(shrTxt)}</span>
+          <span class="procFlowVal" style="margin-left:auto;opacity:0.85">${esc(flowTxt)}</span>
         </div>
       `;
 
@@ -31345,12 +31633,32 @@ function initRightPanel(store, callbacks = {}) {
     if (byId('ventResults')?.innerHTML.trim()) renderVentResults();
   }
 
+  function refreshLiveDrag() {
+    renderProcessCards();
+    renderCycleSummary();
+    renderSelectedProcessMetrics();
+    if (byId('adpResults')?.innerHTML.trim()) renderAdpResults();
+    if (byId('mixPreview')) updateMixPreview();
+    if (byId('ventResults')?.innerHTML.trim()) renderVentResults();
+  }
+
+  let _dragSyncRaf = 0;
+  function schedulePointDragSync() {
+    if (_dragSyncRaf) return;
+    _dragSyncRaf = requestAnimationFrame(() => {
+      _dragSyncRaf = 0;
+      refreshLiveDrag();
+    });
+  }
+
   store.on('units-changed', ({ units }) => {
     convertRightPanelInputsOnUnitChange(lastUnits, units);
     lastUnits = units;
     refreshAll();
     rerenderCachedWizardResults();
   });
+
+  store.on('point-drag', schedulePointDragSync);
 
   store.on('change', (evt) => {
     if (evt?.reason === 'units') return; // handled by units-changed

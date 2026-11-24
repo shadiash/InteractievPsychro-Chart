@@ -1404,6 +1404,102 @@ def run_certification() -> int:
                 f"label='{mix_pt_info['label']}', before={mix_pt_info['lockedBefore']}, after={locked_after}",
             )
 
+            # Live dynamic point-data updates WHILE dragging a point (before mouseup)
+            page.click("#tabBtnPoints")
+            page.click("#tabBtnProc")
+            wait_raf(page, 3, 120)
+            drag_before = page.evaluate(
+                """() => {
+                    const app = window.__PSYCHRO__;
+                    const st = app.store.state;
+                    const oa = st.points[0];
+                    const ma = st.points.find(p => p.derived && p.derived.type === 'mix');
+                    const maIdx = st.points.indexOf(ma);
+                    const br = app.baseRenderer;
+                    const rect = document.getElementById('cvOverlay').getBoundingClientRect();
+                    const dpi = br.dpi || 1;
+                    const r0 = document.querySelector('#ptsTbl tbody tr[data-pt-idx="0"]');
+                    const rMa = document.querySelector(`#ptsTbl tbody tr[data-pt-idx="${maIdx}"]`);
+                    return {
+                        oaId: oa.id,
+                        oaT: oa.T,
+                        x: rect.left + br.xc(oa.T) / dpi,
+                        y: rect.top + br.yc(oa.w) / dpi,
+                        tblOaT: r0?.querySelector('.pt-tdb')?.value,
+                        tblMaT: rMa?.querySelector('.pt-tdb')?.value,
+                        mDT: document.getElementById('mDT')?.textContent,
+                        mQt: document.getElementById('mQt')?.textContent,
+                        procQt0: document.querySelector('#processCards .procQtVal')?.textContent,
+                        cycleSum: document.getElementById('cycleSummary')?.innerText || ''
+                    };
+                }"""
+            )
+            page.mouse.move(drag_before["x"], drag_before["y"])
+            page.mouse.down()
+            for step in range(1, 10):
+                page.mouse.move(drag_before["x"] - step * 8.0, drag_before["y"] + step * 5.0)
+                page.wait_for_timeout(16)
+            wait_raf(page, 3, 80)
+            drag_mid = page.evaluate(
+                """() => {
+                    const st = window.__PSYCHRO__.store.state;
+                    const ma = st.points.find(p => p.derived && p.derived.type === 'mix');
+                    const maIdx = st.points.indexOf(ma);
+                    const r0 = document.querySelector('#ptsTbl tbody tr[data-pt-idx="0"]');
+                    const rMa = document.querySelector(`#ptsTbl tbody tr[data-pt-idx="${maIdx}"]`);
+                    const hud = document.getElementById('hud');
+                    return {
+                        dragPtId: st.ui.dragPtId,
+                        rowDragging: Boolean(r0?.classList.contains('dragging-pt')),
+                        tblOaT: r0?.querySelector('.pt-tdb')?.value,
+                        tblMaT: rMa?.querySelector('.pt-tdb')?.value,
+                        mDT: document.getElementById('mDT')?.textContent,
+                        mQt: document.getElementById('mQt')?.textContent,
+                        procQt0: document.querySelector('#processCards .procQtVal')?.textContent,
+                        cycleSum: document.getElementById('cycleSummary')?.innerText || '',
+                        hudVisible: Boolean(hud && !hud.classList.contains('hidden')),
+                        hudDragging: Boolean(hud && hud.classList.contains('hud-dragging'))
+                    };
+                }"""
+            )
+            page.mouse.up()
+            wait_raf(page, 3, 80)
+            drag_after = page.evaluate(
+                """() => {
+                    const st = window.__PSYCHRO__.store.state;
+                    const hud = document.getElementById('hud');
+                    return {
+                        dragPtId: st.ui.dragPtId,
+                        hudDragging: Boolean(hud && hud.classList.contains('hud-dragging'))
+                    };
+                }"""
+            )
+            page.keyboard.press("Control+z")
+            wait_raf(page, 3, 100)
+            undone_oa_t = page.evaluate("() => window.__PSYCHRO__.store.state.points[0].T")
+
+            runner.check(
+                "While dragging a point (before mouseup), Left Panel (#ptsTbl OA + derived MA) & HUD update dynamically",
+                drag_mid["dragPtId"] == drag_before["oaId"]
+                and drag_mid["rowDragging"]
+                and drag_mid["tblOaT"] != drag_before["tblOaT"]
+                and drag_mid["tblMaT"] != drag_before["tblMaT"]
+                and drag_mid["hudVisible"]
+                and drag_mid["hudDragging"],
+                f"before=(OA:{drag_before['tblOaT']}, MA:{drag_before['tblMaT']}), mid=(OA:{drag_mid['tblOaT']}, MA:{drag_mid['tblMaT']}, dragPtId={drag_mid['dragPtId']})",
+            )
+            runner.check(
+                "While dragging a point (before mouseup), Right Panel (#processCards, #cycleSummary, #mDT/#mQt) updates dynamically & Ctrl+Z undoes cleanly",
+                drag_mid["mDT"] != drag_before["mDT"]
+                and drag_mid["mQt"] != drag_before["mQt"]
+                and drag_mid["procQt0"] != drag_before["procQt0"]
+                and drag_mid["cycleSum"] != drag_before["cycleSum"]
+                and drag_after["dragPtId"] is None
+                and not drag_after["hudDragging"]
+                and abs(undone_oa_t - drag_before["oaT"]) < 1e-3,
+                f"mDT:{drag_before['mDT']}->{drag_mid['mDT']}, mQt:{drag_before['mQt']}->{drag_mid['mQt']}, undoT={undone_oa_t}",
+            )
+
             # =================================================================
             # 8. FINAL POLISHED SHOWCASE SCREENSHOTS (03 & 04)
             # =================================================================

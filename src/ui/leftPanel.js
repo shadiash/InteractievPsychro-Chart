@@ -1833,12 +1833,15 @@ export function initLeftPanel(store, callbacks = {}) {
     // Check if we can update existing rows in-place to preserve typing focus
     const nextSig = `${units}|${editMode}|${pts.map((p, i) => `${p.id ?? i}:${p.locked ? 1 : 0}`).join(',')}`;
     const existingRows = tb.querySelectorAll('tr[data-pt-idx]');
+    const dragPtId = getState().ui?.dragPtId ?? null;
     if (tb.dataset.sig === nextSig && existingRows.length === pts.length) {
       pts.forEach((p, i) => {
         const tr = existingRows[i];
         const disp = computePointRowDisplay(p, editMode, units, pPa);
         const sel = isPointSelected(p, i);
+        const isDraggingThis = dragPtId != null && p.id === dragPtId;
         tr.classList.toggle('selected', sel);
+        tr.classList.toggle('dragging-pt', isDraggingThis);
         tr.style.background = sel ? 'var(--accentSoft, rgba(14,165,233,0.12))' : '';
 
         const cDot = tr.querySelector('.pt-color-dot');
@@ -1851,9 +1854,9 @@ export function initLeftPanel(store, callbacks = {}) {
         const lblInp = tr.querySelector('.pt-lbl');
         if (lblInp && document.activeElement !== lblInp) lblInp.value = p.label || `P${i + 1}`;
         const tdbInp = tr.querySelector('.pt-tdb');
-        if (tdbInp && document.activeElement !== tdbInp) tdbInp.value = disp.tDisp;
+        if (tdbInp && (dragPtId != null || document.activeElement !== tdbInp)) tdbInp.value = disp.tDisp;
         const secInp = tr.querySelector('.pt-sec');
-        if (secInp && document.activeElement !== secInp) secInp.value = disp.secDisp;
+        if (secInp && (dragPtId != null || document.activeElement !== secInp)) secInp.value = disp.secDisp;
         const compTd = tr.querySelector('.pt-comp');
         if (compTd) compTd.textContent = disp.compDisp;
       });
@@ -2549,7 +2552,17 @@ export function initLeftPanel(store, callbacks = {}) {
     else if (typeof store?.subscribe === 'function') store.subscribe(evt, fn);
   };
 
+  let _dragSyncRaf = 0;
+  function schedulePointDragSync() {
+    if (_dragSyncRaf) return;
+    _dragSyncRaf = requestAnimationFrame(() => {
+      _dragSyncRaf = 0;
+      refreshPointsTable();
+    });
+  }
+
   subscribe('change', syncAllFromStore);
+  subscribe('point-drag', schedulePointDragSync);
   subscribe('theme-changed', () => {
     syncChartCurveControls();
     syncAxisAndTrendControls(true);

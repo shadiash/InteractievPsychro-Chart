@@ -1089,6 +1089,11 @@ kbd {
   opacity: 0;
 }
 
+#hud.hud-dragging {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accentSoft), var(--shadow-md);
+}
+
 #hud .hud-item {
   display: inline-flex;
   align-items: baseline;
@@ -1681,6 +1686,11 @@ input[type="checkbox"] {
 
 .ptable tbody tr.selected {
   background: var(--accentSoft);
+}
+
+.ptable tbody tr.dragging-pt {
+  background: var(--accentSoft);
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 
 .ptable input[type="text"],
