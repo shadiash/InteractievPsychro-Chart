@@ -17,7 +17,7 @@ export function initRightPanel(store, callbacks = {}) {
   const clamp = CoreDOM.clamp;
   const toast = typeof callbacks?.toast === 'function'
     ? callbacks.toast
-    : (msg, type) => { if (typeof store?.toast === 'function') store.toast(msg, type); };
+    : (msg, type, anchor) => { if (typeof store?.toast === 'function') store.toast(msg, type, anchor); };
 
   const BTUH_PER_KW = Psy.BTUH_PER_KW || 3412.141633;
   const KW_PER_TON = Psy.KW_PER_TON || 3.516852842;
@@ -893,7 +893,7 @@ export function initRightPanel(store, callbacks = {}) {
         e.stopPropagation();
         const nextCurve = !pr.showCurve;
         if (nextCurve && !isCoolDehum) {
-          toast('Curved coil path only applies to cooling & dehumidification processes (T_out < T_in and W_out < W_in)', 'info');
+          toast('Curved coil path only applies to cooling & dehumidification processes (T_out < T_in and W_out < W_in)', 'warn', curveToggleBtn);
           return;
         }
         let adpPatch = { showCurve: nextCurve };
@@ -1018,13 +1018,33 @@ export function initRightPanel(store, callbacks = {}) {
   }
 
   function wireProcessesTab() {
+    const clearProcPairInvalid = () => {
+      byId('procA')?.classList.remove('field-invalid');
+      byId('procB')?.classList.remove('field-invalid');
+    };
+    on(byId('procA'), 'change', clearProcPairInvalid);
+    on(byId('procB'), 'change', clearProcPairInvalid);
+
     on(byId('procAdd'), 'click', () => {
-      const aId = byId('procA')?.value;
-      const bId = byId('procB')?.value;
+      const selA = byId('procA');
+      const selB = byId('procB');
+      const aId = selA?.value;
+      const bId = selB?.value;
       if (!aId || !bId || aId === bId) {
-        toast('Select two different state points', 'error');
+        const pts = store.state.points || [];
+        const samePt = aId ? store.getPoint(aId) : null;
+        const msg = pts.length < 2
+          ? 'Add a second state point first — a process needs 2 different points'
+          : (aId && aId === bId
+            ? `Cannot link "${samePt?.label || 'point'}" to itself — choose a different End point`
+            : 'Select two different state points');
+        selA?.classList.add('field-invalid');
+        selB?.classList.add('field-invalid');
+        setTimeout(clearProcPairInvalid, 2200);
+        toast(msg, 'error', byId('procAdd'));
         return;
       }
+      clearProcPairInvalid();
       const units = getUnits();
       const rawFlow = parseFloat(byId('flowVal')?.value);
       const flowVal = Number.isFinite(rawFlow) && rawFlow > 0
@@ -1103,7 +1123,7 @@ export function initRightPanel(store, callbacks = {}) {
         const nextCurve = evt === 'change' ? Boolean(curveEl.checked) : !proc.showCurve;
         if (nextCurve && !isCoolingDehumPair(a, b)) {
           if (evt === 'change') curveEl.checked = false;
-          toast('Curved coil path only applies to cooling & dehumidification processes (T_out < T_in and W_out < W_in)', 'info');
+          toast('Curved coil path only applies to cooling & dehumidification processes (T_out < T_in and W_out < W_in)', 'warn', curveEl);
           return;
         }
         const patch = { showCurve: nextCurve };

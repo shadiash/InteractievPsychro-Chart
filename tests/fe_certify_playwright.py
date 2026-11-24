@@ -1305,6 +1305,81 @@ def run_certification() -> int:
             )
             clear_toasts(page)
 
+            # 7c. Contextual validation errors appear directly beside the user's active control/point (NOT bottom of screen)
+            page.click("#tabBtnProc")
+            wait_raf(page, 2, 80)
+            page.evaluate(
+                """() => {
+                    const a = document.getElementById('procA');
+                    const b = document.getElementById('procB');
+                    if (a && b) b.value = a.value;
+                }"""
+            )
+            page.click("#procAdd")
+            wait_raf(page, 3, 100)
+            rp_alert = page.evaluate(
+                """() => {
+                    const br = document.getElementById('procAdd').getBoundingClientRect();
+                    const t = document.querySelector('#toastContainer .toast.toast-anchored.error');
+                    const tr = t ? t.getBoundingClientRect() : null;
+                    return {
+                        found: Boolean(t),
+                        text: t ? t.innerText.trim() : '',
+                        gapY: tr ? Math.round(Math.abs(tr.top - br.bottom)) : 999,
+                        toastBottom: tr ? Math.round(tr.bottom) : 999,
+                        aInvalid: Boolean(document.getElementById('procA')?.classList.contains('field-invalid'))
+                    };
+                }"""
+            )
+            runner.check(
+                "Invalid self-linked process (+ ADD) shows anchored error right below #procAdd (not bottom of screen)",
+                rp_alert["found"] and rp_alert["gapY"] <= 24 and rp_alert["toastBottom"] < 300 and rp_alert["aInvalid"],
+                json.dumps(rp_alert),
+            )
+
+            # On-chart Process mode clicking same point twice anchors error right next to the point inside #chartStage
+            page.click("#btnToolProcess")
+            wait_raf(page, 2, 80)
+            oa_pt_xy = page.evaluate(
+                """() => {
+                    const app = window.__PSYCHRO__;
+                    const oa = app.store.state.points[0];
+                    const br = app.baseRenderer;
+                    const rect = document.getElementById('cvOverlay').getBoundingClientRect();
+                    const dpi = br.dpi || 1;
+                    return { x: rect.left + br.xc(oa.T) / dpi, y: rect.top + br.yc(oa.w) / dpi };
+                }"""
+            )
+            page.mouse.click(oa_pt_xy["x"], oa_pt_xy["y"])
+            wait_raf(page, 2, 80)
+            page.mouse.click(oa_pt_xy["x"], oa_pt_xy["y"])
+            wait_raf(page, 3, 100)
+            chart_alert = page.evaluate(
+                """(pt) => {
+                    const t = document.querySelector('#toastContainer .toast.toast-anchored.error');
+                    const tr = t ? t.getBoundingClientRect() : null;
+                    const sr = document.getElementById('chartStage').getBoundingClientRect();
+                    if (!tr) return { found: false };
+                    const dx = Math.max(tr.left - pt.x, pt.x - tr.right, 0);
+                    const dy = Math.max(tr.top - pt.y, pt.y - tr.bottom, 0);
+                    return {
+                        found: true,
+                        text: t.innerText.trim(),
+                        dist: Math.round(Math.hypot(dx, dy)),
+                        insideStage: tr.left >= sr.left - 2 && tr.right <= sr.right + 2
+                    };
+                }""",
+                oa_pt_xy,
+            )
+            page.keyboard.press("Escape")
+            wait_raf(page, 2, 60)
+            clear_toasts(page)
+            runner.check(
+                "On-chart Process mode point-to-self click anchors error beside the clicked point inside #chartStage",
+                chart_alert.get("found") and chart_alert.get("dist", 999) < 80 and chart_alert.get("insideStage") and "itself" in chart_alert.get("text", "").lower(),
+                json.dumps(chart_alert),
+            )
+
             # 7c. Measure Caliper Escape hides stale #hud
             page.click("#btnToolMeasure")
             wait_raf(page, 2, 80)

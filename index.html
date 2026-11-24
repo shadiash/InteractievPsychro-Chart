@@ -4018,12 +4018,12 @@ input[type="checkbox"] {
   margin: 4px 6px;
 }
 
-/* Toast Notifications (`#toastContainer`) */
+/* Toast Notifications (`#toastContainer` & Workspace-Anchored Contextual Popovers) */
 #toastContainer {
   position: fixed;
   bottom: 16px;
   right: calc(var(--rightW) + 18px);
-  z-index: 400;
+  z-index: 650;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
@@ -4057,11 +4057,86 @@ input[type="checkbox"] {
   animation: toastIn 200ms var(--ease);
 }
 
+.toast .toast-ico {
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
 .toast.success { border-left-color: var(--success); }
+.toast.success .toast-ico { color: var(--success); }
 .toast.error   { border-left-color: var(--danger); }
+.toast.error .toast-ico { color: var(--danger); }
 .toast.warn    { border-left-color: var(--warn); }
+.toast.warn .toast-ico { color: var(--warn); }
 .toast.info    { border-left-color: var(--accent); }
+.toast.info .toast-ico { color: var(--accent); }
 .toast.out     { animation: toastOut 180ms var(--ease) forwards; }
+
+/* Contextual alert popover positioned directly beside user's active control or chart point */
+.toast.toast-anchored {
+  position: fixed;
+  right: auto;
+  bottom: auto;
+  z-index: 651;
+  max-width: 315px;
+  padding: 8px 12px;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.35;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.34), 0 0 0 1px var(--borderStrong);
+  animation: toastAnchorIn 220ms var(--ease);
+}
+
+.toast.toast-anchored.error {
+  border-color: var(--dangerBorder, rgba(239, 68, 68, 0.55));
+  border-left: 3.5px solid var(--danger);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.36), 0 0 0 1px var(--dangerBorder, rgba(239, 68, 68, 0.45));
+  animation: toastAnchorShake 320ms var(--ease);
+}
+
+.toast.toast-anchored.warn {
+  border-color: var(--warnBorder, rgba(245, 158, 11, 0.55));
+  border-left: 3.5px solid var(--warn);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.32), 0 0 0 1px var(--warnBorder, rgba(245, 158, 11, 0.42));
+}
+
+.toast.toast-anchored.anchor-below::before,
+.toast.toast-anchored.anchor-above::before {
+  content: '';
+  position: absolute;
+  left: var(--caret-x, 50%);
+  width: 9px;
+  height: 9px;
+  background: var(--glassStrong);
+  border-left: 1px solid var(--borderStrong);
+  border-top: 1px solid var(--borderStrong);
+  pointer-events: none;
+}
+
+.toast.toast-anchored.error.anchor-below::before,
+.toast.toast-anchored.error.anchor-above::before {
+  border-color: var(--dangerBorder, rgba(239, 68, 68, 0.55));
+}
+
+.toast.toast-anchored.warn.anchor-below::before,
+.toast.toast-anchored.warn.anchor-above::before {
+  border-color: var(--warnBorder, rgba(245, 158, 11, 0.55));
+}
+
+.toast.toast-anchored.anchor-below::before {
+  top: -5px;
+  transform: translateX(-50%) rotate(45deg);
+}
+
+.toast.toast-anchored.anchor-above::before {
+  bottom: -5px;
+  transform: translateX(-50%) rotate(225deg);
+}
+
+.field-invalid {
+  border-color: var(--danger) !important;
+  box-shadow: 0 0 0 2px var(--dangerSoft, rgba(239, 68, 68, 0.22)) !important;
+}
 
 @keyframes uiFadeIn {
   from { opacity: 0; }
@@ -4071,6 +4146,19 @@ input[type="checkbox"] {
 @keyframes toastIn {
   from { opacity: 0; transform: translateY(10px); }
   to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes toastAnchorIn {
+  from { opacity: 0; transform: translateY(-4px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes toastAnchorShake {
+  0%   { opacity: 0; transform: translateX(0) scale(0.96); }
+  25%  { opacity: 1; transform: translateX(-4px) scale(1); }
+  50%  { transform: translateX(4px); }
+  75%  { transform: translateX(-2px); }
+  100% { transform: translateX(0); }
 }
 
 @keyframes toastOut {
@@ -5990,7 +6078,7 @@ input[type="checkbox"] {
 <script>
 /* ============================================================================
    PsychroChart Ultra 3.0 — Compiled Single-File Bundle
-   Built: 2026-11-24T20:21:27.936Z
+   Built: 2026-11-24T20:32:26.409Z
    ============================================================================ */
 (() => {
 'use strict';
@@ -11515,8 +11603,8 @@ function createStore() {
     }
   }
 
-  function toast(message, type = 'info') {
-    emit('toast', { message, msg: message, type });
+  function toast(message, type = 'info', anchor = null) {
+    emit('toast', { message, msg: message, type, anchor });
   }
 
   /* --------------------------------------------------------------------------
@@ -23610,11 +23698,11 @@ function initChartInteraction(store, baseRenderer, overlayRenderer, callbacks = 
     cleanups.push(() => node.removeEventListener(evt, fn, opts));
   }
 
-  function toast(msg, type = 'info') {
+  function toast(msg, type = 'info', anchor = null) {
     if (typeof callbacks.toast === 'function') {
-      callbacks.toast(msg, type);
+      callbacks.toast(msg, type, anchor);
     } else if (typeof store?.toast === 'function') {
-      store.toast(msg, type);
+      store.toast(msg, type, anchor);
     }
   }
 
@@ -24352,6 +24440,14 @@ function initChartInteraction(store, baseRenderer, overlayRenderer, callbacks = 
     return Boolean(pt && pt.derived && pt.derived.type === 'mix');
   }
 
+  function pointToClientXY(pt) {
+    if (!pt || !cvOverlay) return null;
+    const rect = cvOverlay.getBoundingClientRect();
+    const dpi = getDpi();
+    const p = twToPx(pt.T, pt.w);
+    return { x: rect.left + p.x / dpi, y: rect.top + p.y / dpi };
+  }
+
   function notifyDerivedMixLocked(pt) {
     if (pt && !pt.locked) {
       if (typeof store?.updatePoint === 'function') {
@@ -24361,7 +24457,7 @@ function initChartInteraction(store, baseRenderer, overlayRenderer, callbacks = 
       }
       scheduleOverlayRender();
     }
-    toast('Mix point is auto-computed from parent streams — drag a parent point to move it', 'info');
+    toast('Mix point is auto-computed from parent streams — drag a parent point to move it', 'warn', pointToClientXY(pt));
   }
 
   function toggleLockPoint(ptId) {
@@ -24418,14 +24514,14 @@ function initChartInteraction(store, baseRenderer, overlayRenderer, callbacks = 
     const pt = getPoint(ptId);
     if (!pt) return false;
     if (pt.locked) {
-      toast(`"${pt.label}" is locked — unlock it first`, 'error');
+      toast(`"${pt.label}" is locked — unlock it first`, 'error', pointToClientXY(pt));
       return false;
     }
     const label = pt.label;
     if (typeof store?.deletePoint === 'function') {
       const res = store.deletePoint(ptId);
       if (res && res.ok === false) {
-        toast(res.reason || 'Cannot delete point', 'error');
+        toast(res.reason || 'Cannot delete point', 'error', pointToClientXY(pt));
         return false;
       }
     } else {
@@ -24494,7 +24590,7 @@ function initChartInteraction(store, baseRenderer, overlayRenderer, callbacks = 
     if (!proc) return;
     const nextCurve = !proc.showCurve;
     if (nextCurve && !isCoolingDehumCoilCandidate(proc)) {
-      toast('Curved coil path applies only to cooling & dehumidification coils', 'info');
+      toast('Curved coil path applies only to cooling & dehumidification coils', 'warn');
       return;
     }
     const patch = { showCurve: nextCurve };
@@ -25331,16 +25427,16 @@ function initChartInteraction(store, baseRenderer, overlayRenderer, callbacks = 
 
       if (ui.procStartId == null) {
         ui.procStartId = pt.id;
-        toast(`Process start: "${pt.label}" — click end point (Shift to chain)`, 'info');
+        toast(`Process start: "${pt.label}" — click end point (Shift to chain)`, 'info', pointToClientXY(pt));
         updateModeBanner();
         emitOverlayDirty('process-start');
         return;
       }
 
       if (ui.procStartId === pt.id) {
-        ui.procStartId = null;
+        toast(`Cannot connect "${pt.label}" to itself — click a different end point (Esc to cancel)`, 'error', pointToClientXY(pt));
         updateModeBanner();
-        emitOverlayDirty('process-cancel');
+        emitOverlayDirty('process-self-error');
         return;
       }
 
@@ -25362,16 +25458,16 @@ function initChartInteraction(store, baseRenderer, overlayRenderer, callbacks = 
 
       if (ui.mixStartId == null) {
         ui.mixStartId = pt.id;
-        toast(`Mix Stream A: "${pt.label}" — click Stream B`, 'info');
+        toast(`Mix Stream A: "${pt.label}" — click Stream B`, 'info', pointToClientXY(pt));
         updateModeBanner();
         emitOverlayDirty('mix-start');
         return;
       }
 
       if (ui.mixStartId === pt.id) {
-        ui.mixStartId = null;
+        toast(`Cannot mix "${pt.label}" with itself — click a different Stream B (Esc to cancel)`, 'error', pointToClientXY(pt));
         updateModeBanner();
-        emitOverlayDirty('mix-cancel');
+        emitOverlayDirty('mix-self-error');
         return;
       }
 
@@ -29062,7 +29158,7 @@ function initRightPanel(store, callbacks = {}) {
   const clamp = CoreDOM.clamp;
   const toast = typeof callbacks?.toast === 'function'
     ? callbacks.toast
-    : (msg, type) => { if (typeof store?.toast === 'function') store.toast(msg, type); };
+    : (msg, type, anchor) => { if (typeof store?.toast === 'function') store.toast(msg, type, anchor); };
 
   const BTUH_PER_KW = Psy.BTUH_PER_KW || 3412.141633;
   const KW_PER_TON = Psy.KW_PER_TON || 3.516852842;
@@ -29938,7 +30034,7 @@ function initRightPanel(store, callbacks = {}) {
         e.stopPropagation();
         const nextCurve = !pr.showCurve;
         if (nextCurve && !isCoolDehum) {
-          toast('Curved coil path only applies to cooling & dehumidification processes (T_out < T_in and W_out < W_in)', 'info');
+          toast('Curved coil path only applies to cooling & dehumidification processes (T_out < T_in and W_out < W_in)', 'warn', curveToggleBtn);
           return;
         }
         let adpPatch = { showCurve: nextCurve };
@@ -30063,13 +30159,33 @@ function initRightPanel(store, callbacks = {}) {
   }
 
   function wireProcessesTab() {
+    const clearProcPairInvalid = () => {
+      byId('procA')?.classList.remove('field-invalid');
+      byId('procB')?.classList.remove('field-invalid');
+    };
+    on(byId('procA'), 'change', clearProcPairInvalid);
+    on(byId('procB'), 'change', clearProcPairInvalid);
+
     on(byId('procAdd'), 'click', () => {
-      const aId = byId('procA')?.value;
-      const bId = byId('procB')?.value;
+      const selA = byId('procA');
+      const selB = byId('procB');
+      const aId = selA?.value;
+      const bId = selB?.value;
       if (!aId || !bId || aId === bId) {
-        toast('Select two different state points', 'error');
+        const pts = store.state.points || [];
+        const samePt = aId ? store.getPoint(aId) : null;
+        const msg = pts.length < 2
+          ? 'Add a second state point first — a process needs 2 different points'
+          : (aId && aId === bId
+            ? `Cannot link "${samePt?.label || 'point'}" to itself — choose a different End point`
+            : 'Select two different state points');
+        selA?.classList.add('field-invalid');
+        selB?.classList.add('field-invalid');
+        setTimeout(clearProcPairInvalid, 2200);
+        toast(msg, 'error', byId('procAdd'));
         return;
       }
+      clearProcPairInvalid();
       const units = getUnits();
       const rawFlow = parseFloat(byId('flowVal')?.value);
       const flowVal = Number.isFinite(rawFlow) && rawFlow > 0
@@ -30148,7 +30264,7 @@ function initRightPanel(store, callbacks = {}) {
         const nextCurve = evt === 'change' ? Boolean(curveEl.checked) : !proc.showCurve;
         if (nextCurve && !isCoolingDehumPair(a, b)) {
           if (evt === 'change') curveEl.checked = false;
-          toast('Curved coil path only applies to cooling & dehumidification processes (T_out < T_in and W_out < W_in)', 'info');
+          toast('Curved coil path only applies to cooling & dehumidification processes (T_out < T_in and W_out < W_in)', 'warn', curveEl);
           return;
         }
         const patch = { showCurve: nextCurve };
@@ -34595,16 +34711,149 @@ function initModals(store, exporter, baseRenderer, overlayRenderer, toast) {
 
 
 
-function toast(msg, type = 'info') {
+const _APP_lastAction = { el: null, x: 0, y: 0, time: 0 };
+
+if (typeof document !== 'undefined') {
+  const _recordActionEl = (target, cx, cy) => {
+    const el = target && target.nodeType === 1
+      ? (target.closest('button, input, select, textarea, [role="button"], canvas') || target)
+      : null;
+    _APP_lastAction.el = el;
+    _APP_lastAction.x = Number.isFinite(cx) ? cx : 0;
+    _APP_lastAction.y = Number.isFinite(cy) ? cy : 0;
+    _APP_lastAction.time = Date.now();
+  };
+  document.addEventListener('pointerdown', (e) => {
+    _recordActionEl(e.target, e.clientX, e.clientY);
+  }, true);
+  document.addEventListener('click', (e) => {
+    _recordActionEl(e.target, e.clientX, e.clientY);
+  }, true);
+  document.addEventListener('change', (e) => {
+    const el = e.target;
+    if (el && el.nodeType === 1 && typeof el.getBoundingClientRect === 'function') {
+      const r = el.getBoundingClientRect();
+      _recordActionEl(el, r.left + r.width * 0.5, r.top + r.height * 0.5);
+    }
+  }, true);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      const el = document.activeElement;
+      if (el && el !== document.body && typeof el.getBoundingClientRect === 'function') {
+        const r = el.getBoundingClientRect();
+        if (r.width > 0 && r.height > 0) {
+          _recordActionEl(el, r.left + r.width * 0.5, r.top + r.height * 0.5);
+        }
+      }
+    }
+  }, true);
+}
+
+function _resolveToastAnchor(tone, explicitAnchor) {
+  if (explicitAnchor) {
+    if (explicitAnchor.nodeType === 1 && explicitAnchor.isConnected) {
+      const r = explicitAnchor.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0) return { kind: 'el', rect: r };
+    } else if (Number.isFinite(explicitAnchor.x) && Number.isFinite(explicitAnchor.y)) {
+      return { kind: 'xy', x: explicitAnchor.x, y: explicitAnchor.y };
+    }
+  }
+  if (tone !== 'error' && tone !== 'warn') return null;
+
+  const now = Date.now();
+  if (now - _APP_lastAction.time <= 1400) {
+    const el = _APP_lastAction.el;
+    if (el && el.isConnected) {
+      if (el.tagName === 'CANVAS' || el.id === 'chartStage' || el.id === 'chartWrap') {
+        if (_APP_lastAction.x > 0 || _APP_lastAction.y > 0) {
+          return { kind: 'xy', x: _APP_lastAction.x, y: _APP_lastAction.y };
+        }
+      } else {
+        const r = el.getBoundingClientRect();
+        if (r.width > 0 && r.height > 0) return { kind: 'el', rect: r };
+      }
+    }
+    if (_APP_lastAction.x > 0 || _APP_lastAction.y > 0) {
+      return { kind: 'xy', x: _APP_lastAction.x, y: _APP_lastAction.y };
+    }
+  }
+
+  const active = document.activeElement;
+  if (active && active !== document.body && active.isConnected &&
+      active.matches?.('button, input, select, textarea, [role="button"]')) {
+    const r = active.getBoundingClientRect();
+    if (r.width > 0 && r.height > 0) return { kind: 'el', rect: r };
+  }
+  return null;
+}
+
+function _positionAnchoredToast(node, anchor) {
+  const vw = window.innerWidth || 1280;
+  const vh = window.innerHeight || 800;
+  const pad = 10;
+  const tw = node.offsetWidth || 260;
+  const th = node.offsetHeight || 38;
+
+  if (anchor.kind === 'el') {
+    const r = anchor.rect;
+    const targetCx = r.left + r.width * 0.5;
+    let left = targetCx - tw * 0.5;
+    // Align cleanly inside right/left edges
+    left = CoreDOM.clamp(left, pad, Math.max(pad, vw - tw - pad));
+
+    let top = r.bottom + 10;
+    let placement = 'anchor-below';
+    if (top + th > vh - pad && r.top - th - 10 >= pad) {
+      top = r.top - th - 10;
+      placement = 'anchor-above';
+    } else {
+      top = CoreDOM.clamp(top, pad, Math.max(pad, vh - th - pad));
+    }
+
+    const caretX = CoreDOM.clamp(targetCx - left, 14, Math.max(14, tw - 14));
+    node.classList.add(placement);
+    node.style.left = `${Math.round(left)}px`;
+    node.style.top = `${Math.round(top)}px`;
+    node.style.setProperty('--caret-x', `${Math.round(caretX)}px`);
+    return;
+  }
+
+  // Canvas / point / cursor coordinate anchor (prefer staying cleanly inside #chartStage)
+  const stageEl = CoreDOM.byId('chartStage') || CoreDOM.byId('chartWrap');
+  const stageRect = stageEl ? stageEl.getBoundingClientRect() : null;
+  const boundL = (stageRect && anchor.x >= stageRect.left && anchor.x <= stageRect.right)
+    ? Math.max(pad, stageRect.left + 8)
+    : pad;
+  const boundR = (stageRect && anchor.x >= stageRect.left && anchor.x <= stageRect.right)
+    ? Math.min(vw - pad, stageRect.right - 8)
+    : (vw - pad);
+
+  let left = anchor.x + 16;
+  if (left + tw > boundR && anchor.x - tw - 16 >= boundL) {
+    left = anchor.x - tw - 16;
+  }
+  left = CoreDOM.clamp(left, boundL, Math.max(boundL, boundR - tw));
+
+  let top = anchor.y - th - 14;
+  if (top < pad) top = anchor.y + 18;
+  top = CoreDOM.clamp(top, pad, Math.max(pad, vh - th - pad));
+
+  node.classList.add('anchor-point');
+  node.style.left = `${Math.round(left)}px`;
+  node.style.top = `${Math.round(top)}px`;
+}
+
+function toast(msg, type = 'info', anchor = null) {
   if (typeof document === 'undefined') return;
   const container = CoreDOM.byId('toastContainer');
   if (!container) return;
 
   const icons = { success: '✓', error: '✕', warn: '⚠', info: 'ℹ' };
   const tone = icons[type] ? type : 'info';
-  const durationMs = tone === 'error' ? 3800 : 2200;
+  const durationMs = tone === 'error' ? 4000 : (tone === 'warn' ? 3400 : 2200);
   const cleanMsg = String(msg ?? '');
   const key = `${tone}|${cleanMsg}`;
+  const resolvedAnchor = _resolveToastAnchor(tone, anchor);
 
   const dismissNode = (el) => {
     if (!el || el.dataset.dismissed === '1') return;
@@ -34617,32 +34866,45 @@ function toast(msg, type = 'info') {
     setTimeout(() => el.remove(), 200);
   };
 
-  // Coalesce identical active message/category toasts by resetting dismiss timer
-  const existing = Array.from(container.children).find(
-    ch => ch.dataset?.toastKey === key && ch.dataset?.dismissed !== '1'
-  );
-  if (existing) {
-    if (existing._toastTimer) clearTimeout(existing._toastTimer);
-    existing._toastTimer = setTimeout(() => dismissNode(existing), durationMs);
-    return;
-  }
+  if (resolvedAnchor) {
+    // Replace any existing anchored toast so repeated actions next to a button never stack messily
+    container.querySelectorAll('.toast-anchored').forEach((old) => {
+      if (old._toastTimer) clearTimeout(old._toastTimer);
+      old.remove();
+    });
+  } else {
+    // Coalesce identical active stacked toasts by resetting dismiss timer
+    const existing = Array.from(container.children).find(
+      ch => !ch.classList.contains('toast-anchored') && ch.dataset?.toastKey === key && ch.dataset?.dismissed !== '1'
+    );
+    if (existing) {
+      if (existing._toastTimer) clearTimeout(existing._toastTimer);
+      existing._toastTimer = setTimeout(() => dismissNode(existing), durationMs);
+      return;
+    }
 
-  // Keep toast stack clean and compact (max 3 simultaneous)
-  while (container.children.length >= 3) {
-    const oldest = container.firstElementChild;
-    if (oldest?._toastTimer) clearTimeout(oldest._toastTimer);
-    oldest?.remove();
+    // Keep passive toast stack clean and compact (max 3 simultaneous)
+    const stacked = Array.from(container.children).filter(ch => !ch.classList.contains('toast-anchored'));
+    while (stacked.length >= 3) {
+      const oldest = stacked.shift();
+      if (oldest?._toastTimer) clearTimeout(oldest._toastTimer);
+      oldest?.remove();
+    }
   }
 
   const node = document.createElement('div');
-  node.className = `toast ${tone}`;
+  node.className = `toast ${tone}${resolvedAnchor ? ' toast-anchored' : ''}`;
   node.dataset.toastKey = key;
   node.style.cursor = 'pointer';
   node.title = 'Click to dismiss';
   node.setAttribute('role', tone === 'error' ? 'alert' : 'status');
-  node.innerHTML = `<span aria-hidden="true">${icons[tone]}</span><span>${CoreDOM.esc(cleanMsg)}</span>`;
+  node.innerHTML = `<span class="toast-ico" aria-hidden="true">${icons[tone]}</span><span>${CoreDOM.esc(cleanMsg)}</span>`;
   node.addEventListener('click', () => dismissNode(node));
   container.appendChild(node);
+
+  if (resolvedAnchor) {
+    _positionAnchoredToast(node, resolvedAnchor);
+  }
 
   node._toastTimer = setTimeout(() => dismissNode(node), durationMs);
 }
@@ -35242,7 +35504,7 @@ const _APP_boot = (() => {
     store.on('toast', payload => {
       if (!payload) return;
       const msg = typeof payload === 'string' ? payload : (payload.message || payload.msg || '');
-      if (msg) toast(msg, payload.type || 'info');
+      if (msg) toast(msg, payload.type || 'info', payload.anchor || null);
     });
 
     // 4. Restore URL hash -> localStorage autosave -> default 'summer-ahu' preset

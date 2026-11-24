@@ -77,11 +77,11 @@ export function initChartInteraction(store, baseRenderer, overlayRenderer, callb
     cleanups.push(() => node.removeEventListener(evt, fn, opts));
   }
 
-  function toast(msg, type = 'info') {
+  function toast(msg, type = 'info', anchor = null) {
     if (typeof callbacks.toast === 'function') {
-      callbacks.toast(msg, type);
+      callbacks.toast(msg, type, anchor);
     } else if (typeof store?.toast === 'function') {
-      store.toast(msg, type);
+      store.toast(msg, type, anchor);
     }
   }
 
@@ -819,6 +819,14 @@ export function initChartInteraction(store, baseRenderer, overlayRenderer, callb
     return Boolean(pt && pt.derived && pt.derived.type === 'mix');
   }
 
+  function pointToClientXY(pt) {
+    if (!pt || !cvOverlay) return null;
+    const rect = cvOverlay.getBoundingClientRect();
+    const dpi = getDpi();
+    const p = twToPx(pt.T, pt.w);
+    return { x: rect.left + p.x / dpi, y: rect.top + p.y / dpi };
+  }
+
   function notifyDerivedMixLocked(pt) {
     if (pt && !pt.locked) {
       if (typeof store?.updatePoint === 'function') {
@@ -828,7 +836,7 @@ export function initChartInteraction(store, baseRenderer, overlayRenderer, callb
       }
       scheduleOverlayRender();
     }
-    toast('Mix point is auto-computed from parent streams — drag a parent point to move it', 'info');
+    toast('Mix point is auto-computed from parent streams — drag a parent point to move it', 'warn', pointToClientXY(pt));
   }
 
   function toggleLockPoint(ptId) {
@@ -885,14 +893,14 @@ export function initChartInteraction(store, baseRenderer, overlayRenderer, callb
     const pt = getPoint(ptId);
     if (!pt) return false;
     if (pt.locked) {
-      toast(`"${pt.label}" is locked — unlock it first`, 'error');
+      toast(`"${pt.label}" is locked — unlock it first`, 'error', pointToClientXY(pt));
       return false;
     }
     const label = pt.label;
     if (typeof store?.deletePoint === 'function') {
       const res = store.deletePoint(ptId);
       if (res && res.ok === false) {
-        toast(res.reason || 'Cannot delete point', 'error');
+        toast(res.reason || 'Cannot delete point', 'error', pointToClientXY(pt));
         return false;
       }
     } else {
@@ -961,7 +969,7 @@ export function initChartInteraction(store, baseRenderer, overlayRenderer, callb
     if (!proc) return;
     const nextCurve = !proc.showCurve;
     if (nextCurve && !isCoolingDehumCoilCandidate(proc)) {
-      toast('Curved coil path applies only to cooling & dehumidification coils', 'info');
+      toast('Curved coil path applies only to cooling & dehumidification coils', 'warn');
       return;
     }
     const patch = { showCurve: nextCurve };
@@ -1798,16 +1806,16 @@ export function initChartInteraction(store, baseRenderer, overlayRenderer, callb
 
       if (ui.procStartId == null) {
         ui.procStartId = pt.id;
-        toast(`Process start: "${pt.label}" — click end point (Shift to chain)`, 'info');
+        toast(`Process start: "${pt.label}" — click end point (Shift to chain)`, 'info', pointToClientXY(pt));
         updateModeBanner();
         emitOverlayDirty('process-start');
         return;
       }
 
       if (ui.procStartId === pt.id) {
-        ui.procStartId = null;
+        toast(`Cannot connect "${pt.label}" to itself — click a different end point (Esc to cancel)`, 'error', pointToClientXY(pt));
         updateModeBanner();
-        emitOverlayDirty('process-cancel');
+        emitOverlayDirty('process-self-error');
         return;
       }
 
@@ -1829,16 +1837,16 @@ export function initChartInteraction(store, baseRenderer, overlayRenderer, callb
 
       if (ui.mixStartId == null) {
         ui.mixStartId = pt.id;
-        toast(`Mix Stream A: "${pt.label}" — click Stream B`, 'info');
+        toast(`Mix Stream A: "${pt.label}" — click Stream B`, 'info', pointToClientXY(pt));
         updateModeBanner();
         emitOverlayDirty('mix-start');
         return;
       }
 
       if (ui.mixStartId === pt.id) {
-        ui.mixStartId = null;
+        toast(`Cannot mix "${pt.label}" with itself — click a different Stream B (Esc to cancel)`, 'error', pointToClientXY(pt));
         updateModeBanner();
-        emitOverlayDirty('mix-cancel');
+        emitOverlayDirty('mix-self-error');
         return;
       }
 

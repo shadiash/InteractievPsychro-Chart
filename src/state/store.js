@@ -490,8 +490,8 @@ export function createStore() {
     }
   }
 
-  function toast(message, type = 'info') {
-    emit('toast', { message, msg: message, type });
+  function toast(message, type = 'info', anchor = null) {
+    emit('toast', { message, msg: message, type, anchor });
   }
 
   /* --------------------------------------------------------------------------

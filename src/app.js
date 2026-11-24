@@ -15,16 +15,149 @@ import { initLeftPanel } from './ui/leftPanel.js';
 import { initRightPanel } from './ui/rightPanel.js';
 import { initModals, PRESETS } from './ui/modals.js';
 
-export function toast(msg, type = 'info') {
+const _APP_lastAction = { el: null, x: 0, y: 0, time: 0 };
+
+if (typeof document !== 'undefined') {
+  const _recordActionEl = (target, cx, cy) => {
+    const el = target && target.nodeType === 1
+      ? (target.closest('button, input, select, textarea, [role="button"], canvas') || target)
+      : null;
+    _APP_lastAction.el = el;
+    _APP_lastAction.x = Number.isFinite(cx) ? cx : 0;
+    _APP_lastAction.y = Number.isFinite(cy) ? cy : 0;
+    _APP_lastAction.time = Date.now();
+  };
+  document.addEventListener('pointerdown', (e) => {
+    _recordActionEl(e.target, e.clientX, e.clientY);
+  }, true);
+  document.addEventListener('click', (e) => {
+    _recordActionEl(e.target, e.clientX, e.clientY);
+  }, true);
+  document.addEventListener('change', (e) => {
+    const el = e.target;
+    if (el && el.nodeType === 1 && typeof el.getBoundingClientRect === 'function') {
+      const r = el.getBoundingClientRect();
+      _recordActionEl(el, r.left + r.width * 0.5, r.top + r.height * 0.5);
+    }
+  }, true);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      const el = document.activeElement;
+      if (el && el !== document.body && typeof el.getBoundingClientRect === 'function') {
+        const r = el.getBoundingClientRect();
+        if (r.width > 0 && r.height > 0) {
+          _recordActionEl(el, r.left + r.width * 0.5, r.top + r.height * 0.5);
+        }
+      }
+    }
+  }, true);
+}
+
+function _resolveToastAnchor(tone, explicitAnchor) {
+  if (explicitAnchor) {
+    if (explicitAnchor.nodeType === 1 && explicitAnchor.isConnected) {
+      const r = explicitAnchor.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0) return { kind: 'el', rect: r };
+    } else if (Number.isFinite(explicitAnchor.x) && Number.isFinite(explicitAnchor.y)) {
+      return { kind: 'xy', x: explicitAnchor.x, y: explicitAnchor.y };
+    }
+  }
+  if (tone !== 'error' && tone !== 'warn') return null;
+
+  const now = Date.now();
+  if (now - _APP_lastAction.time <= 1400) {
+    const el = _APP_lastAction.el;
+    if (el && el.isConnected) {
+      if (el.tagName === 'CANVAS' || el.id === 'chartStage' || el.id === 'chartWrap') {
+        if (_APP_lastAction.x > 0 || _APP_lastAction.y > 0) {
+          return { kind: 'xy', x: _APP_lastAction.x, y: _APP_lastAction.y };
+        }
+      } else {
+        const r = el.getBoundingClientRect();
+        if (r.width > 0 && r.height > 0) return { kind: 'el', rect: r };
+      }
+    }
+    if (_APP_lastAction.x > 0 || _APP_lastAction.y > 0) {
+      return { kind: 'xy', x: _APP_lastAction.x, y: _APP_lastAction.y };
+    }
+  }
+
+  const active = document.activeElement;
+  if (active && active !== document.body && active.isConnected &&
+      active.matches?.('button, input, select, textarea, [role="button"]')) {
+    const r = active.getBoundingClientRect();
+    if (r.width > 0 && r.height > 0) return { kind: 'el', rect: r };
+  }
+  return null;
+}
+
+function _positionAnchoredToast(node, anchor) {
+  const vw = window.innerWidth || 1280;
+  const vh = window.innerHeight || 800;
+  const pad = 10;
+  const tw = node.offsetWidth || 260;
+  const th = node.offsetHeight || 38;
+
+  if (anchor.kind === 'el') {
+    const r = anchor.rect;
+    const targetCx = r.left + r.width * 0.5;
+    let left = targetCx - tw * 0.5;
+    // Align cleanly inside right/left edges
+    left = CoreDOM.clamp(left, pad, Math.max(pad, vw - tw - pad));
+
+    let top = r.bottom + 10;
+    let placement = 'anchor-below';
+    if (top + th > vh - pad && r.top - th - 10 >= pad) {
+      top = r.top - th - 10;
+      placement = 'anchor-above';
+    } else {
+      top = CoreDOM.clamp(top, pad, Math.max(pad, vh - th - pad));
+    }
+
+    const caretX = CoreDOM.clamp(targetCx - left, 14, Math.max(14, tw - 14));
+    node.classList.add(placement);
+    node.style.left = `${Math.round(left)}px`;
+    node.style.top = `${Math.round(top)}px`;
+    node.style.setProperty('--caret-x', `${Math.round(caretX)}px`);
+    return;
+  }
+
+  // Canvas / point / cursor coordinate anchor (prefer staying cleanly inside #chartStage)
+  const stageEl = CoreDOM.byId('chartStage') || CoreDOM.byId('chartWrap');
+  const stageRect = stageEl ? stageEl.getBoundingClientRect() : null;
+  const boundL = (stageRect && anchor.x >= stageRect.left && anchor.x <= stageRect.right)
+    ? Math.max(pad, stageRect.left + 8)
+    : pad;
+  const boundR = (stageRect && anchor.x >= stageRect.left && anchor.x <= stageRect.right)
+    ? Math.min(vw - pad, stageRect.right - 8)
+    : (vw - pad);
+
+  let left = anchor.x + 16;
+  if (left + tw > boundR && anchor.x - tw - 16 >= boundL) {
+    left = anchor.x - tw - 16;
+  }
+  left = CoreDOM.clamp(left, boundL, Math.max(boundL, boundR - tw));
+
+  let top = anchor.y - th - 14;
+  if (top < pad) top = anchor.y + 18;
+  top = CoreDOM.clamp(top, pad, Math.max(pad, vh - th - pad));
+
+  node.classList.add('anchor-point');
+  node.style.left = `${Math.round(left)}px`;
+  node.style.top = `${Math.round(top)}px`;
+}
+
+export function toast(msg, type = 'info', anchor = null) {
   if (typeof document === 'undefined') return;
   const container = CoreDOM.byId('toastContainer');
   if (!container) return;
 
   const icons = { success: '✓', error: '✕', warn: '⚠', info: 'ℹ' };
   const tone = icons[type] ? type : 'info';
-  const durationMs = tone === 'error' ? 3800 : 2200;
+  const durationMs = tone === 'error' ? 4000 : (tone === 'warn' ? 3400 : 2200);
   const cleanMsg = String(msg ?? '');
   const key = `${tone}|${cleanMsg}`;
+  const resolvedAnchor = _resolveToastAnchor(tone, anchor);
 
   const dismissNode = (el) => {
     if (!el || el.dataset.dismissed === '1') return;
@@ -37,32 +170,45 @@ export function toast(msg, type = 'info') {
     setTimeout(() => el.remove(), 200);
   };
 
-  // Coalesce identical active message/category toasts by resetting dismiss timer
-  const existing = Array.from(container.children).find(
-    ch => ch.dataset?.toastKey === key && ch.dataset?.dismissed !== '1'
-  );
-  if (existing) {
-    if (existing._toastTimer) clearTimeout(existing._toastTimer);
-    existing._toastTimer = setTimeout(() => dismissNode(existing), durationMs);
-    return;
-  }
+  if (resolvedAnchor) {
+    // Replace any existing anchored toast so repeated actions next to a button never stack messily
+    container.querySelectorAll('.toast-anchored').forEach((old) => {
+      if (old._toastTimer) clearTimeout(old._toastTimer);
+      old.remove();
+    });
+  } else {
+    // Coalesce identical active stacked toasts by resetting dismiss timer
+    const existing = Array.from(container.children).find(
+      ch => !ch.classList.contains('toast-anchored') && ch.dataset?.toastKey === key && ch.dataset?.dismissed !== '1'
+    );
+    if (existing) {
+      if (existing._toastTimer) clearTimeout(existing._toastTimer);
+      existing._toastTimer = setTimeout(() => dismissNode(existing), durationMs);
+      return;
+    }
 
-  // Keep toast stack clean and compact (max 3 simultaneous)
-  while (container.children.length >= 3) {
-    const oldest = container.firstElementChild;
-    if (oldest?._toastTimer) clearTimeout(oldest._toastTimer);
-    oldest?.remove();
+    // Keep passive toast stack clean and compact (max 3 simultaneous)
+    const stacked = Array.from(container.children).filter(ch => !ch.classList.contains('toast-anchored'));
+    while (stacked.length >= 3) {
+      const oldest = stacked.shift();
+      if (oldest?._toastTimer) clearTimeout(oldest._toastTimer);
+      oldest?.remove();
+    }
   }
 
   const node = document.createElement('div');
-  node.className = `toast ${tone}`;
+  node.className = `toast ${tone}${resolvedAnchor ? ' toast-anchored' : ''}`;
   node.dataset.toastKey = key;
   node.style.cursor = 'pointer';
   node.title = 'Click to dismiss';
   node.setAttribute('role', tone === 'error' ? 'alert' : 'status');
-  node.innerHTML = `<span aria-hidden="true">${icons[tone]}</span><span>${CoreDOM.esc(cleanMsg)}</span>`;
+  node.innerHTML = `<span class="toast-ico" aria-hidden="true">${icons[tone]}</span><span>${CoreDOM.esc(cleanMsg)}</span>`;
   node.addEventListener('click', () => dismissNode(node));
   container.appendChild(node);
+
+  if (resolvedAnchor) {
+    _positionAnchoredToast(node, resolvedAnchor);
+  }
 
   node._toastTimer = setTimeout(() => dismissNode(node), durationMs);
 }
@@ -662,7 +808,7 @@ const _APP_boot = (() => {
     store.on('toast', payload => {
       if (!payload) return;
       const msg = typeof payload === 'string' ? payload : (payload.message || payload.msg || '');
-      if (msg) toast(msg, payload.type || 'info');
+      if (msg) toast(msg, payload.type || 'info', payload.anchor || null);
     });
 
     // 4. Restore URL hash -> localStorage autosave -> default 'summer-ahu' preset

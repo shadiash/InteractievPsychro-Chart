@@ -3028,12 +3028,12 @@ input[type="checkbox"] {
   margin: 4px 6px;
 }
 
-/* Toast Notifications (`#toastContainer`) */
+/* Toast Notifications (`#toastContainer` & Workspace-Anchored Contextual Popovers) */
 #toastContainer {
   position: fixed;
   bottom: 16px;
   right: calc(var(--rightW) + 18px);
-  z-index: 400;
+  z-index: 650;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
@@ -3067,11 +3067,86 @@ input[type="checkbox"] {
   animation: toastIn 200ms var(--ease);
 }
 
+.toast .toast-ico {
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
 .toast.success { border-left-color: var(--success); }
+.toast.success .toast-ico { color: var(--success); }
 .toast.error   { border-left-color: var(--danger); }
+.toast.error .toast-ico { color: var(--danger); }
 .toast.warn    { border-left-color: var(--warn); }
+.toast.warn .toast-ico { color: var(--warn); }
 .toast.info    { border-left-color: var(--accent); }
+.toast.info .toast-ico { color: var(--accent); }
 .toast.out     { animation: toastOut 180ms var(--ease) forwards; }
+
+/* Contextual alert popover positioned directly beside user's active control or chart point */
+.toast.toast-anchored {
+  position: fixed;
+  right: auto;
+  bottom: auto;
+  z-index: 651;
+  max-width: 315px;
+  padding: 8px 12px;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.35;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.34), 0 0 0 1px var(--borderStrong);
+  animation: toastAnchorIn 220ms var(--ease);
+}
+
+.toast.toast-anchored.error {
+  border-color: var(--dangerBorder, rgba(239, 68, 68, 0.55));
+  border-left: 3.5px solid var(--danger);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.36), 0 0 0 1px var(--dangerBorder, rgba(239, 68, 68, 0.45));
+  animation: toastAnchorShake 320ms var(--ease);
+}
+
+.toast.toast-anchored.warn {
+  border-color: var(--warnBorder, rgba(245, 158, 11, 0.55));
+  border-left: 3.5px solid var(--warn);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.32), 0 0 0 1px var(--warnBorder, rgba(245, 158, 11, 0.42));
+}
+
+.toast.toast-anchored.anchor-below::before,
+.toast.toast-anchored.anchor-above::before {
+  content: '';
+  position: absolute;
+  left: var(--caret-x, 50%);
+  width: 9px;
+  height: 9px;
+  background: var(--glassStrong);
+  border-left: 1px solid var(--borderStrong);
+  border-top: 1px solid var(--borderStrong);
+  pointer-events: none;
+}
+
+.toast.toast-anchored.error.anchor-below::before,
+.toast.toast-anchored.error.anchor-above::before {
+  border-color: var(--dangerBorder, rgba(239, 68, 68, 0.55));
+}
+
+.toast.toast-anchored.warn.anchor-below::before,
+.toast.toast-anchored.warn.anchor-above::before {
+  border-color: var(--warnBorder, rgba(245, 158, 11, 0.55));
+}
+
+.toast.toast-anchored.anchor-below::before {
+  top: -5px;
+  transform: translateX(-50%) rotate(45deg);
+}
+
+.toast.toast-anchored.anchor-above::before {
+  bottom: -5px;
+  transform: translateX(-50%) rotate(225deg);
+}
+
+.field-invalid {
+  border-color: var(--danger) !important;
+  box-shadow: 0 0 0 2px var(--dangerSoft, rgba(239, 68, 68, 0.22)) !important;
+}
 
 @keyframes uiFadeIn {
   from { opacity: 0; }
@@ -3081,6 +3156,19 @@ input[type="checkbox"] {
 @keyframes toastIn {
   from { opacity: 0; transform: translateY(10px); }
   to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes toastAnchorIn {
+  from { opacity: 0; transform: translateY(-4px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes toastAnchorShake {
+  0%   { opacity: 0; transform: translateX(0) scale(0.96); }
+  25%  { opacity: 1; transform: translateX(-4px) scale(1); }
+  50%  { transform: translateX(4px); }
+  75%  { transform: translateX(-2px); }
+  100% { transform: translateX(0); }
 }
 
 @keyframes toastOut {
