@@ -166,6 +166,34 @@ function _BR_polyBounds(poly) {
   return { minT, maxT, minW, maxW };
 }
 
+function _BR_polyHorizontalSpan(poly, wVal) {
+  if (!poly || poly.length < 3) return null;
+  let minT = Infinity;
+  let maxT = -Infinity;
+  const n = poly.length;
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const p0 = poly[j];
+    const p1 = poly[i];
+    const x0 = Array.isArray(p0) ? p0[0] : p0.T;
+    const y0 = Array.isArray(p0) ? p0[1] : p0.w;
+    const x1 = Array.isArray(p1) ? p1[0] : p1.T;
+    const y1 = Array.isArray(p1) ? p1[1] : p1.w;
+    if ((y0 <= wVal && y1 >= wVal) || (y1 <= wVal && y0 >= wVal)) {
+      if (Math.abs(y1 - y0) < 1e-12) {
+        if (x0 < minT) minT = x0;
+        if (x0 > maxT) maxT = x0;
+        if (x1 < minT) minT = x1;
+        if (x1 > maxT) maxT = x1;
+      } else {
+        const t = x0 + ((wVal - y0) / (y1 - y0)) * (x1 - x0);
+        if (t < minT) minT = t;
+        if (t > maxT) maxT = t;
+      }
+    }
+  }
+  return minT <= maxT ? [minT, maxT] : null;
+}
+
 /**
  * Liang-Barsky exact line segment clipper against [left, right] x [top, bottom].
  * Returns { x1, y1, x2, y2 } or null if completely outside.
@@ -1116,9 +1144,10 @@ export class BaseRenderer {
         if (!Number.isFinite(topRightW)) topRightW = bounds.maxW;
         const tag = z.id === 'tc99_a1' ? 'A1'
           : (z.id === 'tc99_a2' ? 'A2'
-            : (z.id === 'tc99_a3' ? 'A3' : (z.label || '')));
-        const tx = this.xc(bounds.maxT) - 4 * dpi;
-        const ty = Math.max(rect.y + 14 * dpi, this.yc(topRightW) + 14 * dpi);
+            : (z.id === 'tc99_a3' ? 'A3'
+              : (z.id === 'tc99_a4' ? 'A4' : (z.label || ''))));
+        const tx = CoreDOM.clamp(this.xc(bounds.maxT) - 4 * dpi, rect.x + 24 * dpi, rect.x + rect.w - 4 * dpi);
+        const ty = CoreDOM.clamp(this.yc(topRightW) + 14 * dpi, rect.y + 14 * dpi, rect.y + rect.h - 14 * dpi);
         this._textHalo(
           ctx,
           tag,
@@ -1177,20 +1206,19 @@ export class BaseRenderer {
       ctx.stroke();
       ctx.restore();
 
-      const [cT] = _BR_polyCentroid(z.poly);
+      // Exact interior horizontal slice at staggered W so label stays strictly inside polygon even at pmvLimit <= 0.2
+      const [cT, cW] = _BR_polyCentroid(z.poly);
       const bounds = _BR_polyBounds(z.poly);
-      const tSpan = Math.max(0.5, bounds.maxT - bounds.minT);
-      const tPad = Math.min(0.4, tSpan * 0.18);
-      const lblT = isSummer
-        ? CoreDOM.clamp(cT + 0.8, bounds.minT + tPad, bounds.maxT - tPad)
-        : CoreDOM.clamp(cT - 0.8, bounds.minT + tPad, bounds.maxT - tPad);
-      const wCap = Math.min(bounds.maxW - 0.0008, Psy.wsat_at(lblT, pPa) * 0.92);
-      const wFloor = bounds.minW + 0.0008;
-      const targetW = isSummer ? 0.0088 : 0.0042;
-      const lblW = wCap > wFloor ? CoreDOM.clamp(targetW, wFloor, wCap) : (bounds.minW + bounds.maxW) * 0.5;
+      const wSpan = Math.max(1e-4, bounds.maxW - bounds.minW);
+      const wFrac = list.length > 1 ? (isSummer ? 0.72 : 0.34) : 0.54;
+      const wPad = Math.min(0.0008, wSpan * 0.15);
+      const lblW = CoreDOM.clamp(bounds.minW + wSpan * wFrac, bounds.minW + wPad, bounds.maxW - wPad);
+      const span = _BR_polyHorizontalSpan(z.poly, lblW);
+      const lblT = span ? 0.5 * (span[0] + span[1]) : cT;
+      const finalW = span ? lblW : cW;
       const lblText = z.label || (isSummer ? 'Summer' : 'Winter');
       const lx = this.xc(lblT);
-      const ly = this.yc(lblW);
+      const ly = this.yc(finalW);
 
       this._textHalo(
         ctx,

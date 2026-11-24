@@ -9,6 +9,7 @@ import { APP_VERSION, CoreDOM, UNIT_LABELS } from '../core/contracts.js';
 import { Psy } from '../engine/psychro.js';
 import { Comfort } from '../engine/comfort.js';
 import { HVAC } from '../engine/hvac.js';
+import { Weather } from '../engine/weather.js';
 
 export const Exporter = (() => {
   /* --------------------------------------------------------------------------
@@ -22,6 +23,7 @@ export const Exporter = (() => {
   const KW_PER_TR = 3.516852842066667;         // 1 Ton Refrigeration = 3.51685 kW
   const LB_PER_KG = 2.2046226218487757;
   const FT_PER_M = 3.280839895013123;
+  const FPM_PER_MPS = 196.8503937007874;       // 1 m/s = 196.85 fpm
   const GRAINS_PER_LB = 7000;
   const RDA = 287.042;                         // J/(kg·K) dry air (ASHRAE 2021)
 
@@ -263,13 +265,15 @@ export const Exporter = (() => {
   }
 
   /* --------------------------------------------------------------------------
-     ISO 7730 / ASHRAE 55 PMV/PPD & Mold Risk Adapter
+     ISO 7730 / ASHRAE 55-2023 PMV/PPD & Mold Risk Adapter
      -------------------------------------------------------------------------- */
   function getComfortConfig(st) {
     const c = st.comfort || {};
     const mrtOff = Number.isFinite(c.mrtOffset) ? c.mrtOffset : (Number.isFinite(c.mrtOff) ? c.mrtOff : 0);
     return {
       mode: c.mode ?? st.comfortMode ?? st.comfortZone ?? 'both',
+      standard: c.standard === 'iso7730' ? 'iso7730' : 'ashrae55',
+      capHumidity: c.capHumidity !== false,
       cloSummer: Number.isFinite(c.cloSummer) ? c.cloSummer : 0.5,
       cloWinter: Number.isFinite(c.cloWinter) ? c.cloWinter : 1.0,
       met: Number.isFinite(c.met) ? c.met : 1.1,
@@ -282,265 +286,64 @@ export const Exporter = (() => {
     };
   }
 
-  function solveFangerPMV(Tdb, w, pPa, { clo = 0.5, met = 1.1, vAir = 0.1, mrtOff = 0, pmvLimit = 0.5 } = {}) {
-    // Call canonical Comfort.calcPMV(Tdb, rhPct, opts) first
-    try {
-      const rh = rhFrac(Tdb, w, pPa) * 100;
-      const tr = Tdb + mrtOff;
-      let res = null;
-      if (typeof Comfort?.calcPMV === 'function') {
-        res = Comfort.calcPMV(Tdb, rh, { mrt: tr, vAir, met, clo, pPa, pmvLimit });
-      }
-      if (res && Number.isFinite(res.pmv)) {
-        const pmv = res.pmv;
-        const ppd = Number.isFinite(res.ppd) ? res.ppd : (100 - 95 * Math.exp(-0.03353 * Math.pow(pmv, 4) - 0.2179 * pmv * pmv));
-        return {
-          pmv,
-          ppd,
-          compliant: Math.abs(pmv) <= pmvLimit && w <= 0.012,
-          sensation: res.sensation || pmvSensationLabel(pmv)
-        };
-      }
-    } catch (_) {
-      // Fall through to exact built-in ISO 7730 solver
-    }
-
-    const M = met * 58.15;
-    const Wext = 0;
-    const MW = M - Wext;
-    const Icl = clo * 0.155;
-    const fcl = Icl <= 0.078 ? (1.00 + 1.290 * Icl) : (1.05 + 0.645 * Icl);
-    const hcf = 12.1 * Math.sqrt(Math.max(0.05, vAir));
-    const ta = Tdb;
-    const tr = Tdb + mrtOff;
-    const pa = pvFromW(w, pPa);
-    const taa = ta + 273;
-    const tra = tr + 273;
-    const tcla = taa + (35.5 - ta) / (3.5 * (6.45 * Icl + 0.1));
-    const p1 = Icl * fcl;
-    const p2 = p1 * 3.96;
-    const p3 = p1 * 100;
-    const p4 = p1 * taa;
-    const p5 = 308.7 - 0.028 * MW + p2 * Math.pow(tra / 100, 4);
-
-    let xn = tcla / 100;
-    let xf = xn;
-    let hc = hcf;
-    for (let iter = 0; iter < 120; iter++) {
-      xf = 0.5 * (xf + xn);
-      const hcn = 2.38 * Math.pow(Math.abs(100 * xf - taa), 0.25);
-      hc = Math.max(hcf, hcn);
-      xn = (p5 + p4 * hc - p2 * Math.pow(xf, 4)) / (100 + p3 * hc);
-      if (Math.abs(xn - xf) < 1e-5) break;
-    }
-    const tcl = 100 * xn - 273;
-    const hl1 = 3.05e-3 * (5733 - 6.99 * MW - pa);
-    const hl2 = MW > 58.15 ? 0.42 * (MW - 58.15) : 0;
-    const hl3 = 1.7e-5 * M * (5867 - pa);
-    const hl4 = 0.0014 * M * (34 - ta);
-    const hl5 = 3.96 * fcl * (Math.pow(xn, 4) - Math.pow(tra / 100, 4));
-    const hl6 = fcl * hc * (tcl - ta);
-    const ts = 0.303 * Math.exp(-0.036 * M) + 0.028;
-    const pmv = ts * (MW - hl1 - hl2 - hl3 - hl4 - hl5 - hl6);
-    const ppd = 100 - 95 * Math.exp(-0.03353 * Math.pow(pmv, 4) - 0.2179 * pmv * pmv);
-    return {
-      pmv,
-      ppd,
-      compliant: Math.abs(pmv) <= pmvLimit && w <= 0.012,
-      sensation: pmvSensationLabel(pmv)
-    };
+  function formatComfortMetaSummary(cfg, units) {
+    const isIP = units === 'IP';
+    const stdLbl = cfg.standard === 'iso7730' ? 'ISO 7730' : 'ASHRAE 55-2023';
+    const vDisp = isIP
+      ? `${Math.round(cfg.vAir * FPM_PER_MPS)} fpm`
+      : `${cfg.vAir.toFixed(2)} m/s`;
+    const mrtVal = isIP ? cfg.mrtOffset * 1.8 : cfg.mrtOffset;
+    const mrtDisp = Math.abs(mrtVal) > 0.05
+      ? ` · MRT ${mrtVal >= 0 ? '+' : ''}${mrtVal.toFixed(1)} ${isIP ? '°F' : '°C'}`
+      : '';
+    const capDisp = cfg.capHumidity === false
+      ? ' · Uncapped W'
+      : ` · W ≤ ${isIP ? '84 gr/lb' : '12 g/kg'}`;
+    const cloSum = Comfort.fmtClo(cfg.cloSummer);
+    const cloWin = Comfort.fmtClo(cfg.cloWinter);
+    return `${stdLbl} · Summer ${cloSum} clo · Winter ${cloWin} clo · ${cfg.met.toFixed(1)} met · v = ${vDisp}${mrtDisp} · PMV ±${cfg.pmvLimit.toFixed(2)}${capDisp}`;
   }
 
-  function pmvSensationLabel(pmv) {
-    if (!Number.isFinite(pmv)) return '—';
-    if (pmv <= -2.5) return 'Cold';
-    if (pmv <= -1.5) return 'Cool';
-    if (pmv <= -0.5) return 'Slightly Cool';
-    if (pmv < 0.5) return 'Neutral';
-    if (pmv < 1.5) return 'Slightly Warm';
-    if (pmv < 2.5) return 'Warm';
-    return 'Hot';
+  function mapMoldRisk(m) {
+    const levelMap = {
+      condensation: { level: 'Condensation', color: '#dc2626' },
+      high: { level: 'High', color: '#dc2626' },
+      moderate: { level: 'Moderate', color: '#d97706' },
+      none: { level: 'Low', color: '#059669' }
+    };
+    const mapped = levelMap[m?.riskLevel] || { level: m?.riskLevel || 'Low', color: '#059669' };
+    return {
+      level: mapped.level,
+      color: mapped.color,
+      detail: m?.label || '',
+      surfaceRH: m?.surfaceRH,
+      marginC: m?.marginC
+    };
   }
 
   function assessMoldRisk(Tdb, w, pPa) {
-    try {
-      if (typeof Comfort?.calcMoldCondensationRisk === 'function') {
-        const m = Comfort.calcMoldCondensationRisk(Tdb, w, pPa);
-        if (m && m.riskLevel) {
-          const levelMap = {
-            condensation: { level: 'Condensation', color: '#dc2626' },
-            high: { level: 'High', color: '#dc2626' },
-            moderate: { level: 'Moderate', color: '#d97706' },
-            none: { level: 'Low', color: '#059669' }
-          };
-          const mapped = levelMap[m.riskLevel] || { level: m.riskLevel, color: moldColorForLevel(m.riskLevel) };
-          return {
-            level: mapped.level,
-            color: mapped.color,
-            detail: m.label || '',
-            surfaceRH: m.surfaceRH,
-            marginC: m.marginC
-          };
-        }
-      }
-    } catch (_) {
-      // Fall back below
-    }
-    const rhPct = rhFrac(Tdb, w, pPa) * 100;
-    const tdp = tdpFromTw(Tdb, w, pPa);
-    const margin = Tdb - tdp;
-    if (rhPct >= 80 || margin < 1.5) {
-      return { level: 'High', color: '#dc2626', detail: 'Active mold & surface condensation risk (RH ≥ 80%)' };
-    }
-    if (rhPct >= 70 || margin < 3.0) {
-      return { level: 'Elevated', color: '#d97706', detail: 'Elevated mold growth potential (70–80% RH)' };
-    }
-    if (rhPct >= 60) {
-      return { level: 'Moderate', color: '#ca8a04', detail: 'Upper ASHRAE 62.1/55 humidity band (60–70% RH)' };
-    }
-    if (rhPct < 20) {
-      return { level: 'Low (Dry)', color: '#0284c7', detail: 'Negligible mold risk; dry air / static caution (< 20% RH)' };
-    }
-    return { level: 'Low', color: '#059669', detail: 'Safe moisture band (20–60% RH)' };
+    return mapMoldRisk(Comfort.calcMoldCondensationRisk(Tdb, w, pPa));
   }
 
-  function moldColorForLevel(lvl) {
-    const s = String(lvl || '').toLowerCase();
-    if (s.includes('cond') || s.includes('high') || s.includes('crit')) return '#dc2626';
-    if (s.includes('elev')) return '#d97706';
-    if (s.includes('mod') || s.includes('caut')) return '#ca8a04';
-    return '#059669';
-  }
-
-  function computePMVZonePolygon(pPa, { clo = 0.5, met = 1.1, vAir = 0.1, mrtOff = 0, pmvLimit = 0.5, wTop = 0.012 } = {}) {
-    // Call canonical Comfort.generateASHRAE55Polygon first
-    try {
-      if (typeof Comfort?.generateASHRAE55Polygon === 'function') {
-        const poly = Comfort.generateASHRAE55Polygon(pPa, { clo, met, vAir, mrtOffset: mrtOff, pmvLimit, wMax: wTop });
-        if (Array.isArray(poly) && poly.length >= 3) {
-          return poly.map(pt => Array.isArray(pt) ? pt : [pt.T, pt.w]);
-        }
-      }
-    } catch (_) {
-      // Fall through to exact parametric bisection solver
-    }
-
-    const solveT = (targetPMV, w) => {
-      let lo = 5, hi = 45;
-      for (let i = 0; i < 36; i++) {
-        const mid = 0.5 * (lo + hi);
-        const r = solveFangerPMV(mid, w, pPa, { clo, met, vAir, mrtOff, pmvLimit });
-        if (r.pmv > targetPMV) hi = mid; else lo = mid;
-      }
-      return 0.5 * (lo + hi);
-    };
-
-    const wSteps = [0, 0.002, 0.004, 0.006, 0.008, 0.010, wTop];
-    const leftEdge = [];
-    const rightEdge = [];
-    for (const w of wSteps) {
-      const tL = solveT(-pmvLimit, w);
-      const tR = solveT(+pmvLimit, w);
-      leftEdge.push([tL, Math.min(w, wsatAt(tL, pPa))]);
-      rightEdge.push([tR, Math.min(w, wsatAt(tR, pPa))]);
-    }
-    return [...leftEdge, ...rightEdge.reverse()];
+  function computePMVZonePolygon(pPa, cfg = {}) {
+    const poly = Comfort.generateASHRAE55Polygon(pPa, {
+      clo: cfg.clo ?? 0.5,
+      met: cfg.met ?? 1.1,
+      vAir: cfg.vAir ?? 0.1,
+      mrtOffset: cfg.mrtOffset ?? cfg.mrtOff ?? 0,
+      pmvLimit: cfg.pmvLimit ?? 0.5,
+      standard: cfg.standard ?? 'ashrae55',
+      capHumidity: cfg.capHumidity !== false
+    });
+    return Array.isArray(poly) ? poly.map(pt => Array.isArray(pt) ? pt : [pt.T, pt.w]) : [];
   }
 
   function getGivoniZones(pPa) {
-    try {
-      if (typeof Comfort?.getGivoniZones === 'function') {
-        const z = Comfort.getGivoniZones(pPa);
-        if (Array.isArray(z) && z.length) return z;
-      }
-      if (Array.isArray(Comfort?.GIVONI_ZONES) && Comfort.GIVONI_ZONES.length) {
-        return Comfort.GIVONI_ZONES;
-      }
-    } catch (_) { /* fallback below */ }
-
-    const wRH = (T, rh) => Math.min(wsatAt(T, pPa), wFromPv(pwsPa(T) * rh, pPa));
-    return [
-      {
-        name: 'Passive Solar Heating',
-        fill: 'rgba(245,158,11,0.08)',
-        stroke: 'rgba(217,119,6,0.55)',
-        poly: [[10.5, 0], [10.5, wRH(10.5, 0.9)], [15, wRH(15, 0.9)], [20, wRH(20, 0.85)], [20, 0]]
-      },
-      {
-        name: 'Natural Ventilation',
-        fill: 'rgba(14,165,233,0.08)',
-        stroke: 'rgba(2,132,199,0.55)',
-        poly: [[26.5, 0.004], [25, 0.014], [29, 0.017], [32, 0.015], [32, 0.004]]
-      },
-      {
-        name: 'High Thermal Mass',
-        fill: 'rgba(168,85,247,0.07)',
-        stroke: 'rgba(147,51,234,0.50)',
-        poly: [[26.5, 0.002], [26.5, 0.012], [35.5, 0.012], [35.5, 0.002]]
-      },
-      {
-        name: 'Direct Evaporative Cooling',
-        fill: 'rgba(6,182,212,0.08)',
-        stroke: 'rgba(8,145,178,0.55)',
-        poly: [[27, 0.001], [27, 0.009], [33, 0.011], [41, 0.007], [41, 0.001]]
-      }
-    ];
+    return Comfort.getGivoniZones(pPa) || [];
   }
 
   function getDataCenterZones(pPa) {
-    try {
-      if (typeof Comfort?.getDataCenterZones === 'function') {
-        const z = Comfort.getDataCenterZones(pPa);
-        if (Array.isArray(z) && z.length) return z;
-      }
-      if (Array.isArray(Comfort?.DATACENTER_ZONES) && Comfort.DATACENTER_ZONES.length) {
-        return Comfort.DATACENTER_ZONES;
-      }
-      if (Array.isArray(Comfort?.TC99_ZONES) && Comfort.TC99_ZONES.length) {
-        return Comfort.TC99_ZONES;
-      }
-    } catch (_) { /* fallback below */ }
-
-    const buildEnvelope = (tLo, tHi, tdpLo, tdpHi, rhLo, rhHi) => {
-      const wMin = wFromTdp(tdpLo, pPa);
-      const wMaxCap = wFromTdp(tdpHi, pPa);
-      const topPts = [];
-      const botPts = [];
-      const steps = 16;
-      for (let i = 0; i <= steps; i++) {
-        const T = tLo + (tHi - tLo) * (i / steps);
-        const wRhHi = wFromPv(pwsPa(T) * rhHi, pPa);
-        const wRhLo = wFromPv(pwsPa(T) * rhLo, pPa);
-        const wU = Math.min(wMaxCap, wRhHi, wsatAt(T, pPa));
-        const wL = Math.max(wMin, wRhLo, 0);
-        if (wU >= wL) {
-          topPts.push([T, wU]);
-          botPts.push([T, wL]);
-        }
-      }
-      return [...topPts, ...botPts.reverse()];
-    };
-
-    return [
-      {
-        name: 'ASHRAE TC 9.9 Class A2',
-        fill: 'rgba(99,102,241,0.06)',
-        stroke: 'rgba(99,102,241,0.45)',
-        poly: buildEnvelope(10, 35, -12, 21, 0.08, 0.80)
-      },
-      {
-        name: 'ASHRAE TC 9.9 Class A1',
-        fill: 'rgba(14,165,233,0.09)',
-        stroke: 'rgba(14,165,233,0.60)',
-        poly: buildEnvelope(15, 32, -12, 17, 0.08, 0.80)
-      },
-      {
-        name: 'TC 9.9 Recommended',
-        fill: 'rgba(16,185,129,0.14)',
-        stroke: 'rgba(5,150,105,0.80)',
-        poly: buildEnvelope(18, 27, -9, 15, 0.08, 0.60)
-      }
-    ];
+    return Comfort.getDataCenterZones(pPa) || [];
   }
 
   /* --------------------------------------------------------------------------
@@ -781,28 +584,8 @@ export const Exporter = (() => {
       const rho_si = rhoMoistSI(T, w, pPa);
       const rho_disp = rhoToDisp(rho_si, units);
 
-      const pmvSum = solveFangerPMV(T, w, pPa, {
-        clo: comfortCfg.cloSummer, met: comfortCfg.met, vAir: comfortCfg.vAir,
-        mrtOff: comfortCfg.mrtOff, pmvLimit: comfortCfg.pmvLimit
-      });
-      const pmvWin = solveFangerPMV(T, w, pPa, {
-        clo: comfortCfg.cloWinter, met: comfortCfg.met, vAir: comfortCfg.vAir,
-        mrtOff: comfortCfg.mrtOff, pmvLimit: comfortCfg.pmvLimit
-      });
-
-      const primaryComfort = comfortCfg.mode === 'winter'
-        ? pmvWin
-        : (comfortCfg.mode === 'both'
-          ? (Math.abs(pmvSum.pmv) <= Math.abs(pmvWin.pmv) ? pmvSum : pmvWin)
-          : pmvSum);
-
-      const compliant = comfortCfg.mode === 'winter'
-        ? pmvWin.compliant
-        : (comfortCfg.mode === 'both'
-          ? (pmvSum.compliant || pmvWin.compliant)
-          : pmvSum.compliant);
-
-      const mold = assessMoldRisk(T, w, pPa);
+      const ev = Comfort.evaluateActiveComfort(T, w, pPa, comfortCfg);
+      const mold = mapMoldRisk(ev.mold);
 
       let mixNote = '';
       if (p.derived && p.derived.type === 'mix') {
@@ -842,14 +625,22 @@ export const Exporter = (() => {
         rhoDisp: rho_disp,
         pvPa,
         pvDisp: pToDisp(pvPa, units),
-        pmv: primaryComfort.pmv,
-        ppd: primaryComfort.ppd,
-        sensation: primaryComfort.sensation,
-        pmvSummer: pmvSum.pmv,
-        ppdSummer: pmvSum.ppd,
-        pmvWinter: pmvWin.pmv,
-        ppdWinter: pmvWin.ppd,
-        compliant,
+        pmv: ev.pmv,
+        ppd: ev.ppd,
+        sensation: ev.sensation,
+        comfortReason: ev.reason,
+        comfortSeason: ev.season,
+        comfortSeasonTag: ev.seasonTag,
+        inHumidityBand: ev.inHumidityBand,
+        ce: ev.ce,
+        set: ev.set,
+        pmvSummer: ev.summer.pmv,
+        ppdSummer: ev.summer.ppd,
+        pmvWinter: ev.winter.pmv,
+        ppdWinter: ev.winter.ppd,
+        compliant: ev.compliant,
+        dataCenterClass: ev.dataCenterClass,
+        givoniZones: ev.givoniZones,
         mold
       };
     });
@@ -1003,9 +794,9 @@ export const Exporter = (() => {
     if (hours && hours.length > 0) {
       let minT = Infinity, maxT = -Infinity, sumT = 0;
       let sumW = 0;
-      let comfortHrs = 0, coolHrs = 0, heatHrs = 0, dehumHrs = 0, humidHrs = 0;
       const binSize = 5; // 5°C dry-bulb bins
       const binMap = new Map();
+      const normalized = [];
 
       for (const rec of hours) {
         const T = Number(rec.T ?? rec.Tdb ?? rec.tdb ?? rec.temp);
@@ -1015,17 +806,12 @@ export const Exporter = (() => {
           const rh = Number(rec.rh ?? rec.RH ?? 50);
           w = wFromPv(Math.min(pPa * 0.999, pwsPa(T) * CoreDOM.clamp(rh / 100, 0, 1)), pPa);
         }
+        normalized.push({ T, w });
         const h = hSI(T, w);
         if (T < minT) minT = T;
         if (T > maxT) maxT = T;
         sumT += T;
         sumW += w;
-
-        if (T >= 20 && T <= 26.5 && w <= 0.012 && w >= 0.003) comfortHrs++;
-        if (T > 26.5) coolHrs++;
-        if (T < 20) heatHrs++;
-        if (w > 0.012) dehumHrs++;
-        if (w < 0.003) humidHrs++;
 
         const bLo = Math.floor(T / binSize) * binSize;
         let bin = binMap.get(bLo);
@@ -1038,7 +824,7 @@ export const Exporter = (() => {
         bin.sumH += h;
       }
 
-      const n = hours.length;
+      const n = normalized.length || hours.length;
       const bins = Array.from(binMap.values())
         .sort((a, b) => a.tLoC - b.tLoC)
         .map(b => {
@@ -1055,18 +841,22 @@ export const Exporter = (() => {
           };
         });
 
-      const resolvedComfort = preStats?.comfortHours ?? comfortHrs;
-      const resolvedCool = preStats?.coolHours ?? preStats?.coolingHours ?? coolHrs;
-      const resolvedHeat = preStats?.heatHours ?? preStats?.heatingHours ?? heatHrs;
-      const resolvedDehum = preStats?.dehumHours ?? dehumHrs;
-      const resolvedHumid = preStats?.humidHours ?? humidHrs;
+      const canonicalStats = (preStats && Number.isFinite(preStats.comfortHours) && Number.isFinite(preStats.humidHours))
+        ? preStats
+        : Weather.computePsychroBins(normalized, pPa, comfortCfg);
+
+      const resolvedComfort = canonicalStats.comfortHours ?? 0;
+      const resolvedCool = canonicalStats.coolHours ?? canonicalStats.coolingHours ?? 0;
+      const resolvedHeat = canonicalStats.heatHours ?? canonicalStats.heatingHours ?? 0;
+      const resolvedDehum = canonicalStats.dehumHours ?? 0;
+      const resolvedHumid = canonicalStats.humidHours ?? 0;
 
       return {
         location,
         totalHours: n,
-        minTDisp: CoreDOM.tToDisp(Number.isFinite(preStats?.tMinObs) ? preStats.tMinObs : minT, units),
-        meanTDisp: CoreDOM.tToDisp(Number.isFinite(preStats?.tMeanObs) ? preStats.tMeanObs : (sumT / n), units),
-        maxTDisp: CoreDOM.tToDisp(Number.isFinite(preStats?.tMaxObs) ? preStats.tMaxObs : maxT, units),
+        minTDisp: CoreDOM.tToDisp(Number.isFinite(canonicalStats?.tMinObs) ? canonicalStats.tMinObs : minT, units),
+        meanTDisp: CoreDOM.tToDisp(Number.isFinite(canonicalStats?.tMeanObs) ? canonicalStats.tMeanObs : (sumT / n), units),
+        maxTDisp: CoreDOM.tToDisp(Number.isFinite(canonicalStats?.tMaxObs) ? canonicalStats.tMaxObs : maxT, units),
         meanWDisp: CoreDOM.wToDisp(sumW / n, units),
         comfortHours: resolvedComfort,
         comfortPct: (resolvedComfort / n) * 100,
@@ -1074,9 +864,9 @@ export const Exporter = (() => {
         heatingHours: resolvedHeat,
         dehumHours: resolvedDehum,
         humidHours: resolvedHumid,
-        economizerHours: preStats?.economizerHours ?? 0,
-        cdd: preStats?.cdd ?? NaN,
-        hdd: preStats?.hdd ?? NaN,
+        economizerHours: canonicalStats?.economizerHours ?? 0,
+        cdd: canonicalStats?.cdd ?? NaN,
+        hdd: canonicalStats?.hdd ?? NaN,
         bins
       };
     }
@@ -1705,61 +1495,283 @@ export const Exporter = (() => {
       }
     }
 
-    /* ---- <g id="comfort-zones"> ---- */
+    /* ---- <g id="comfort-zones"> (BaseRenderer parity: Givoni -> TC 9.9 -> ASHRAE 55) ---- */
     const zoneParts = [];
-    const renderZonePoly = (poly, fill, stroke, label, dash = '5,3') => {
-      if (!Array.isArray(poly) || poly.length < 3) return;
+    const zoneLabelParts = [];
+    const placedZoneBoxes = [];
+
+    const isDarkTheme = (() => {
+      const hex = String(palette.plotBg || palette.bg || '#ffffff').replace('#', '').trim();
+      if (hex.length === 6) {
+        const r = parseInt(hex.slice(0, 2), 16);
+        const g = parseInt(hex.slice(2, 4), 16);
+        const b = parseInt(hex.slice(4, 6), 16);
+        return (r * 0.299 + g * 0.587 + b * 0.114) < 128;
+      }
+      return /dark|blueprint/i.test(st.theme || '');
+    })();
+
+    const polyBounds = (poly) => {
+      let minT = Infinity, maxT = -Infinity, minW = Infinity, maxW = -Infinity;
+      for (let i = 0; i < poly.length; i++) {
+        const pt = poly[i];
+        const T = Array.isArray(pt) ? pt[0] : pt.T;
+        const w = Array.isArray(pt) ? pt[1] : pt.w;
+        if (T < minT) minT = T;
+        if (T > maxT) maxT = T;
+        if (w < minW) minW = w;
+        if (w > maxW) maxW = w;
+      }
+      return { minT, maxT, minW, maxW };
+    };
+
+    const polyCentroid = (poly) => {
+      let area2 = 0, cx = 0, cy = 0;
+      const n = poly.length;
+      for (let i = 0; i < n; i++) {
+        const p0 = poly[i];
+        const p1 = poly[(i + 1) % n];
+        const x0 = Array.isArray(p0) ? p0[0] : p0.T;
+        const y0 = Array.isArray(p0) ? p0[1] : p0.w;
+        const x1 = Array.isArray(p1) ? p1[0] : p1.T;
+        const y1 = Array.isArray(p1) ? p1[1] : p1.w;
+        const cross = x0 * y1 - x1 * y0;
+        area2 += cross;
+        cx += (x0 + x1) * cross;
+        cy += (y0 + y1) * cross;
+      }
+      if (Math.abs(area2) > 1e-12) return [cx / (3 * area2), cy / (3 * area2)];
+      const b = polyBounds(poly);
+      return [0.5 * (b.minT + b.maxT), 0.5 * (b.minW + b.maxW)];
+    };
+
+    const polyHorizontalSpan = (poly, wVal) => {
+      let minT = Infinity, maxT = -Infinity;
+      const n = poly.length;
+      for (let i = 0, j = n - 1; i < n; j = i++) {
+        const p0 = poly[j], p1 = poly[i];
+        const x0 = Array.isArray(p0) ? p0[0] : p0.T;
+        const y0 = Array.isArray(p0) ? p0[1] : p0.w;
+        const x1 = Array.isArray(p1) ? p1[0] : p1.T;
+        const y1 = Array.isArray(p1) ? p1[1] : p1.w;
+        if ((y0 <= wVal && y1 >= wVal) || (y1 <= wVal && y0 >= wVal)) {
+          if (Math.abs(y1 - y0) < 1e-12) {
+            if (x0 < minT) minT = x0;
+            if (x0 > maxT) maxT = x0;
+            if (x1 < minT) minT = x1;
+            if (x1 > maxT) maxT = x1;
+          } else {
+            const t = x0 + ((wVal - y0) / (y1 - y0)) * (x1 - x0);
+            if (t < minT) minT = t;
+            if (t > maxT) maxT = t;
+          }
+        }
+      }
+      return minT <= maxT ? [minT, maxT] : null;
+    };
+
+    const polyToSvgPoints = (poly) => {
       const coords = [];
-      let sx = 0, sy = 0;
       for (const pt of poly) {
         const T = Array.isArray(pt) ? pt[0] : pt.T;
         const w = Array.isArray(pt) ? pt[1] : pt.w;
         const wc = Math.min(w, wsatAt(T, pPa));
-        const px = xc(T);
-        const py = yc(wc);
-        coords.push(`${f2(px)},${f2(py)}`);
-        sx += px;
-        sy += py;
+        coords.push(`${f2(xc(T))},${f2(yc(wc))}`);
       }
-      const cx = sx / poly.length;
-      const cy = sy / poly.length;
-      zoneParts.push(
-        `<polygon points="${coords.join(' ')}" fill="${esc(fill)}" stroke="${esc(stroke)}" stroke-width="1.35" stroke-dasharray="${dash}"/>`
-      );
-      if (label && cx >= padL && cx <= plotRight && cy >= padT && cy <= plotBottom) {
-        zoneParts.push(
-          `<text x="${f2(cx)}" y="${f2(cy)}" text-anchor="middle" dominant-baseline="middle" ` +
-          `class="svg-sans svg-halo" font-size="9.5" font-weight="600" fill="${esc(stroke)}">${esc(label)}</text>`
+      return coords.join(' ');
+    };
+
+    const boxesOverlap = (a, b, pad = 2) => (
+      a.x - pad < b.x + b.w &&
+      a.x + a.w + pad > b.x &&
+      a.y - pad < b.y + b.h &&
+      a.y + a.h + pad > b.y
+    );
+
+    const placeZoneLabel = (text, rawX, rawY, color, {
+      anchor = 'middle',
+      baseline = 'middle',
+      fontSize = 8.5,
+      weight = '600',
+      cls = 'svg-sans'
+    } = {}) => {
+      if (!text) return;
+      const estW = Math.max(16, String(text).length * fontSize * 0.60) + 6;
+      const estH = fontSize + 5;
+      const makeBox = (x, y) => {
+        const bx = anchor === 'end' ? (x - estW) : (anchor === 'start' ? x : (x - estW * 0.5));
+        const by = baseline === 'hanging' ? y : (y - estH * 0.5);
+        return { x: bx, y: by, w: estW, h: estH };
+      };
+
+      const offsets = [0, -14, 14, -28, 28, -42, 42];
+      let chosenX = rawX;
+      let chosenY = rawY;
+      let chosenBox = makeBox(rawX, rawY);
+      let placed = false;
+
+      for (const dy of offsets) {
+        const candY = CoreDOM.clamp(rawY + dy, padT + estH * 0.6, plotBottom - estH * 0.6);
+        const candX = CoreDOM.clamp(
+          rawX,
+          anchor === 'end' ? padL + estW : (anchor === 'middle' ? padL + estW * 0.5 : padL + 4),
+          anchor === 'end' ? plotRight - 4 : (anchor === 'middle' ? plotRight - estW * 0.5 : plotRight - estW)
+        );
+        const box = makeBox(candX, candY);
+        let hits = false;
+        for (let i = 0; i < placedZoneBoxes.length; i++) {
+          if (boxesOverlap(box, placedZoneBoxes[i], 2)) {
+            hits = true;
+            break;
+          }
+        }
+        if (!hits) {
+          chosenX = candX;
+          chosenY = candY;
+          chosenBox = box;
+          placed = true;
+          break;
+        }
+      }
+
+      if (!placed) {
+        chosenX = CoreDOM.clamp(rawX, padL + 8, plotRight - 8);
+        chosenY = CoreDOM.clamp(rawY, padT + 10, plotBottom - 10);
+        chosenBox = makeBox(chosenX, chosenY);
+      }
+
+      if (chosenX >= padL && chosenX <= plotRight && chosenY >= padT && chosenY <= plotBottom) {
+        placedZoneBoxes.push(chosenBox);
+        zoneLabelParts.push(
+          `<text x="${f2(chosenX)}" y="${f2(chosenY)}" text-anchor="${anchor}" dominant-baseline="${baseline}" ` +
+          `class="${cls} svg-halo" font-size="${fontSize}" font-weight="${weight}" fill="${esc(color)}">${esc(text)}</text>`
         );
       }
     };
 
+    // 1. Givoni Bioclimatic Zones (bottom zone layer, with 45° diagonal hatch)
+    if (data.comfortCfg.givoni) {
+      const gZones = getGivoniZones(pPa);
+      for (let i = 0; i < gZones.length; i++) {
+        const gz = gZones[i];
+        const poly = gz?.poly || gz?.points;
+        if (!Array.isArray(poly) || poly.length < 3) continue;
+        const ptsAttr = polyToSvgPoints(poly);
+        const strokeCol = gz.stroke || '#0284c7';
+        const patId = `givoni-hatch-${i}`;
+        defsParts.push(
+          `<pattern id="${patId}" width="10" height="10" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">` +
+          `<line x1="0" y1="0" x2="0" y2="10" stroke="${esc(strokeCol)}" stroke-width="1" stroke-opacity="0.22"/></pattern>`
+        );
+        zoneParts.push(
+          `<polygon points="${ptsAttr}" fill="${esc(gz.fill || 'rgba(14,165,233,0.09)')}" stroke="none"/>`,
+          `<polygon points="${ptsAttr}" fill="url(#${patId})" stroke="${esc(strokeCol)}" stroke-width="1.15" stroke-dasharray="4,3"/>`
+        );
+        const [cT, cW] = polyCentroid(poly);
+        placeZoneLabel(gz.shortLabel || gz.label || gz.name, xc(cT), yc(cW), strokeCol, {
+          anchor: 'middle',
+          baseline: 'middle',
+          fontSize: 8.5,
+          weight: '600',
+          cls: 'svg-sans'
+        });
+      }
+    }
+
+    // 2. ASHRAE TC 9.9 Data Center Envelopes (A4 -> A3 -> A2 -> A1 -> Recommended)
+    if (data.comfortCfg.datacenter) {
+      const dcZones = getDataCenterZones(pPa);
+      for (let i = 0; i < dcZones.length; i++) {
+        const dz = dcZones[i];
+        const poly = dz?.poly || dz?.points;
+        if (!Array.isArray(poly) || poly.length < 3) continue;
+        const isRec = dz.id === 'tc99_rec' || /recommended/i.test(dz.label || dz.name || '');
+        const ptsAttr = polyToSvgPoints(poly);
+        const strokeCol = dz.stroke || (isRec ? '#10b981' : '#38bdf8');
+        zoneParts.push(
+          `<polygon points="${ptsAttr}" fill="${esc(dz.fill || (isRec ? 'rgba(16,185,129,0.16)' : 'rgba(56,189,248,0.08)'))}" ` +
+          `stroke="${esc(strokeCol)}" stroke-width="${isRec ? '1.8' : '1.15'}" stroke-dasharray="${isRec ? '6,3' : '4,3.5'}"/>`
+        );
+        const b = polyBounds(poly);
+        if (isRec) {
+          const [cT, cW] = polyCentroid(poly);
+          placeZoneLabel('TC 9.9 Rec', xc(cT), yc(cW), isDarkTheme ? '#34d399' : '#047857', {
+            anchor: 'middle',
+            baseline: 'middle',
+            fontSize: 8.5,
+            weight: '700',
+            cls: 'svg-sans'
+          });
+        } else {
+          let topRightW = -Infinity;
+          for (let k = 0; k < poly.length; k++) {
+            const p = poly[k];
+            const pT = Array.isArray(p) ? p[0] : p.T;
+            const pW = Array.isArray(p) ? p[1] : p.w;
+            if (Math.abs(pT - b.maxT) < 0.25 && pW > topRightW) {
+              topRightW = Math.min(b.maxW, pW);
+            }
+          }
+          if (!Number.isFinite(topRightW)) topRightW = b.maxW;
+          const tag = dz.id === 'tc99_a1' ? 'A1'
+            : (dz.id === 'tc99_a2' ? 'A2'
+              : (dz.id === 'tc99_a3' ? 'A3'
+                : (dz.id === 'tc99_a4' ? 'A4' : (dz.name || dz.label || ''))));
+          placeZoneLabel(tag, xc(b.maxT) - 4, yc(topRightW) + 12, strokeCol, {
+            anchor: 'end',
+            baseline: 'hanging',
+            fontSize: 8.5,
+            weight: '700',
+            cls: 'svg-mono'
+          });
+        }
+      }
+    }
+
+    // 3. ASHRAE 55 / ISO 7730 Dynamic PMV Comfort Zones (topmost zone layer)
     if (layerOn('comfort', true) && data.comfortCfg.mode !== 'none') {
       const cm = data.comfortCfg;
-      if (cm.mode === 'winter' || cm.mode === 'both') {
-        const wPoly = computePMVZonePolygon(pPa, {
-          clo: cm.cloWinter, met: cm.met, vAir: cm.vAir, mrtOff: cm.mrtOff, pmvLimit: cm.pmvLimit
+      const sw = Comfort.getSummerWinterZones(pPa, cm);
+      const list = [];
+      if ((cm.mode === 'winter' || cm.mode === 'both') && sw?.winter?.poly?.length >= 3) list.push(sw.winter);
+      if ((cm.mode === 'summer' || cm.mode === 'both') && sw?.summer?.poly?.length >= 3) list.push(sw.summer);
+
+      for (let i = 0; i < list.length; i++) {
+        const z = list[i];
+        const isSummer = z.id === 'summer';
+        const fillCol = z.fill || (isSummer ? 'rgba(16,185,129,0.14)' : 'rgba(59,130,246,0.12)');
+        const strokeCol = isDarkTheme
+          ? (z.stroke || (isSummer ? 'rgba(52,211,153,0.78)' : 'rgba(96,165,250,0.76)'))
+          : (isSummer ? 'rgba(4,120,87,0.78)' : 'rgba(29,78,216,0.76)');
+
+        zoneParts.push(
+          `<polygon points="${polyToSvgPoints(z.poly)}" fill="${esc(fillCol)}" ` +
+          `stroke="${esc(strokeCol)}" stroke-width="1.5" stroke-dasharray="5,3.5"/>`
+        );
+
+        const [cT, cW] = polyCentroid(z.poly);
+        const b = polyBounds(z.poly);
+        const wSpan = Math.max(1e-4, b.maxW - b.minW);
+        const wFrac = list.length > 1 ? (isSummer ? 0.72 : 0.34) : 0.54;
+        const wPad = Math.min(0.0008, wSpan * 0.15);
+        const lblW = CoreDOM.clamp(b.minW + wSpan * wFrac, b.minW + wPad, b.maxW - wPad);
+        const span = polyHorizontalSpan(z.poly, lblW);
+        const lblT = span ? 0.5 * (span[0] + span[1]) : cT;
+        const finalW = span ? lblW : cW;
+
+        placeZoneLabel(z.label || (isSummer ? 'Summer' : 'Winter'), xc(lblT), yc(finalW), strokeCol, {
+          anchor: 'middle',
+          baseline: 'middle',
+          fontSize: 8.5,
+          weight: '600',
+          cls: 'svg-sans'
         });
-        renderZonePoly(wPoly, 'rgba(59,130,246,0.11)', '#3b82f6', `Winter ${cm.cloWinter} clo`);
-      }
-      if (cm.mode === 'summer' || cm.mode === 'both') {
-        const sPoly = computePMVZonePolygon(pPa, {
-          clo: cm.cloSummer, met: cm.met, vAir: cm.vAir, mrtOff: cm.mrtOff, pmvLimit: cm.pmvLimit
-        });
-        renderZonePoly(sPoly, 'rgba(16,185,129,0.12)', '#10b981', `Summer ${cm.cloSummer} clo`);
       }
     }
 
-    if (data.comfortCfg.givoni) {
-      for (const gz of getGivoniZones(pPa)) {
-        renderZonePoly(gz.poly || gz.points, gz.fill || 'rgba(14,165,233,0.08)', gz.stroke || '#0284c7', gz.name || gz.label, '4,3');
-      }
-    }
-
-    if (data.comfortCfg.datacenter) {
-      for (const dz of getDataCenterZones(pPa)) {
-        renderZonePoly(dz.poly || dz.points, dz.fill || 'rgba(16,185,129,0.10)', dz.stroke || '#059669', dz.name || dz.label, '3,2');
-      }
+    // Emit zone labels after all zone polygons so labels are crisp and never obscured by fills
+    for (let i = 0; i < zoneLabelParts.length; i++) {
+      zoneParts.push(zoneLabelParts[i]);
     }
 
     /* ---- <g id="curves"> ---- */
@@ -2763,13 +2775,19 @@ export const Exporter = (() => {
     lines.push(csvRow(['Altitude', `${d.altDisp.toFixed(1)} ${U.alt}`]));
     lines.push(csvRow([
       'Comfort Parameters',
+      `Standard=${d.comfortCfg.standard === 'iso7730' ? 'ISO 7730' : 'ASHRAE 55-2023'}`,
       `Mode=${d.comfortCfg.mode}`,
-      `Summer clo=${d.comfortCfg.cloSummer}`,
-      `Winter clo=${d.comfortCfg.cloWinter}`,
+      `Summer clo=${Comfort.fmtClo(d.comfortCfg.cloSummer)}`,
+      `Winter clo=${Comfort.fmtClo(d.comfortCfg.cloWinter)}`,
       `Met=${d.comfortCfg.met}`,
-      `vAir=${d.comfortCfg.vAir} m/s`,
-      `MRT Offset=${d.comfortCfg.mrtOff} °C`,
-      `PMV Limit=±${d.comfortCfg.pmvLimit}`
+      d.units === 'IP'
+        ? `vAir=${Math.round(d.comfortCfg.vAir * FPM_PER_MPS)} fpm`
+        : `vAir=${d.comfortCfg.vAir.toFixed(2)} m/s`,
+      d.units === 'IP'
+        ? `MRT Offset=${(d.comfortCfg.mrtOffset * 1.8).toFixed(1)} °F`
+        : `MRT Offset=${d.comfortCfg.mrtOffset.toFixed(1)} °C`,
+      `PMV Limit=±${d.comfortCfg.pmvLimit}`,
+      `Humidity Cap=${d.comfortCfg.capHumidity ? (d.units === 'IP' ? '84 gr/lb' : '12 g/kg') : 'Uncapped'}`
     ]));
     lines.push('');
 
@@ -3010,7 +3028,8 @@ export const Exporter = (() => {
         <td>${fmtNum(c.condensateDisp, 2)} ${U.water}</td>
       </tr>`).join('');
 
-    // ASHRAE 55 Comfort & Mold Risk rows
+    // ASHRAE 55 / ISO 7730 Comfort & Mold Risk rows
+    const showDcCol = !!d.comfortCfg.datacenter;
     const comfortRowsHtml = d.points.map((p, i) => `
       <tr class="${i % 2 ? 'alt' : ''}">
         <td class="num">${p.idx}</td>
@@ -3019,10 +3038,11 @@ export const Exporter = (() => {
         <td>${fmtNum(p.rhPct, 1)}%</td>
         <td>${fmtNum(p.TdpDisp, 1)} ${U.T}</td>
         <td>${fmtSigned(p.pmvSummer, 2)}</td>
-        <td>${fmtNum(p.ppdSummer, 1)}%</td>
         <td>${fmtSigned(p.pmvWinter, 2)}</td>
+        <td>${fmtNum(p.ppd, 1)}%</td>
         <td><span class="pill" style="--pc:${p.compliant ? '#059669' : '#dc2626'}">${p.compliant ? 'Compliant' : 'Outside Zone'}</span></td>
-        <td>${esc(p.sensation)}</td>
+        <td>${esc(p.comfortReason || p.sensation)}</td>
+        ${showDcCol ? `<td>${esc(p.dataCenterClass || 'Outside A4')}</td>` : ''}
         <td><span class="pill" style="--pc:${esc(p.mold.color)}">${esc(p.mold.level)}</span></td>
       </tr>`).join('');
 
@@ -3383,8 +3403,8 @@ export const Exporter = (() => {
   ${includeComfort && d.points.length ? `
   <section class="section">
     <div class="sec-head">
-      <h2>ASHRAE 55 Thermal Comfort &amp; Mold Risk Evaluation</h2>
-      <span class="sec-meta">Summer ${d.comfortCfg.cloSummer} clo · Winter ${d.comfortCfg.cloWinter} clo · ${d.comfortCfg.met} met · v = ${d.comfortCfg.vAir} m/s · PMV ±${d.comfortCfg.pmvLimit}</span>
+      <h2>${d.comfortCfg.standard === 'iso7730' ? 'ISO 7730' : 'ASHRAE 55'} Thermal Comfort &amp; Mold Risk Evaluation</h2>
+      <span class="sec-meta">${esc(formatComfortMetaSummary(d.comfortCfg, d.units))}</span>
     </div>
     <table class="eng">
       <thead>
@@ -3395,10 +3415,11 @@ export const Exporter = (() => {
           <th>RH%</th>
           <th>Tdp (Cond. Limit)</th>
           <th>PMV (Sum)</th>
-          <th>PPD%</th>
           <th>PMV (Win)</th>
-          <th>ASHRAE 55</th>
-          <th>Sensation</th>
+          <th>Active PPD%</th>
+          <th>${d.comfortCfg.standard === 'iso7730' ? 'ISO 7730' : 'ASHRAE 55'}</th>
+          <th>Sensation / Status</th>
+          ${showDcCol ? '<th>TC 9.9 Class</th>' : ''}
           <th>Mold / Cond. Risk</th>
         </tr>
       </thead>
@@ -3768,20 +3789,20 @@ export const Exporter = (() => {
 
     // Thermal Comfort & Mold Risk
     if (includeComfort && d.points.length) {
-      children.push(makeHeading('ASHRAE 55 Thermal Comfort & Mold Risk'));
+      children.push(makeHeading(`${d.comfortCfg.standard === 'iso7730' ? 'ISO 7730' : 'ASHRAE 55'} Thermal Comfort & Mold Risk`));
       children.push(makeTable(
-        ['#', 'State Point', 'PMV (Sum)', 'PPD%', 'PMV (Win)', 'ASHRAE 55', 'Sensation', 'Mold Risk'],
+        ['#', 'State Point', 'PMV (Sum)', 'PMV (Win)', 'Active PPD%', d.comfortCfg.standard === 'iso7730' ? 'ISO 7730' : 'ASHRAE 55', 'Status / Sensation', 'Mold Risk'],
         d.points.map(p => [
           p.idx,
           p.label,
           fmtSigned(p.pmvSummer, 2),
-          `${fmtNum(p.ppdSummer, 1)}%`,
           fmtSigned(p.pmvWinter, 2),
+          `${fmtNum(p.ppd, 1)}%`,
           p.compliant ? 'Compliant' : 'Outside',
-          p.sensation,
+          p.comfortReason || p.sensation,
           p.mold.level
         ]),
-        [520, 2200, 1160, 1040, 1160, 1340, 1500, 1400],
+        [520, 2200, 1100, 1100, 1100, 1340, 1500, 1400],
         new Set([1])
       ));
     }
@@ -3810,7 +3831,7 @@ export const Exporter = (() => {
     children.push(new Paragraph({
       spacing: { after: 60 },
       children: [new TextRun({
-        text: `Thermal comfort evaluation conforms to ANSI/ASHRAE Standard 55-2020 & ISO 7730 (Summer ${d.comfortCfg.cloSummer} clo, Winter ${d.comfortCfg.cloWinter} clo, ${d.comfortCfg.met} met, air velocity ${d.comfortCfg.vAir} m/s).`,
+        text: `Thermal comfort evaluation conforms to ANSI/ASHRAE Standard 55-2023 & ISO 7730 (${formatComfortMetaSummary(d.comfortCfg, d.units)}).`,
         font: 'Arial', size: 17, color: '475569'
       })]
     }));

@@ -200,38 +200,45 @@ describe('1. Thermal Comfort (Comfort)', () => {
       assertValidUnsaturatedPolygon(z.poly, pPa, `Givoni:${z.id}`);
     }
 
-    // ASHRAE TC 9.9 Data Center zones
+    // ASHRAE TC 9.9 (2021 5th Ed.) Data Center zones: Recommended + A1–A4
     const dc = Comfort.getDataCenterZones(pPa);
-    assert.equal(dc.length, 4, 'Expected 4 ASHRAE TC 9.9 data center zones');
+    assert.equal(dc.length, 5, 'Expected 5 ASHRAE TC 9.9 data center zones (Rec, A1–A4)');
     const byId = Object.fromEntries(dc.map((z) => [z.id, z]));
-    for (const id of ['tc99_rec', 'tc99_a1', 'tc99_a2', 'tc99_a3']) {
+    for (const id of ['tc99_rec', 'tc99_a1', 'tc99_a2', 'tc99_a3', 'tc99_a4']) {
       assert.ok(byId[id], `Missing TC 9.9 zone ${id}`);
       assertValidUnsaturatedPolygon(byId[id].poly, pPa, `TC9.9:${id}`);
     }
 
-    // Nesting: Recommended ⊂ Class A1 ⊂ Class A2 ⊂ Class A3
+    // Nesting: Recommended ⊂ Class A1 ⊂ Class A2 ⊂ Class A3 ⊂ Class A4
     // (1e-5 kg/kg tolerance accommodates TC 9.9's published -9°C DP vs 8% RH corner at 27°C = 0.0089 g/kg)
     assertBandPolygonInside(byId.tc99_rec.poly, byId.tc99_a1.poly, 1e-5, 'Recommended inside A1');
     assertBandPolygonInside(byId.tc99_a1.poly, byId.tc99_a2.poly, 1e-5, 'A1 inside A2');
     assertBandPolygonInside(byId.tc99_a2.poly, byId.tc99_a3.poly, 1e-5, 'A2 inside A3');
+    assertBandPolygonInside(byId.tc99_a3.poly, byId.tc99_a4.poly, 1e-5, 'A3 inside A4');
 
     // Strictly increasing areas and temperature spans
     const areaRec = polygonArea(byId.tc99_rec.poly);
     const areaA1 = polygonArea(byId.tc99_a1.poly);
     const areaA2 = polygonArea(byId.tc99_a2.poly);
     const areaA3 = polygonArea(byId.tc99_a3.poly);
-    assert.ok(areaRec < areaA1 && areaA1 < areaA2 && areaA2 < areaA3, 'TC 9.9 areas must increase Rec < A1 < A2 < A3');
+    const areaA4 = polygonArea(byId.tc99_a4.poly);
+    assert.ok(
+      areaRec < areaA1 && areaA1 < areaA2 && areaA2 < areaA3 && areaA3 < areaA4,
+      'TC 9.9 areas must increase Rec < A1 < A2 < A3 < A4'
+    );
 
     // Tightest class evaluation via evaluatePointZones
     const evRec = Comfort.evaluatePointZones(22, Psy.w_from_TRH(22, 0.45, pPa), pPa);
     const evA1 = Comfort.evaluatePointZones(30, Psy.w_from_TRH(30, 0.40, pPa), pPa);
     const evA2 = Comfort.evaluatePointZones(34, Psy.w_from_TRH(34, 0.30, pPa), pPa);
     const evA3 = Comfort.evaluatePointZones(38, Psy.w_from_TRH(38, 0.25, pPa), pPa);
-    const evOut = Comfort.evaluatePointZones(45, Psy.w_from_TRH(45, 0.50, pPa), pPa);
+    const evA4 = Comfort.evaluatePointZones(43, Psy.w_from_TRH(43, 0.20, pPa), pPa);
+    const evOut = Comfort.evaluatePointZones(46, Psy.w_from_TRH(46, 0.50, pPa), pPa);
     assert.equal(evRec.dataCenterClass, 'Recommended');
     assert.equal(evA1.dataCenterClass, 'Class A1');
     assert.equal(evA2.dataCenterClass, 'Class A2');
     assert.equal(evA3.dataCenterClass, 'Class A3');
+    assert.equal(evA4.dataCenterClass, 'Class A4');
     assert.equal(evOut.dataCenterClass, null);
   });
 

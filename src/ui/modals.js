@@ -236,12 +236,13 @@ function _modReadBool(id, fallback = true) {
 }
 
 function _modCalcActivePMV(T, w, pPa, st) {
-  const rhPct = Psy.RH_from_Tw(T, w, pPa) * 100;
   const cmf = st?.comfort || {};
-  const clo = cmf.mode === 'winter' ? (cmf.cloWinter ?? 1.0) : (cmf.cloSummer ?? 0.5);
-  return Comfort.calcPMV(T, rhPct, {
-    pPa,
-    clo,
+  return Comfort.evaluateActiveComfort(T, w, pPa, {
+    mode: cmf.mode || 'both',
+    standard: cmf.standard === 'iso7730' ? 'iso7730' : 'ashrae55',
+    capHumidity: cmf.capHumidity !== false,
+    cloSummer: cmf.cloSummer ?? 0.5,
+    cloWinter: cmf.cloWinter ?? 1.0,
     met: cmf.met ?? 1.1,
     vAir: cmf.vAir ?? 0.1,
     mrtOffset: cmf.mrtOffset ?? 0,
@@ -1777,9 +1778,10 @@ export function initModals(store, exporter, baseRenderer, overlayRenderer, toast
 
     const pmvEl = byId('epPmv');
     if (pmvEl) {
-      pmvEl.textContent = `${pmvSign}${pmvRes.pmv.toFixed(2)} (${pmvRes.ppd.toFixed(0)}% PPD)`;
+      const humNote = (!pmvRes.compliant && pmvRes.pmvCompliant && !pmvRes.inHumidityBand) ? ' · Humid' : '';
+      pmvEl.textContent = `${pmvSign}${pmvRes.pmv.toFixed(2)} (${pmvRes.ppd.toFixed(0)}% PPD${humNote})`;
       if (pmvRes.compliant) pmvEl.style.color = 'var(--success)';
-      else if (Math.abs(pmvRes.pmv) <= 1.2) pmvEl.style.color = 'var(--warn)';
+      else if (pmvRes.pmvCompliant || Math.abs(pmvRes.pmv) <= 1.2) pmvEl.style.color = 'var(--warn)';
       else pmvEl.style.color = 'var(--danger)';
     }
   }
@@ -2013,7 +2015,10 @@ export function initModals(store, exporter, baseRenderer, overlayRenderer, toast
       const uP = isSI ? 'kPa' : 'psia';
       const pmvRes = _modCalcActivePMV(s.T, s.w, pPa, _modState(store));
       const pmvSign = pmvRes.pmv >= 0 ? '+' : '';
-      const pmvCol = pmvRes.compliant ? 'var(--success)' : (Math.abs(pmvRes.pmv) <= 1.2 ? 'var(--warn)' : 'var(--danger)');
+      const pmvCol = pmvRes.compliant
+        ? 'var(--success)'
+        : ((pmvRes.pmvCompliant || Math.abs(pmvRes.pmv) <= 1.2) ? 'var(--warn)' : 'var(--danger)');
+      const humTag = (!pmvRes.compliant && pmvRes.pmvCompliant && !pmvRes.inHumidityBand) ? ' · Humid' : '';
 
       const cells = [
         ['Tdb', `${CoreDOM.tToDisp(s.T, units).toFixed(2)} ${uT}`],
@@ -2024,7 +2029,7 @@ export function initModals(store, exporter, baseRenderer, overlayRenderer, toast
         ['h', `${(isSI ? s.h : s.hIP).toFixed(2)} ${uH}`],
         ['v', `${isSI ? s.v.toFixed(4) : s.vIP.toFixed(3)} ${uV}`],
         ['Pv', `${(isSI ? s.pv / 1000 : s.pv / (Psy.KPA_PER_PSI * 1000)).toFixed(isSI ? 3 : 4)} ${uP}`],
-        ['PMV/PPD', `<span style="color:${pmvCol}">${pmvSign}${pmvRes.pmv.toFixed(2)} · ${pmvRes.ppd.toFixed(0)}%</span>`]
+        ['PMV/PPD', `<span style="color:${pmvCol}">${pmvSign}${pmvRes.pmv.toFixed(2)} · ${pmvRes.ppd.toFixed(0)}%${humTag}</span>`]
       ];
 
       previewEl.innerHTML =

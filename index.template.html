@@ -340,40 +340,51 @@
             </select>
           </div>
           <div class="field">
-            <label for="pmvLimit" title="ASHRAE 55 Predicted Mean Vote comfort threshold (±0.5 ≈ 10% PPD)">PMV Limit (±)</label>
-            <input id="pmvLimit" type="number" value="0.5" step="0.05" min="0.2" max="1.0" />
+            <label for="comfortStandard" title="ASHRAE 55-2023 applies relative air speed v_r, dynamic clothing I_cl,r, and Gagge 2-Node SET Cooling Effect for v > 0.1 m/s; ISO 7730 uses direct Fanger heat balance">Standard</label>
+            <select id="comfortStandard">
+              <option value="ashrae55" selected>ASHRAE 55-2023</option>
+              <option value="iso7730">ISO 7730</option>
+            </select>
           </div>
         </div>
         <div class="row3">
           <div class="field">
             <label for="pmvCloSummer" title="Summer clothing insulation in clo (0.50 = light indoor attire)">Sum Clo</label>
-            <input id="pmvCloSummer" type="number" value="0.50" step="0.05" min="0.2" max="1.5" />
+            <input id="pmvCloSummer" type="number" value="0.50" step="0.05" min="0.1" max="2.5" />
           </div>
           <div class="field">
             <label for="pmvCloWinter" title="Winter clothing insulation in clo (1.00 = indoor winter attire)">Win Clo</label>
-            <input id="pmvCloWinter" type="number" value="1.00" step="0.05" min="0.4" max="2.0" />
+            <input id="pmvCloWinter" type="number" value="1.00" step="0.05" min="0.1" max="2.5" />
           </div>
           <div class="field">
             <label for="pmvMet" title="Metabolic activity rate in met (1.1 = seated office work)">Met</label>
             <input id="pmvMet" type="number" value="1.1" step="0.1" min="0.7" max="4.0" />
           </div>
         </div>
-        <div class="row">
+        <div class="row3">
           <div class="field">
-            <label for="pmvVair" title="Relative indoor air velocity around occupants (m/s)">Air Vel (m/s)</label>
-            <input id="pmvVair" type="number" value="0.10" step="0.05" min="0.05" max="2.0" />
+            <label for="pmvVair" title="Average indoor air speed around occupants (ASHRAE 55 applies SET Cooling Effect above 0.10 m/s)">Air Vel (m/s)</label>
+            <input id="pmvVair" type="number" value="0.10" step="0.05" min="0.01" max="2.0" />
           </div>
           <div class="field">
-            <label for="pmvMrtOff" title="Mean Radiant Temperature offset relative to dry-bulb temperature (Tr − Tdb)">MRT Offset (°C)</label>
-            <input id="pmvMrtOff" type="number" value="0" step="0.5" min="-20" max="20" />
+            <label for="pmvMrtOff" title="Mean Radiant Temperature offset relative to dry-bulb temperature (Tr − Tdb)">MRT Off (°C)</label>
+            <input id="pmvMrtOff" type="number" value="0" step="0.5" min="-15" max="15" />
+          </div>
+          <div class="field">
+            <label for="pmvLimit" title="Predicted Mean Vote comfort threshold (±0.5 ≈ 10% PPD)">PMV (±)</label>
+            <input id="pmvLimit" type="number" value="0.5" step="0.05" min="0.1" max="1.5" />
           </div>
         </div>
         <div class="row chk-group">
-          <label class="chk-row" for="chkGivoni" title="Givoni Bioclimatic passive cooling, thermal mass, and natural ventilation zones">
+          <label class="chk-row full" for="chkComfortWCap" title="ASHRAE 55 Graphic Method upper humidity ratio cap (0.012 kg/kg ≈ 84 gr/lb); uncheck for Analytical Method without fixed W cap">
+            <input id="chkComfortWCap" type="checkbox" checked />
+            <span id="lblComfortWCap">Humidity Cap (W ≤ 12 g/kg)</span>
+          </label>
+          <label class="chk-row" for="chkGivoni" title="Givoni (1992) Bioclimatic passive cooling, thermal mass, and natural ventilation zones">
             <input id="chkGivoni" type="checkbox" />
             <span>Givoni Bioclimatic Zones</span>
           </label>
-          <label class="chk-row" for="chkDataCenter" title="ASHRAE TC 9.9 Data Center Recommended and Allowable A1–A4 IT thermal envelopes">
+          <label class="chk-row" for="chkDataCenter" title="ASHRAE TC 9.9 (2021) Data Center Recommended and Allowable A1–A4 IT thermal envelopes with altitude derating">
             <input id="chkDataCenter" type="checkbox" />
             <span>ASHRAE TC 9.9 Data Center</span>
           </label>

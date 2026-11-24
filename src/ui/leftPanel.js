@@ -64,6 +64,9 @@ export function initLeftPanel(store, callbacks = {}) {
     trendBadgeStyle: byId('trendBadgeStyle'),
     chkTrendDecomp: byId('chkTrendDecomp'),
     comfortMode: byId('comfortMode'),
+    comfortStandard: byId('comfortStandard'),
+    chkComfortWCap: byId('chkComfortWCap'),
+    lblComfortWCap: byId('lblComfortWCap'),
     pmvCloSummer: byId('pmvCloSummer'),
     pmvCloWinter: byId('pmvCloWinter'),
     pmvMet: byId('pmvMet'),
@@ -144,6 +147,8 @@ export function initLeftPanel(store, callbacks = {}) {
     const c = getState().comfort || {};
     return {
       mode: c.mode || 'both',
+      standard: c.standard === 'iso7730' ? 'iso7730' : 'ashrae55',
+      capHumidity: c.capHumidity !== false,
       cloSummer: Number.isFinite(c.cloSummer) ? c.cloSummer : 0.5,
       cloWinter: Number.isFinite(c.cloWinter) ? c.cloWinter : 1.0,
       met: Number.isFinite(c.met) ? c.met : 1.1,
@@ -634,9 +639,15 @@ export function initLeftPanel(store, callbacks = {}) {
     setLabelWithUnit('tMax', 'Tdb Max', u.T);
     setLabelWithUnit('wMax', 'W Max', u.W);
     setLabelWithUnit('pmvVair', 'Air Vel', units === 'IP' ? 'fpm' : 'm/s');
-    setLabelWithUnit('pmvMrtOff', 'MRT Offset', u.T);
+    setLabelWithUnit('pmvMrtOff', 'MRT Off', u.T);
     setLabelWithUnit('tblFrom', 'From T', u.T);
     setLabelWithUnit('tblTo', 'To T', u.T);
+
+    if (el.lblComfortWCap) {
+      el.lblComfortWCap.textContent = units === 'IP'
+        ? 'Humidity Cap (W ≤ 84 gr/lb)'
+        : 'Humidity Cap (W ≤ 12 g/kg)';
+    }
 
     if (el.inMode1) setLabelWithUnit('inVal1', 'Value 1', propUnitLabel(el.inMode1.value, units));
     if (el.inMode2) setLabelWithUnit('inVal2', 'Value 2', propUnitLabel(el.inMode2.value, units));
@@ -656,9 +667,15 @@ export function initLeftPanel(store, callbacks = {}) {
     }
 
     if (el.pmvVair) {
-      el.pmvVair.min = units === 'IP' ? '10' : '0.05';
-      el.pmvVair.max = units === 'IP' ? '400' : '2.0';
+      el.pmvVair.min = units === 'IP' ? '2' : '0.01';
+      el.pmvVair.max = units === 'IP' ? '395' : '2.0';
       el.pmvVair.step = units === 'IP' ? '5' : '0.05';
+    }
+
+    if (el.pmvMrtOff) {
+      el.pmvMrtOff.min = units === 'IP' ? '-27' : '-15';
+      el.pmvMrtOff.max = units === 'IP' ? '27' : '15';
+      el.pmvMrtOff.step = units === 'IP' ? '1' : '0.5';
     }
 
     if (el.bulkCSV) {
@@ -890,82 +907,6 @@ export function initLeftPanel(store, callbacks = {}) {
     return maxAttr > 1.5 ? clamp(raw / 100, 0.05, 1) : clamp(raw, 0.05, 1);
   }
 
-  function computeFallbackWeatherAnalytics(hours, pPa) {
-    const totalHours = hours.length;
-    if (!totalHours) return null;
-    const cfg = getComfortCfg();
-    const zones = Comfort.getSummerWinterZones(pPa, cfg);
-    const polySum = zones.summer.poly;
-    const polyWin = zones.winter.poly;
-
-    const pointInPoly = (x, y, poly) => {
-      let inside = false;
-      for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-        const xi = poly[i][0], yi = poly[i][1];
-        const xj = poly[j][0], yj = poly[j][1];
-        const intersect = ((yi > y) !== (yj > y)) && (x < ((xj - xi) * (y - yi)) / ((yj - yi) || 1e-12) + xi);
-        if (intersect) inside = !inside;
-      }
-      return inside;
-    };
-
-    let comfortHrs = 0;
-    let coolingHrs = 0;
-    let dehumHrs = 0;
-    let heatingHrs = 0;
-    let econHrs = 0;
-    let evapHrs = 0;
-    let cdhC = 0;
-    let hdhC = 0;
-
-    for (let i = 0; i < totalHours; i++) {
-      const rec = hours[i];
-      const T = Number(rec.T ?? rec.Tdb ?? rec.tdb ?? rec.temp);
-      if (!Number.isFinite(T)) continue;
-      let w = Number(rec.w ?? rec.W);
-      if (!Number.isFinite(w)) {
-        const rh = Number(rec.rh ?? rec.RH);
-        w = Number.isFinite(rh) ? Psy.w_from_TRH(T, (rh > 1 ? rh / 100 : rh), pPa) : 0;
-      }
-      const h = Psy.h_kJkg(T, w);
-      const Twb = Psy.twb_from_Tw(T, w, pPa);
-
-      if (T > 18.3) cdhC += (T - 18.3);
-      if (T < 18.3) hdhC += (18.3 - T);
-
-      // Economizer free-cooling band: 4°C <= Tdb <= 21°C and h <= 58 kJ/kg (ASHRAE 90.1 high-limit)
-      if (T >= 4 && T <= 21 && h <= 58) econHrs++;
-      // Evaporative cooling potential: hot & dry (T > 24°C, Twb <= 21.5°C, W <= 0.012)
-      if (T > 24 && Twb <= 21.5 && w <= 0.012) evapHrs++;
-
-      const inComfort = pointInPoly(T, w, polySum) || pointInPoly(T, w, polyWin);
-      if (inComfort) {
-        comfortHrs++;
-      } else if (T < 20) {
-        heatingHrs++;
-      } else if (w > 0.012) {
-        dehumHrs++;
-      } else if (T > 25.5) {
-        coolingHrs++;
-      } else {
-        comfortHrs++;
-      }
-    }
-
-    return {
-      totalHours,
-      comfortHrs,
-      comfortPct: (comfortHrs / totalHours) * 100,
-      coolingHrs,
-      dehumHrs,
-      heatingHrs,
-      econHrs,
-      evapHrs,
-      cdh: cdhC,
-      hdh: hdhC
-    };
-  }
-
   function extractWeatherMetrics(weather) {
     if (!weather) return null;
     const records = Array.isArray(weather.records) ? weather.records
@@ -983,14 +924,18 @@ export function initLeftPanel(store, callbacks = {}) {
       Number.isFinite(Number(s.coolHours)) &&
       Number.isFinite(Number(s.heatHours))
     );
-    const fb = hasBinsMetrics ? null : computeFallbackWeatherAnalytics(records, pPa);
+    const fb = hasBinsMetrics
+      ? null
+      : (typeof Weather?.computePsychroBins === 'function'
+        ? Weather.computePsychroBins(records, pPa, getComfortCfg())
+        : null);
 
-    const comfortHrs = Number(s.comfortHours ?? s.comfortHrs ?? fb?.comfortHrs ?? 0);
-    const coolingHrs = Number(s.coolHours ?? s.coolingHours ?? s.coolingHrs ?? fb?.coolingHrs ?? 0);
-    const dehumHrs = Number(s.dehumHours ?? s.dehumHrs ?? fb?.dehumHrs ?? 0);
-    const heatingHrs = Number(s.heatHours ?? s.heatingHours ?? s.heatingHrs ?? fb?.heatingHrs ?? 0);
-    const econHrs = Number(s.economizerHours ?? s.econHrs ?? fb?.econHrs ?? 0);
-    const evapHrs = Number(s.evapHours ?? s.evapHrs ?? fb?.evapHrs ?? 0);
+    const comfortHrs = Number(s.comfortHours ?? s.comfortHrs ?? fb?.comfortHours ?? 0);
+    const coolingHrs = Number(s.coolHours ?? s.coolingHours ?? s.coolingHrs ?? fb?.coolHours ?? 0);
+    const dehumHrs = Number(s.dehumHours ?? s.dehumHrs ?? fb?.dehumHours ?? 0);
+    const heatingHrs = Number(s.heatHours ?? s.heatingHours ?? s.heatingHrs ?? fb?.heatHours ?? 0);
+    const econHrs = Number(s.economizerHours ?? s.econHrs ?? fb?.economizerHours ?? 0);
+    const evapHrs = Number(s.evapHours ?? s.evapHrs ?? fb?.evapHours ?? 0);
     const cdh = Number(s.cdh ?? fb?.cdh ?? 0);
     const hdh = Number(s.hdh ?? fb?.hdh ?? 0);
     const comfortPct = Number.isFinite(Number(s.comfortPct))
@@ -1103,7 +1048,7 @@ export function initLeftPanel(store, callbacks = {}) {
     }
 
     const bins = typeof Weather?.computePsychroBins === 'function'
-      ? Weather.computePsychroBins(records, pPa)
+      ? Weather.computePsychroBins(records, pPa, getComfortCfg())
       : null;
 
     const weatherObj = {
@@ -1537,9 +1482,11 @@ export function initLeftPanel(store, callbacks = {}) {
     const units = getUnits();
     const mode = el.comfortMode?.value || 'both';
     if (mode !== 'none') lastActiveComfortMode = mode;
+    const standard = el.comfortStandard?.value === 'iso7730' ? 'iso7730' : 'ashrae55';
+    const capHumidity = el.chkComfortWCap ? !!el.chkComfortWCap.checked : true;
     const cloSummer = clamp(parseFloat(el.pmvCloSummer?.value) || 0.5, 0.1, 2.5);
     const cloWinter = clamp(parseFloat(el.pmvCloWinter?.value) || 1.0, 0.1, 2.5);
-    const met = clamp(parseFloat(el.pmvMet?.value) || 1.1, 0.6, 4.5);
+    const met = clamp(parseFloat(el.pmvMet?.value) || 1.1, 0.7, 4.0);
     const vAirRaw = parseFloat(el.pmvVair?.value);
     const vAirSI = Number.isFinite(vAirRaw)
       ? (units === 'IP' ? vAirRaw / FPM_PER_MPS : vAirRaw)
@@ -1553,6 +1500,8 @@ export function initLeftPanel(store, callbacks = {}) {
 
     setStoreComfort({
       mode,
+      standard,
+      capHumidity,
       cloSummer,
       cloWinter,
       met,
@@ -1570,6 +1519,8 @@ export function initLeftPanel(store, callbacks = {}) {
   }
 
   on(el.comfortMode, 'change', pushComfortFromUI);
+  on(el.comfortStandard, 'change', pushComfortFromUI);
+  on(el.chkComfortWCap, 'change', pushComfortFromUI);
   [el.pmvCloSummer, el.pmvCloWinter, el.pmvMet, el.pmvVair, el.pmvMrtOff, el.pmvLimit].forEach((inp) => {
     on(inp, 'input', pushComfortFromUI);
     on(inp, 'change', pushComfortFromUI);
@@ -1589,6 +1540,12 @@ export function initLeftPanel(store, callbacks = {}) {
 
     if (el.comfortMode && (force || document.activeElement !== el.comfortMode)) {
       el.comfortMode.value = layers.comfort === false ? 'none' : cfg.mode;
+    }
+    if (el.comfortStandard && (force || document.activeElement !== el.comfortStandard)) {
+      el.comfortStandard.value = cfg.standard === 'iso7730' ? 'iso7730' : 'ashrae55';
+    }
+    if (el.chkComfortWCap) {
+      el.chkComfortWCap.checked = cfg.capHumidity !== false;
     }
     if (el.pmvCloSummer && (force || document.activeElement !== el.pmvCloSummer)) {
       el.pmvCloSummer.value = cfg.cloSummer.toFixed(2);
@@ -1746,22 +1703,22 @@ export function initLeftPanel(store, callbacks = {}) {
 
   function getPointPMVBadge(pt, pPa) {
     const cfg = getComfortCfg();
-    const ev = Comfort.evaluatePointZones(pt.T, pt.w, pPa, cfg);
-    const useWinter = cfg.mode === 'winter';
-    const useBoth = cfg.mode === 'both' || cfg.mode === 'none';
-    const primary = useWinter
-      ? ev.winter
-      : (useBoth && Math.abs(ev.winter.pmv) < Math.abs(ev.summer.pmv) ? ev.winter : ev.summer);
+    const ev = Comfort.evaluateActiveComfort(pt.T, pt.w, pPa, cfg);
 
     let dotColor = '#10b981'; // comfortable
-    if (primary.pmv < -cfg.pmvLimit) {
-      dotColor = primary.pmv < -1.5 ? '#2563eb' : '#38bdf8';
-    } else if (primary.pmv > cfg.pmvLimit) {
-      dotColor = primary.pmv > 1.5 ? '#ef4444' : '#f59e0b';
+    if (!ev.inComfort) {
+      if (ev.pmvCompliant && !ev.inHumidityBand) {
+        dotColor = '#f59e0b'; // PMV OK but exceeds humidity cap
+      } else if (ev.pmv < -cfg.pmvLimit) {
+        dotColor = ev.pmv < -1.5 ? '#2563eb' : '#38bdf8';
+      } else if (ev.pmv > cfg.pmvLimit) {
+        dotColor = ev.pmv > 1.5 ? '#ef4444' : '#f59e0b';
+      }
     }
-    const sign = primary.pmv >= 0 ? '+' : '';
-    const title = `PMV ${sign}${primary.pmv.toFixed(2)} · PPD ${primary.ppd.toFixed(0)}% · ${primary.sensation}`;
-    return { dotColor, title, pmv: primary.pmv, ppd: primary.ppd };
+    const sign = ev.pmv >= 0 ? '+' : '';
+    const ceNote = ev.elevatedAirSpeed && ev.ce > 0.05 ? ` · CE -${ev.ce.toFixed(1)}°C` : '';
+    const title = `PMV ${sign}${ev.pmv.toFixed(2)} · PPD ${ev.ppd.toFixed(0)}% · ${ev.reason}${ceNote} (${ev.seasonTag})`;
+    return { dotColor, title, pmv: ev.pmv, ppd: ev.ppd, compliant: ev.inComfort };
   }
 
   function computePointRowDisplay(pt, editMode, units, pPa) {
@@ -2165,25 +2122,27 @@ export function initLeftPanel(store, callbacks = {}) {
     }
     const cfg = getComfortCfg();
     const units = getUnits();
-    const ev = Comfort.evaluatePointZones(st.T, st.w, st.pPa, cfg);
+    const ev = Comfort.evaluateActiveComfort(st.T, st.w, st.pPa, { ...cfg, includeSET: true });
 
-    // Choose seasonal PMV matching comfortMode (or better match when 'both')
-    const showWinter = cfg.mode === 'winter';
-    const pmvObj = showWinter
-      ? ev.winter
-      : (cfg.mode === 'both' && Math.abs(ev.winter.pmv) < Math.abs(ev.summer.pmv) ? ev.winter : ev.summer);
-    const seasonTag = showWinter
-      ? `Win ${cfg.cloWinter.toFixed(1)} clo`
-      : (cfg.mode === 'both' && pmvObj === ev.winter ? `Win ${cfg.cloWinter.toFixed(1)} clo` : `Sum ${cfg.cloSummer.toFixed(1)} clo`);
+    const inComfort = ev.inComfort;
+    const pmvColor = inComfort
+      ? 'var(--success,#10b981)'
+      : ((ev.pmvCompliant && !ev.inHumidityBand)
+        ? 'var(--warn,#f59e0b)'
+        : (ev.pmv > 0 ? 'var(--warn,#f59e0b)' : 'var(--cool,#38bdf8)'));
+    const pmvSign = ev.pmv >= 0 ? '+' : '';
+    const stdTitle = ev.standard === 'iso7730' ? 'ISO 7730' : 'ASHRAE 55-2023';
 
-    const inComfort = cfg.mode === 'winter'
-      ? ev.inWinterComfort
-      : (cfg.mode === 'summer' ? ev.inSummerComfort : (ev.inSummerComfort || ev.inWinterComfort));
-    const pmvColor = inComfort ? 'var(--success,#10b981)' : (pmvObj.pmv > 0 ? 'var(--warn,#f59e0b)' : 'var(--cool,#38bdf8)');
-    const pmvSign = pmvObj.pmv >= 0 ? '+' : '';
+    // Elevated air speed SET / Cooling Effect note (ASHRAE 55-2023 §5.3.3)
+    const setDisp = Number.isFinite(ev.set)
+      ? (units === 'IP' ? `${tToDisp(ev.set, 'IP').toFixed(1)} °F` : `${ev.set.toFixed(1)} °C`)
+      : null;
+    const ceDisp = ev.elevatedAirSpeed && ev.ce > 0.05
+      ? (units === 'IP' ? `−${(ev.ce * 1.8).toFixed(1)} °F` : `−${ev.ce.toFixed(1)} °C`)
+      : null;
 
-    // ASHRAE TC 9.9 Data Center classification
-    const dcLabel = ev.dataCenterClass || 'Outside A3';
+    // ASHRAE TC 9.9 (2021) Data Center classification (Rec / A1–A4 with >900 m altitude derating)
+    const dcLabel = ev.dataCenterClass || 'Outside A4';
     const dcColor = ev.dataCenterClass === 'Recommended'
       ? 'var(--success,#10b981)'
       : (ev.dataCenterClass ? 'var(--accent,#0ea5e9)' : 'var(--muted)');
@@ -2198,17 +2157,27 @@ export function initLeftPanel(store, callbacks = {}) {
         : (mold.riskLevel === 'moderate' ? 'Moderate' : 'Low Risk'));
     const marginDisp = units === 'IP' ? `${(mold.marginC * 1.8).toFixed(1)} °F` : `${mold.marginC.toFixed(1)} °C`;
 
+    // Active Givoni (1992) passive strategies at this state
+    const givoniText = Array.isArray(ev.givoniZones) && ev.givoniZones.length
+      ? ev.givoniZones.map(z => z.shortLabel || z.label).join(' · ')
+      : '';
+
     el.calcComfortSummary.innerHTML = `
       <div style="padding:8px;border-radius:var(--r-sm,6px);background:var(--panel2);border:1px solid var(--glassBorder);margin:6px 0;display:flex;flex-direction:column;gap:6px">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:6px">
-          <span style="font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)">ASHRAE 55 PMV / PPD (${esc(seasonTag)})</span>
-          <span class="badge" style="background:${inComfort ? 'var(--successSoft,rgba(16,185,129,0.14))' : 'var(--warnSoft,rgba(245,158,11,0.14))'};color:${pmvColor};font-size:9px;font-weight:700">${inComfort ? '✓ Compliant' : esc(pmvObj.sensation)}</span>
+          <span style="font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)">${stdTitle} (${esc(ev.seasonTag)})</span>
+          <span class="badge" style="background:${inComfort ? 'var(--successSoft,rgba(16,185,129,0.14))' : 'var(--warnSoft,rgba(245,158,11,0.14))'};color:${pmvColor};font-size:9px;font-weight:700">${inComfort ? '✓ Compliant' : esc(ev.reason)}</span>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px">
-          <div class="metric" style="padding:4px 6px"><span class="lbl">PMV</span><span class="val" style="color:${pmvColor}">${pmvSign}${pmvObj.pmv.toFixed(2)}</span></div>
-          <div class="metric" style="padding:4px 6px"><span class="lbl">PPD</span><span class="val">${pmvObj.ppd.toFixed(1)}%</span></div>
+          <div class="metric" style="padding:4px 6px"><span class="lbl">PMV</span><span class="val" style="color:${pmvColor}">${pmvSign}${ev.pmv.toFixed(2)}</span></div>
+          <div class="metric" style="padding:4px 6px"><span class="lbl">PPD</span><span class="val">${ev.ppd.toFixed(1)}%</span></div>
           <div class="metric" style="padding:4px 6px"><span class="lbl">ΔTdp Margin</span><span class="val">${marginDisp}</span></div>
         </div>
+        ${ceDisp ? `
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;padding:3px 6px;border-radius:4px;background:var(--inputBg);border:1px solid var(--border);font-size:10px">
+          <span style="color:var(--muted);font-weight:600">Elevated Air SET</span>
+          <span style="font-family:var(--mono);color:var(--accent);font-weight:700">${setDisp || '—'} <span style="color:var(--success,#10b981)">(CE ${ceDisp})</span></span>
+        </div>` : ''}
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:10px">
           <div style="padding:4px 6px;border-radius:4px;background:var(--inputBg);border:1px solid var(--border);display:flex;flex-direction:column;gap:1px">
             <span style="font-size:9px;color:var(--muted);text-transform:uppercase;font-weight:600">TC 9.9 Data Center</span>
@@ -2219,6 +2188,11 @@ export function initLeftPanel(store, callbacks = {}) {
             <span style="font-family:var(--mono);font-weight:700;color:${moldColor}">${moldBadge} <span style="font-weight:400;color:var(--muted)">(${mold.surfaceRH.toFixed(0)}%)</span></span>
           </div>
         </div>
+        ${givoniText ? `
+        <div style="padding:3px 6px;border-radius:4px;background:var(--inputBg);border:1px solid var(--border);font-size:9.5px;display:flex;align-items:center;justify-content:space-between;gap:6px">
+          <span style="color:var(--muted);text-transform:uppercase;font-weight:600;font-size:8.5px;flex-shrink:0">Givoni</span>
+          <span style="color:var(--fg);font-weight:600;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(givoniText)}">${esc(givoniText)}</span>
+        </div>` : ''}
       </div>
     `;
   }

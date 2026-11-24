@@ -15,6 +15,7 @@
    ============================================================================ */
 
 import { Psy } from './psychro.js';
+import { Comfort } from './comfort.js';
 
 export const Weather = (() => {
   'use strict';
@@ -1393,6 +1394,8 @@ export const Weather = (() => {
         coolPct: 0,
         dehumHours: 0,
         dehumPct: 0,
+        humidHours: 0,
+        humidPct: 0,
         heatHours: 0,
         heatPct: 0,
         economizerHours: 0,
@@ -1419,15 +1422,110 @@ export const Weather = (() => {
       };
     }
 
-    // Comfort & HVAC zone thresholds (ASHRAE 55 / economizer / evap defaults)
-    const tComfMin = Number.isFinite(opts.tMin) ? opts.tMin : 20.0;
-    const tComfMax = Number.isFinite(opts.tMax) ? opts.tMax : 26.5;
-    const wComfMax = Number.isFinite(opts.wMax) ? opts.wMax : 0.012;
-    const wComfMin = Number.isFinite(opts.wMin) ? opts.wMin : 0.0;
-    const hComfMax = Number.isFinite(opts.hMax) ? opts.hMax : Psy.h_kJkg(tComfMax, wComfMax);
-    const coolThresholdT = Number.isFinite(opts.coolT) ? opts.coolT : 26.0;
-    const heatThresholdT = Number.isFinite(opts.heatT) ? opts.heatT : 19.5;
+    // Dynamic ASHRAE 55 / ISO 7730 comfort polygon partition (or explicit custom box override)
+    const useExplicitBox = Number.isFinite(opts.tMin) || Number.isFinite(opts.tMax);
+    const wComfMax = Number.isFinite(opts.wMax)
+      ? Math.max(0.002, opts.wMax)
+      : (opts.capHumidity === false ? 0.030 : 0.012);
+    const wComfMin = Number.isFinite(opts.wMin) ? Math.max(0, opts.wMin) : 0.0;
     const baseDegreeT = Number.isFinite(opts.baseT) ? opts.baseT : 18.3;
+
+    // Explicit box fallback bounds (when caller supplies custom tMin/tMax overrides)
+    const tBoxMin = Number.isFinite(opts.tMin) ? opts.tMin : 20.0;
+    const tBoxMax = Number.isFinite(opts.tMax) ? opts.tMax : 26.5;
+    const coolThresholdT = Number.isFinite(opts.coolT) ? opts.coolT : tBoxMax;
+    const heatThresholdT = Number.isFinite(opts.heatT) ? opts.heatT : tBoxMin;
+
+    // Build active comfort polygon(s) and fast horizontal-slice boundary LUT for heating/cooling partition
+    const activePolys = [];
+    const polyBBoxes = [];
+    const LUT_N = 128;
+    const tLoLUT = new Float64Array(LUT_N + 1);
+    const tHiLUT = new Float64Array(LUT_N + 1);
+
+    if (!useExplicitBox && Comfort && typeof Comfort.getSummerWinterZones === 'function') {
+      const sw = Comfort.getSummerWinterZones(p, opts);
+      const cMode = opts.mode || 'both';
+      if (cMode === 'summer') {
+        if (sw?.summer?.poly?.length >= 3) activePolys.push(sw.summer.poly);
+      } else if (cMode === 'winter') {
+        if (sw?.winter?.poly?.length >= 3) activePolys.push(sw.winter.poly);
+      } else {
+        if (sw?.winter?.poly?.length >= 3) activePolys.push(sw.winter.poly);
+        if (sw?.summer?.poly?.length >= 3) activePolys.push(sw.summer.poly);
+      }
+    }
+
+    const usePolys = activePolys.length > 0;
+    if (usePolys) {
+      let globalMinT = Infinity;
+      let globalMaxT = -Infinity;
+      for (let k = 0; k < activePolys.length; k++) {
+        const poly = activePolys[k];
+        let minT = Infinity, maxT = -Infinity, minW = Infinity, maxW = -Infinity;
+        for (let j = 0; j < poly.length; j++) {
+          const ptT = poly[j][0];
+          const ptW = poly[j][1];
+          if (ptT < minT) minT = ptT;
+          if (ptT > maxT) maxT = ptT;
+          if (ptW < minW) minW = ptW;
+          if (ptW > maxW) maxW = ptW;
+        }
+        polyBBoxes.push({ minT, maxT, minW, maxW });
+        if (minT < globalMinT) globalMinT = minT;
+        if (maxT > globalMaxT) globalMaxT = maxT;
+      }
+
+      const spanAtW = (poly, wVal) => {
+        let minX = Infinity;
+        let maxX = -Infinity;
+        const n = poly.length;
+        for (let i = 0, j = n - 1; i < n; j = i++) {
+          const x0 = poly[j][0], y0 = poly[j][1];
+          const x1 = poly[i][0], y1 = poly[i][1];
+          if ((y0 <= wVal && y1 >= wVal) || (y1 <= wVal && y0 >= wVal)) {
+            if (Math.abs(y1 - y0) < 1e-12) {
+              if (x0 < minX) minX = x0;
+              if (x0 > maxX) maxX = x0;
+              if (x1 < minX) minX = x1;
+              if (x1 > maxX) maxX = x1;
+            } else {
+              const x = x0 + ((wVal - y0) / (y1 - y0)) * (x1 - x0);
+              if (x < minX) minX = x;
+              if (x > maxX) maxX = x;
+            }
+          }
+        }
+        return minX <= maxX ? [minX, maxX] : null;
+      };
+
+      const wSpan = Math.max(1e-6, wComfMax - wComfMin);
+      let prevLo = globalMinT;
+      let prevHi = globalMaxT;
+      for (let idx = 0; idx <= LUT_N; idx++) {
+        const wSample = wComfMin + (wSpan * idx) / LUT_N;
+        let lo = Infinity;
+        let hi = -Infinity;
+        for (let k = 0; k < activePolys.length; k++) {
+          const sp = spanAtW(activePolys[k], wSample);
+          if (sp) {
+            if (sp[0] < lo) lo = sp[0];
+            if (sp[1] > hi) hi = sp[1];
+          }
+        }
+        if (lo <= hi) {
+          tLoLUT[idx] = lo;
+          tHiLUT[idx] = hi;
+          prevLo = lo;
+          prevHi = hi;
+        } else {
+          tLoLUT[idx] = prevLo;
+          tHiLUT[idx] = prevHi;
+        }
+      }
+    }
+
+    const invWComfSpan = 1 / Math.max(1e-6, wComfMax - wComfMin);
 
     // Precompute exact ASHRAE Eq. 35 numerator term for Twb = 20.0°C evaporative boundary:
     // Because Twb(T, w, p) is strictly increasing with w, Twb < 20°C iff w < w_from_TTwb(T, 20°C, p).
@@ -1442,6 +1540,7 @@ export const Weather = (() => {
     let comfortHours = 0;
     let coolHours = 0;
     let dehumHours = 0;
+    let humidHours = 0;
     let heatHours = 0;
     let economizerHours = 0;
     let evapHours = 0;
@@ -1476,18 +1575,54 @@ export const Weather = (() => {
       const rhFrac = rhFracFromTw(T, w, p);
       rhSum += rhFrac * 100;
 
-      // Zone analytics
-      if (T >= tComfMin && T <= tComfMax && w <= wComfMax && w >= wComfMin) {
-        comfortHours++;
+      // Exact non-overlapping thermal comfort / heating / cooling partition
+      if (usePolys) {
+        let inComfort = false;
+        if (w >= wComfMin - 1e-7 && w <= wComfMax + 1e-7) {
+          let wQuery = w;
+          if (wQuery <= wComfMin + 1e-8) wQuery = Math.min(wComfMax - 1e-8, wComfMin + 1e-8);
+          else if (wQuery >= wComfMax - 1e-8) wQuery = Math.max(wComfMin + 1e-8, wComfMax - 1e-8);
+          for (let k = 0; k < activePolys.length; k++) {
+            const bb = polyBBoxes[k];
+            if (T >= bb.minT - 1e-6 && T <= bb.maxT + 1e-6 && w <= bb.maxW + 1e-6) {
+              if (Comfort.pointInPolygon(T, wQuery, activePolys[k])) {
+                inComfort = true;
+                break;
+              }
+            }
+          }
+        }
+
+        if (inComfort) {
+          comfortHours++;
+        } else {
+          const f = clamp((w - wComfMin) * invWComfSpan, 0, 1) * LUT_N;
+          const i0 = Math.min(LUT_N - 1, Math.floor(f));
+          const frac = f - i0;
+          const tLoRef = tLoLUT[i0] + (tLoLUT[i0 + 1] - tLoLUT[i0]) * frac;
+          const tHiRef = tHiLUT[i0] + (tHiLUT[i0 + 1] - tHiLUT[i0]) * frac;
+          if (T < tLoRef) {
+            heatHours++;
+          } else if (T > tHiRef || w > wComfMax) {
+            coolHours++;
+          }
+        }
+      } else {
+        const inComfort = T >= tBoxMin && T <= tBoxMax && w <= wComfMax && w >= wComfMin;
+        if (inComfort) {
+          comfortHours++;
+        } else if (T < heatThresholdT) {
+          heatHours++;
+        } else if (T > coolThresholdT || w > wComfMax) {
+          coolHours++;
+        }
       }
-      if (T > coolThresholdT || h > hComfMax) {
-        coolHours++;
-      }
+
       if (w > wComfMax) {
         dehumHours++;
       }
-      if (T < heatThresholdT) {
-        heatHours++;
+      if (w < 0.004) {
+        humidHours++;
       }
       if (T >= 10.0 && T <= 21.0 && w <= 0.0115) {
         economizerHours++;
@@ -1551,6 +1686,8 @@ export const Weather = (() => {
       coolPct: pct(coolHours),
       dehumHours,
       dehumPct: pct(dehumHours),
+      humidHours,
+      humidPct: pct(humidHours),
       heatHours,
       heatPct: pct(heatHours),
       economizerHours,

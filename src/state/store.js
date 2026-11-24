@@ -14,6 +14,7 @@ import {
   CoreDOM
 } from '../core/contracts.js';
 import { Psy } from '../engine/psychro.js';
+import { Weather } from '../engine/weather.js';
 
 export function createStore() {
   const MAX_HISTORY = 100;
@@ -54,6 +55,8 @@ export function createStore() {
 
   const DEFAULT_COMFORT = {
     mode: 'both',
+    standard: 'ashrae55',
+    capHumidity: true,
     cloSummer: 0.5,
     cloWinter: 1.0,
     met: 1.1,
@@ -1305,6 +1308,19 @@ export function createStore() {
     autosave();
   }
 
+  function recomputeWeatherBins() {
+    if (
+      Array.isArray(state.weather.records) &&
+      state.weather.records.length > 0 &&
+      Weather &&
+      typeof Weather.computePsychroBins === 'function'
+    ) {
+      state.weather.bins = Weather.computePsychroBins(state.weather.records, state.pPa, state.comfort);
+      return true;
+    }
+    return false;
+  }
+
   function setAtmosphere(pPa, altM, pOverride = null, recordHistory = true) {
     const hasOverride = pOverride != null && pOverride !== '' && Number.isFinite(Number(pOverride));
     let resolvedP;
@@ -1336,7 +1352,9 @@ export function createStore() {
     state.pOverride = hasOverride ? resolvedP : null;
 
     recomputeDerived();
+    const rebinned = recomputeWeatherBins();
 
+    if (rebinned) emit('weather-changed', { weather: state.weather });
     emit('base-dirty', { reason: 'atmosphere' });
     emit('overlay-dirty', { reason: 'atmosphere' });
     emit('change', { reason: 'atmosphere', pPa: state.pPa, altM: state.altM });
@@ -1459,6 +1477,12 @@ export function createStore() {
   function setComfort(patch = {}) {
     if (!patch || typeof patch !== 'object') return;
     if ('mode' in patch && patch.mode != null) state.comfort.mode = String(patch.mode);
+    if ('standard' in patch && (patch.standard === 'ashrae55' || patch.standard === 'iso7730')) {
+      state.comfort.standard = patch.standard;
+    }
+    if ('capHumidity' in patch) {
+      state.comfort.capHumidity = Boolean(patch.capHumidity);
+    }
     if ('cloSummer' in patch && Number.isFinite(Number(patch.cloSummer))) {
       state.comfort.cloSummer = CoreDOM.clamp(Number(patch.cloSummer), 0.1, 2.5);
     }
@@ -1478,6 +1502,8 @@ export function createStore() {
       state.comfort.pmvLimit = CoreDOM.clamp(Number(patch.pmvLimit), 0.1, 1.5);
     }
 
+    const rebinned = recomputeWeatherBins();
+    if (rebinned) emit('weather-changed', { weather: state.weather });
     emit('base-dirty', { reason: 'comfort' });
     emit('change', { reason: 'comfort' });
     autosave();
@@ -1540,6 +1566,9 @@ export function createStore() {
       state.weather.records = Array.isArray(weatherData.records) ? weatherData.records : [];
     }
     if ('bins' in weatherData) state.weather.bins = weatherData.bins ?? null;
+    else if ('records' in weatherData && state.weather.records.length > 0) {
+      recomputeWeatherBins();
+    }
     if ('mode' in weatherData && weatherData.mode != null) state.weather.mode = String(weatherData.mode);
     if ('opacity' in weatherData && Number.isFinite(Number(weatherData.opacity))) {
       state.weather.opacity = CoreDOM.clamp(Number(weatherData.opacity), 0.05, 1);
