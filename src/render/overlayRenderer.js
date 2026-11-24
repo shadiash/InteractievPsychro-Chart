@@ -2062,7 +2062,7 @@ export class OverlayRenderer {
     const cardW = 114 * dpi;
     const cardH = 128 * dpi;
     const cardX = plot.x + 12 * dpi;
-    const cardY = plot.y + (isExport ? 12 : 54) * dpi;
+    const cardY = plot.y + 12 * dpi;
     const cx = cardX + cardW * 0.5;
     const cy = cardY + 62 * dpi;
     const R = 36 * dpi;

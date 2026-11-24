@@ -337,12 +337,12 @@ export class BaseRenderer {
     const rawL = Math.round((isIP ? 42 : 40) * dpi);
     const pvExtra = ax.showDualPvScale ? 28 : 0;
     const rawR = Math.round(((isIP ? 74 : 68) + pvExtra) * dpi);
-    const rawT = Math.round((includeTitle ? 48 : 34) * dpi);
+    const rawT = Math.round((includeTitle ? 76 : 46) * dpi);
     const rawB = Math.round(46 * dpi);
 
     this.padL = Math.min(rawL, Math.floor(W * 0.16));
     this.padR = Math.min(rawR, Math.floor(W * (ax.showDualPvScale ? 0.28 : 0.22)));
-    this.padT = Math.min(rawT, Math.floor(H * 0.18));
+    this.padT = Math.min(rawT, Math.floor(H * 0.22));
     this.padB = Math.min(rawB, Math.floor(H * 0.20));
   }
 
@@ -2437,13 +2437,81 @@ export class BaseRenderer {
     }
     ctx.stroke();
 
-    // Centered X-axis title
+    // Centered Bottom X-axis title
     const xTitle = isSI ? 'Dry-Bulb Temperature (°C)' : 'Dry-Bulb Temperature (°F)';
     this._textHalo(
       ctx, xTitle,
       rect.x + rect.w * 0.5, this.height - 8 * dpi,
       titleCol, 'center', 'alphabetic', axisPx + 0.5, dpi, pal, '600', _BR_FONT_SANS
     );
+
+    // -- Top X-Axis: Duplicated Dry-Bulb Temperature Scale --
+    const yTop = _BR_crisp(rect.y);
+    ctx.strokeStyle = tickCol;
+    ctx.setLineDash([]);
+
+    // In 'ashrae-open' frame (which omits top/left box lines), draw a clean top axis line for the top scale
+    if (ax?.frame === 'ashrae-open') {
+      ctx.save();
+      ctx.strokeStyle = pal.border || tickCol;
+      ctx.lineWidth = Math.max(0.9, (pal.border_lw ?? 1.5) * 0.85 * dpi);
+      ctx.globalAlpha = 0.88;
+      ctx.beginPath();
+      ctx.moveTo(_BR_crisp(rect.x), yTop);
+      ctx.lineTo(_BR_crisp(rect.x + rect.w), yTop);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Minor Top X sub-ticks
+    if (showSubTicks) {
+      const [yTopMin0, yTopMin1] = _BR_tickSpan(yTop, -1, minLen, tickDir);
+      ctx.strokeStyle = tickCol;
+      ctx.lineWidth = Math.max(0.6, 0.8 * dpi);
+      ctx.globalAlpha = 0.5;
+      ctx.beginPath();
+      for (let i = 0; i < ticks.tMinor.length; i++) {
+        const px = _BR_crisp(ticks.tMinor[i].px);
+        if (px < rect.x - 1 || px > rect.x + rect.w + 1) continue;
+        ctx.moveTo(px, yTopMin0);
+        ctx.lineTo(px, yTopMin1);
+      }
+      ctx.stroke();
+    }
+
+    // Major Top X ticks & numeric labels
+    const [yTopMaj0, yTopMaj1] = _BR_tickSpan(yTop, -1, majLen, tickDir);
+    ctx.strokeStyle = tickCol;
+    ctx.lineWidth = Math.max(0.8, 1.0 * dpi);
+    ctx.globalAlpha = 0.92;
+    ctx.beginPath();
+    let lastTopXLabel = -Infinity;
+    for (let i = 0; i < ticks.tMajor.length; i++) {
+      const tk = ticks.tMajor[i];
+      const px = _BR_crisp(tk.px);
+      if (px < rect.x - 1 || px > rect.x + rect.w + 1) continue;
+      ctx.moveTo(px, yTopMaj0);
+      ctx.lineTo(px, yTopMaj1);
+
+      if (px - lastTopXLabel >= 22 * dpi) {
+        this._textHalo(
+          ctx, tk.label, px, yTop - lblGap,
+          lblCol, 'center', 'bottom', axisPx, dpi, pal, '500', _BR_FONT_MONO
+        );
+        lastTopXLabel = px;
+      }
+    }
+    ctx.stroke();
+
+    // Centered Top X-axis title (sits cleanly above top ticks and below export title block if shown)
+    const topTitleY = Math.max(12 * dpi, yTop - lblGap - (axisPx + 6) * dpi);
+    if (!opts.includeTitle || topTitleY > 40 * dpi) {
+      this._textHalo(
+        ctx, xTitle,
+        rect.x + rect.w * 0.5, topTitleY,
+        titleCol, 'center', 'bottom', axisPx + 0.5, dpi, pal, '600', _BR_FONT_SANS
+      );
+    }
 
     // -- Y-Axis: Humidity Ratio (configurable: 'right' | 'both' | 'left') --
     const xRight = _BR_crisp(rect.x + rect.w);

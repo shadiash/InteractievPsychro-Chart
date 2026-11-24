@@ -700,17 +700,29 @@ kbd {
 }
 
 /* ----------------------------------------------------------------------------
-   5. Chart Workspace (`#chartWrap`) & Floating Instrument Chrome
+   5. Chart Workspace (`#chartWrap`) & Docked Instrument Chrome
    ---------------------------------------------------------------------------- */
 #chartWrap {
   position: relative;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
   background: var(--bg);
   min-width: 0;
+  min-height: 0;
   user-select: none;
 }
 
-#chartWrap canvas,
+#chartStage {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+#chartStage canvas,
 #cvBase,
 #cvOverlay {
   position: absolute;
@@ -736,18 +748,18 @@ kbd {
 #chartWrap.cursor-zoom #cvOverlay { cursor: zoom-in; }
 #chartWrap.cursor-text #cvOverlay { cursor: text; }
 
-/* Floating top instrument toolbar */
+/* Docked top instrument toolbar (always sits cleanly ABOVE #chartStage, never overlaps chart) */
 #chartToolbar {
-  position: absolute;
-  top: 10px;
-  left: 10px;
-  right: 28px;
+  position: relative;
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: 6px;
+  padding: 5px 8px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
   z-index: 12;
   flex-wrap: wrap;
-  pointer-events: none;
 }
 
 #chartToolbar > * {
@@ -971,7 +983,7 @@ kbd {
 /* Floating interactive tool mode banner */
 #modeBanner {
   position: absolute;
-  top: 78px;
+  top: 10px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 14;
@@ -3288,14 +3300,12 @@ input[type="checkbox"] {
   }
 
   #chartToolbar {
-    top: 6px;
-    left: 6px;
-    right: 22px;
+    padding: 5px 6px;
     gap: 4px;
   }
 
   #modeBanner {
-    top: 74px;
+    top: 8px;
     bottom: auto;
     max-width: calc(100% - 16px);
     overflow: hidden;

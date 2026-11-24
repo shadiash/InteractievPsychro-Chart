@@ -41,6 +41,7 @@ export function initChartInteraction(store, baseRenderer, overlayRenderer, callb
 
   const cvOverlay = byId('cvOverlay') || byId('cv');
   const chartWrap = byId('chartWrap');
+  const chartStage = byId('chartStage') || chartWrap;
   const chartToolbarEl = byId('chartToolbar');
   const hudEl = byId('hud');
   const modeBannerEl = byId('modeBanner');
@@ -51,6 +52,8 @@ export function initChartInteraction(store, baseRenderer, overlayRenderer, callb
   }
 
   function getToolbarBottomCss() {
+    // When #chartStage is separate from docked #chartToolbar, toolbar never overlaps canvas
+    if (byId('chartStage')) return 10;
     if (!chartToolbarEl) return 56;
     const h = chartToolbarEl.offsetHeight;
     if (!h) return 56;
@@ -1040,10 +1043,11 @@ export function initChartInteraction(store, baseRenderer, overlayRenderer, callb
       return;
     }
 
+    const hostEl = chartStage || chartWrap;
     const wrap = document.createElement('div');
     wrap.className = 'inline-ann-editor';
-    const wrapW = chartWrap.clientWidth || 640;
-    const wrapH = chartWrap.clientHeight || 420;
+    const wrapW = hostEl.clientWidth || 640;
+    const wrapH = hostEl.clientHeight || 420;
     const minTop = getToolbarBottomCss();
     const left = clamp(cssX + 10, 12, Math.max(12, wrapW - 268));
     const top = clamp(cssY - 22, minTop, Math.max(minTop, wrapH - 56));
@@ -1152,7 +1156,7 @@ export function initChartInteraction(store, baseRenderer, overlayRenderer, callb
     wrap.appendChild(input);
     wrap.appendChild(btnOk);
     wrap.appendChild(btnCancel);
-    chartWrap.appendChild(wrap);
+    hostEl.appendChild(wrap);
     activeAnnEditor = wrap;
 
     requestAnimationFrame(() => {

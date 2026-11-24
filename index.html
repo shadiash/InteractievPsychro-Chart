@@ -1690,17 +1690,29 @@ kbd {
 }
 
 /* ----------------------------------------------------------------------------
-   5. Chart Workspace (`#chartWrap`) & Floating Instrument Chrome
+   5. Chart Workspace (`#chartWrap`) & Docked Instrument Chrome
    ---------------------------------------------------------------------------- */
 #chartWrap {
   position: relative;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
   background: var(--bg);
   min-width: 0;
+  min-height: 0;
   user-select: none;
 }
 
-#chartWrap canvas,
+#chartStage {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+#chartStage canvas,
 #cvBase,
 #cvOverlay {
   position: absolute;
@@ -1726,18 +1738,18 @@ kbd {
 #chartWrap.cursor-zoom #cvOverlay { cursor: zoom-in; }
 #chartWrap.cursor-text #cvOverlay { cursor: text; }
 
-/* Floating top instrument toolbar */
+/* Docked top instrument toolbar (always sits cleanly ABOVE #chartStage, never overlaps chart) */
 #chartToolbar {
-  position: absolute;
-  top: 10px;
-  left: 10px;
-  right: 28px;
+  position: relative;
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: 6px;
+  padding: 5px 8px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
   z-index: 12;
   flex-wrap: wrap;
-  pointer-events: none;
 }
 
 #chartToolbar > * {
@@ -1961,7 +1973,7 @@ kbd {
 /* Floating interactive tool mode banner */
 #modeBanner {
   position: absolute;
-  top: 78px;
+  top: 10px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 14;
@@ -4278,14 +4290,12 @@ input[type="checkbox"] {
   }
 
   #chartToolbar {
-    top: 6px;
-    left: 6px;
-    right: 22px;
+    padding: 5px 6px;
     gap: 4px;
   }
 
   #modeBanner {
-    top: 74px;
+    top: 8px;
     bottom: auto;
     max-width: calc(100% - 16px);
     overflow: hidden;
@@ -4947,10 +4957,6 @@ input[type="checkbox"] {
        INTERACTIVE DUAL-CANVAS CHART WORKSPACE
        ==================================================================== -->
   <main id="chartWrap" role="main" aria-label="Interactive Psychrometric Chart Workspace">
-    <canvas id="cvBase" role="img" aria-label="Psychrometric Chart Grid and Curves"></canvas>
-    <canvas id="cvOverlay" aria-label="Interactive Psychrometric State Points and Processes"></canvas>
-    <div id="yAxisLabel" aria-hidden="true">Humidity Ratio, W (g/kg dry air)</div>
-
     <div id="chartToolbar" role="toolbar" aria-label="Chart Layers and Tools">
       <div id="layerToggles" aria-label="Chart Layer Toggles"></div>
       <div id="chartActions" aria-label="Chart Interactive Tools">
@@ -4968,9 +4974,15 @@ input[type="checkbox"] {
       </div>
     </div>
 
-    <div id="modeBanner" class="mode-banner" role="status" aria-live="polite"></div>
-    <div id="scenarioBanner" class="scenario-banner" role="status" aria-live="polite"></div>
-    <div id="hud" class="hidden" role="status" aria-live="off">—</div>
+    <div id="chartStage">
+      <canvas id="cvBase" role="img" aria-label="Psychrometric Chart Grid and Curves"></canvas>
+      <canvas id="cvOverlay" aria-label="Interactive Psychrometric State Points and Processes"></canvas>
+      <div id="yAxisLabel" aria-hidden="true">Humidity Ratio, W (g/kg dry air)</div>
+
+      <div id="modeBanner" class="mode-banner" role="status" aria-live="polite"></div>
+      <div id="scenarioBanner" class="scenario-banner" role="status" aria-live="polite"></div>
+      <div id="hud" class="hidden" role="status" aria-live="off">—</div>
+    </div>
   </main>
 
   <!-- ====================================================================
@@ -5968,7 +5980,7 @@ input[type="checkbox"] {
 <script>
 /* ============================================================================
    PsychroChart Ultra 3.0 — Compiled Single-File Bundle
-   Built: 2026-11-24T19:36:57.918Z
+   Built: 2026-11-24T20:05:57.737Z
    ============================================================================ */
 (() => {
 'use strict';
@@ -13716,12 +13728,12 @@ class BaseRenderer {
     const rawL = Math.round((isIP ? 42 : 40) * dpi);
     const pvExtra = ax.showDualPvScale ? 28 : 0;
     const rawR = Math.round(((isIP ? 74 : 68) + pvExtra) * dpi);
-    const rawT = Math.round((includeTitle ? 48 : 34) * dpi);
+    const rawT = Math.round((includeTitle ? 76 : 46) * dpi);
     const rawB = Math.round(46 * dpi);
 
     this.padL = Math.min(rawL, Math.floor(W * 0.16));
     this.padR = Math.min(rawR, Math.floor(W * (ax.showDualPvScale ? 0.28 : 0.22)));
-    this.padT = Math.min(rawT, Math.floor(H * 0.18));
+    this.padT = Math.min(rawT, Math.floor(H * 0.22));
     this.padB = Math.min(rawB, Math.floor(H * 0.20));
   }
 
@@ -15816,13 +15828,81 @@ class BaseRenderer {
     }
     ctx.stroke();
 
-    // Centered X-axis title
+    // Centered Bottom X-axis title
     const xTitle = isSI ? 'Dry-Bulb Temperature (°C)' : 'Dry-Bulb Temperature (°F)';
     this._textHalo(
       ctx, xTitle,
       rect.x + rect.w * 0.5, this.height - 8 * dpi,
       titleCol, 'center', 'alphabetic', axisPx + 0.5, dpi, pal, '600', _BR_FONT_SANS
     );
+
+    // -- Top X-Axis: Duplicated Dry-Bulb Temperature Scale --
+    const yTop = _BR_crisp(rect.y);
+    ctx.strokeStyle = tickCol;
+    ctx.setLineDash([]);
+
+    // In 'ashrae-open' frame (which omits top/left box lines), draw a clean top axis line for the top scale
+    if (ax?.frame === 'ashrae-open') {
+      ctx.save();
+      ctx.strokeStyle = pal.border || tickCol;
+      ctx.lineWidth = Math.max(0.9, (pal.border_lw ?? 1.5) * 0.85 * dpi);
+      ctx.globalAlpha = 0.88;
+      ctx.beginPath();
+      ctx.moveTo(_BR_crisp(rect.x), yTop);
+      ctx.lineTo(_BR_crisp(rect.x + rect.w), yTop);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Minor Top X sub-ticks
+    if (showSubTicks) {
+      const [yTopMin0, yTopMin1] = _BR_tickSpan(yTop, -1, minLen, tickDir);
+      ctx.strokeStyle = tickCol;
+      ctx.lineWidth = Math.max(0.6, 0.8 * dpi);
+      ctx.globalAlpha = 0.5;
+      ctx.beginPath();
+      for (let i = 0; i < ticks.tMinor.length; i++) {
+        const px = _BR_crisp(ticks.tMinor[i].px);
+        if (px < rect.x - 1 || px > rect.x + rect.w + 1) continue;
+        ctx.moveTo(px, yTopMin0);
+        ctx.lineTo(px, yTopMin1);
+      }
+      ctx.stroke();
+    }
+
+    // Major Top X ticks & numeric labels
+    const [yTopMaj0, yTopMaj1] = _BR_tickSpan(yTop, -1, majLen, tickDir);
+    ctx.strokeStyle = tickCol;
+    ctx.lineWidth = Math.max(0.8, 1.0 * dpi);
+    ctx.globalAlpha = 0.92;
+    ctx.beginPath();
+    let lastTopXLabel = -Infinity;
+    for (let i = 0; i < ticks.tMajor.length; i++) {
+      const tk = ticks.tMajor[i];
+      const px = _BR_crisp(tk.px);
+      if (px < rect.x - 1 || px > rect.x + rect.w + 1) continue;
+      ctx.moveTo(px, yTopMaj0);
+      ctx.lineTo(px, yTopMaj1);
+
+      if (px - lastTopXLabel >= 22 * dpi) {
+        this._textHalo(
+          ctx, tk.label, px, yTop - lblGap,
+          lblCol, 'center', 'bottom', axisPx, dpi, pal, '500', _BR_FONT_MONO
+        );
+        lastTopXLabel = px;
+      }
+    }
+    ctx.stroke();
+
+    // Centered Top X-axis title (sits cleanly above top ticks and below export title block if shown)
+    const topTitleY = Math.max(12 * dpi, yTop - lblGap - (axisPx + 6) * dpi);
+    if (!opts.includeTitle || topTitleY > 40 * dpi) {
+      this._textHalo(
+        ctx, xTitle,
+        rect.x + rect.w * 0.5, topTitleY,
+        titleCol, 'center', 'bottom', axisPx + 0.5, dpi, pal, '600', _BR_FONT_SANS
+      );
+    }
 
     // -- Y-Axis: Humidity Ratio (configurable: 'right' | 'both' | 'left') --
     const xRight = _BR_crisp(rect.x + rect.w);
@@ -18247,7 +18327,7 @@ class OverlayRenderer {
     const cardW = 114 * dpi;
     const cardH = 128 * dpi;
     const cardX = plot.x + 12 * dpi;
-    const cardY = plot.y + (isExport ? 12 : 54) * dpi;
+    const cardY = plot.y + 12 * dpi;
     const cx = cardX + cardW * 0.5;
     const cy = cardY + 62 * dpi;
     const R = 36 * dpi;
@@ -20312,12 +20392,12 @@ const Exporter = (() => {
     const isIP = state?.units === 'IP';
     const rawL = Math.round((isIP ? 42 : 40) * scale);
     const rawR = Math.round((isIP ? 74 : 68) * scale);
-    const rawT = Math.round((includeTitle ? 48 : 22) * scale);
+    const rawT = Math.round((includeTitle ? 76 : 46) * scale);
     const rawB = Math.round(46 * scale);
     return {
       padL: Math.min(rawL, Math.floor(W * 0.16)),
       padR: Math.min(rawR, Math.floor(W * 0.22)),
-      padT: Math.min(rawT, Math.floor(H * 0.18)),
+      padT: Math.min(rawT, Math.floor(H * 0.22)),
       padB: Math.min(rawB, Math.floor(H * 0.20))
     };
   }
@@ -20648,7 +20728,7 @@ const Exporter = (() => {
 
     const padL = 86;
     const padR = ax.showDualPvScale ? (ax.yAxisSide === 'left' ? 92 : 134) : 76;
-    const padT = 58;
+    const padT = 88;
     const padB = 68;
     const plotW = Math.max(40, width - padL - padR);
     const plotH = Math.max(40, height - padT - padB);
@@ -21665,16 +21745,18 @@ const Exporter = (() => {
       return [Math.min(pos, end), Math.max(pos, end)];
     };
 
-    // Minor sub-ticks along X and active Y axis sides
+    // Minor sub-ticks along bottom X, top X, and active Y axis sides
     if (ax.showSubTicks !== false) {
       let dSub = '';
       const [xMinY1, xMinY2] = tickSpan(plotBottom, 3, 1);
+      const [xTopMinY1, xTopMinY2] = tickSpan(padT, 3, -1);
       const tStartMinTick = Math.ceil(gs.tMinDisp / gs.minT) * gs.minT;
       for (let tD = tStartMinTick; tD <= gs.tMaxDisp + 1e-6; tD += gs.minT) {
         if (Math.abs(tD / gs.majT - Math.round(tD / gs.majT)) < 1e-4) continue;
         const px = xc(CoreDOM.dispToT(tD, units));
         if (px < padL - 0.5 || px > plotRight + 0.5) continue;
         dSub += `M${f2(px)},${f2(xMinY1)}V${f2(xMinY2)}`;
+        dSub += `M${f2(px)},${f2(xTopMinY1)}V${f2(xTopMinY2)}`;
       }
       const [rMinX1, rMinX2] = tickSpan(plotRight, 3, 1);
       const [lMinX1, lMinX2] = tickSpan(padL, 3, -1);
@@ -21692,8 +21774,16 @@ const Exporter = (() => {
       }
     }
 
-    // X-axis major ticks & numeric labels
+    // Top axis line in 'ashrae-open' mode so duplicated top Dry-Bulb ticks have a crisp rail
+    if (ax.frame === 'ashrae-open') {
+      axisParts.push(
+        `<line x1="${padL}" y1="${padT}" x2="${plotRight}" y2="${padT}" stroke="${esc(palette.border)}" stroke-width="${f2(Math.max(0.9, borderLw * 0.85))}" stroke-opacity="0.88"/>`
+      );
+    }
+
+    // X-axis major ticks & numeric labels (Bottom + Top duplicated scale)
     const [xMajY1, xMajY2] = tickSpan(plotBottom, 5.5, 1);
+    const [xTopMajY1, xTopMajY2] = tickSpan(padT, 5.5, -1);
     const tStartTick = Math.ceil(gs.tMinDisp / gs.majT) * gs.majT;
     for (let tD = tStartTick; tD <= gs.tMaxDisp + 1e-6; tD += gs.majT) {
       const px = xc(CoreDOM.dispToT(tD, units));
@@ -21701,7 +21791,9 @@ const Exporter = (() => {
       const lbl = Math.abs(tD) < 1e-6 ? '0' : String(Math.round(tD * 10) / 10);
       axisParts.push(
         `<line x1="${f2(px)}" y1="${f2(xMajY1)}" x2="${f2(px)}" y2="${f2(xMajY2)}" stroke="${esc(palette.border)}" stroke-width="1"/>` +
-        `<text x="${f2(px)}" y="${f2(plotBottom + 18)}" text-anchor="middle" class="svg-mono" font-size="${axisPx}" fill="${esc(palette.muted)}">${esc(lbl)}</text>`
+        `<text x="${f2(px)}" y="${f2(plotBottom + 18)}" text-anchor="middle" class="svg-mono" font-size="${axisPx}" fill="${esc(palette.muted)}">${esc(lbl)}</text>` +
+        `<line x1="${f2(px)}" y1="${f2(xTopMajY1)}" x2="${f2(px)}" y2="${f2(xTopMajY2)}" stroke="${esc(palette.border)}" stroke-width="1"/>` +
+        `<text x="${f2(px)}" y="${f2(padT - 10)}" text-anchor="middle" class="svg-mono" font-size="${axisPx}" fill="${esc(palette.muted)}">${esc(lbl)}</text>`
       );
     }
 
@@ -21799,10 +21891,12 @@ const Exporter = (() => {
       }
     }
 
-    // X-axis title
+    // X-axis titles (Bottom + Top duplicated scale)
     const xTitle = units === 'SI' ? 'Dry-Bulb Temperature (°C)' : 'Dry-Bulb Temperature (°F)';
     axisParts.push(
       `<text x="${f2(padL + plotW * 0.5)}" y="${f2(height - 16)}" text-anchor="middle" ` +
+      `class="svg-sans" font-size="${axisPx + 1.5}" font-weight="600" fill="${esc(palette.fg)}">${esc(xTitle)}</text>` +
+      `<text x="${f2(padL + plotW * 0.5)}" y="${f2(padT - 26)}" text-anchor="middle" ` +
       `class="svg-sans" font-size="${axisPx + 1.5}" font-weight="600" fill="${esc(palette.fg)}">${esc(xTitle)}</text>`
     );
 
@@ -23298,6 +23392,7 @@ function initChartInteraction(store, baseRenderer, overlayRenderer, callbacks = 
 
   const cvOverlay = byId('cvOverlay') || byId('cv');
   const chartWrap = byId('chartWrap');
+  const chartStage = byId('chartStage') || chartWrap;
   const chartToolbarEl = byId('chartToolbar');
   const hudEl = byId('hud');
   const modeBannerEl = byId('modeBanner');
@@ -23308,6 +23403,8 @@ function initChartInteraction(store, baseRenderer, overlayRenderer, callbacks = 
   }
 
   function getToolbarBottomCss() {
+    // When #chartStage is separate from docked #chartToolbar, toolbar never overlaps canvas
+    if (byId('chartStage')) return 10;
     if (!chartToolbarEl) return 56;
     const h = chartToolbarEl.offsetHeight;
     if (!h) return 56;
@@ -24297,10 +24394,11 @@ function initChartInteraction(store, baseRenderer, overlayRenderer, callbacks = 
       return;
     }
 
+    const hostEl = chartStage || chartWrap;
     const wrap = document.createElement('div');
     wrap.className = 'inline-ann-editor';
-    const wrapW = chartWrap.clientWidth || 640;
-    const wrapH = chartWrap.clientHeight || 420;
+    const wrapW = hostEl.clientWidth || 640;
+    const wrapH = hostEl.clientHeight || 420;
     const minTop = getToolbarBottomCss();
     const left = clamp(cssX + 10, 12, Math.max(12, wrapW - 268));
     const top = clamp(cssY - 22, minTop, Math.max(minTop, wrapH - 56));
@@ -24409,7 +24507,7 @@ function initChartInteraction(store, baseRenderer, overlayRenderer, callbacks = 
     wrap.appendChild(input);
     wrap.appendChild(btnOk);
     wrap.appendChild(btnCancel);
-    chartWrap.appendChild(wrap);
+    hostEl.appendChild(wrap);
     activeAnnEditor = wrap;
 
     requestAnimationFrame(() => {
@@ -34851,12 +34949,13 @@ const _APP_boot = (() => {
     baseRenderer.render(store.state, true);
     overlayRenderer.render(store.state);
 
-    // 6. Responsive ResizeObserver on #chartWrap (with window resize fallback)
-    if (chartWrap && typeof ResizeObserver !== 'undefined') {
+    // 6. Responsive ResizeObserver on #chartStage / #chartWrap (with window resize fallback)
+    const chartStage = CoreDOM.byId('chartStage') || chartWrap;
+    if (chartStage && typeof ResizeObserver !== 'undefined') {
       const ro = new ResizeObserver(() => {
         scheduleRender({ base: true, overlay: true, force: true });
       });
-      ro.observe(chartWrap);
+      ro.observe(chartStage);
     }
     CoreDOM.on(window, 'resize', () => {
       scheduleRender({ base: true, overlay: true, force: true });

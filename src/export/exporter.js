@@ -1138,12 +1138,12 @@ export const Exporter = (() => {
     const isIP = state?.units === 'IP';
     const rawL = Math.round((isIP ? 42 : 40) * scale);
     const rawR = Math.round((isIP ? 74 : 68) * scale);
-    const rawT = Math.round((includeTitle ? 48 : 22) * scale);
+    const rawT = Math.round((includeTitle ? 76 : 46) * scale);
     const rawB = Math.round(46 * scale);
     return {
       padL: Math.min(rawL, Math.floor(W * 0.16)),
       padR: Math.min(rawR, Math.floor(W * 0.22)),
-      padT: Math.min(rawT, Math.floor(H * 0.18)),
+      padT: Math.min(rawT, Math.floor(H * 0.22)),
       padB: Math.min(rawB, Math.floor(H * 0.20))
     };
   }
@@ -1474,7 +1474,7 @@ export const Exporter = (() => {
 
     const padL = 86;
     const padR = ax.showDualPvScale ? (ax.yAxisSide === 'left' ? 92 : 134) : 76;
-    const padT = 58;
+    const padT = 88;
     const padB = 68;
     const plotW = Math.max(40, width - padL - padR);
     const plotH = Math.max(40, height - padT - padB);
@@ -2491,16 +2491,18 @@ export const Exporter = (() => {
       return [Math.min(pos, end), Math.max(pos, end)];
     };
 
-    // Minor sub-ticks along X and active Y axis sides
+    // Minor sub-ticks along bottom X, top X, and active Y axis sides
     if (ax.showSubTicks !== false) {
       let dSub = '';
       const [xMinY1, xMinY2] = tickSpan(plotBottom, 3, 1);
+      const [xTopMinY1, xTopMinY2] = tickSpan(padT, 3, -1);
       const tStartMinTick = Math.ceil(gs.tMinDisp / gs.minT) * gs.minT;
       for (let tD = tStartMinTick; tD <= gs.tMaxDisp + 1e-6; tD += gs.minT) {
         if (Math.abs(tD / gs.majT - Math.round(tD / gs.majT)) < 1e-4) continue;
         const px = xc(CoreDOM.dispToT(tD, units));
         if (px < padL - 0.5 || px > plotRight + 0.5) continue;
         dSub += `M${f2(px)},${f2(xMinY1)}V${f2(xMinY2)}`;
+        dSub += `M${f2(px)},${f2(xTopMinY1)}V${f2(xTopMinY2)}`;
       }
       const [rMinX1, rMinX2] = tickSpan(plotRight, 3, 1);
       const [lMinX1, lMinX2] = tickSpan(padL, 3, -1);
@@ -2518,8 +2520,16 @@ export const Exporter = (() => {
       }
     }
 
-    // X-axis major ticks & numeric labels
+    // Top axis line in 'ashrae-open' mode so duplicated top Dry-Bulb ticks have a crisp rail
+    if (ax.frame === 'ashrae-open') {
+      axisParts.push(
+        `<line x1="${padL}" y1="${padT}" x2="${plotRight}" y2="${padT}" stroke="${esc(palette.border)}" stroke-width="${f2(Math.max(0.9, borderLw * 0.85))}" stroke-opacity="0.88"/>`
+      );
+    }
+
+    // X-axis major ticks & numeric labels (Bottom + Top duplicated scale)
     const [xMajY1, xMajY2] = tickSpan(plotBottom, 5.5, 1);
+    const [xTopMajY1, xTopMajY2] = tickSpan(padT, 5.5, -1);
     const tStartTick = Math.ceil(gs.tMinDisp / gs.majT) * gs.majT;
     for (let tD = tStartTick; tD <= gs.tMaxDisp + 1e-6; tD += gs.majT) {
       const px = xc(CoreDOM.dispToT(tD, units));
@@ -2527,7 +2537,9 @@ export const Exporter = (() => {
       const lbl = Math.abs(tD) < 1e-6 ? '0' : String(Math.round(tD * 10) / 10);
       axisParts.push(
         `<line x1="${f2(px)}" y1="${f2(xMajY1)}" x2="${f2(px)}" y2="${f2(xMajY2)}" stroke="${esc(palette.border)}" stroke-width="1"/>` +
-        `<text x="${f2(px)}" y="${f2(plotBottom + 18)}" text-anchor="middle" class="svg-mono" font-size="${axisPx}" fill="${esc(palette.muted)}">${esc(lbl)}</text>`
+        `<text x="${f2(px)}" y="${f2(plotBottom + 18)}" text-anchor="middle" class="svg-mono" font-size="${axisPx}" fill="${esc(palette.muted)}">${esc(lbl)}</text>` +
+        `<line x1="${f2(px)}" y1="${f2(xTopMajY1)}" x2="${f2(px)}" y2="${f2(xTopMajY2)}" stroke="${esc(palette.border)}" stroke-width="1"/>` +
+        `<text x="${f2(px)}" y="${f2(padT - 10)}" text-anchor="middle" class="svg-mono" font-size="${axisPx}" fill="${esc(palette.muted)}">${esc(lbl)}</text>`
       );
     }
 
@@ -2625,10 +2637,12 @@ export const Exporter = (() => {
       }
     }
 
-    // X-axis title
+    // X-axis titles (Bottom + Top duplicated scale)
     const xTitle = units === 'SI' ? 'Dry-Bulb Temperature (°C)' : 'Dry-Bulb Temperature (°F)';
     axisParts.push(
       `<text x="${f2(padL + plotW * 0.5)}" y="${f2(height - 16)}" text-anchor="middle" ` +
+      `class="svg-sans" font-size="${axisPx + 1.5}" font-weight="600" fill="${esc(palette.fg)}">${esc(xTitle)}</text>` +
+      `<text x="${f2(padL + plotW * 0.5)}" y="${f2(padT - 26)}" text-anchor="middle" ` +
       `class="svg-sans" font-size="${axisPx + 1.5}" font-weight="600" fill="${esc(palette.fg)}">${esc(xTitle)}</text>`
     );
 

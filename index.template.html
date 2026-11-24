@@ -584,10 +584,6 @@
        INTERACTIVE DUAL-CANVAS CHART WORKSPACE
        ==================================================================== -->
   <main id="chartWrap" role="main" aria-label="Interactive Psychrometric Chart Workspace">
-    <canvas id="cvBase" role="img" aria-label="Psychrometric Chart Grid and Curves"></canvas>
-    <canvas id="cvOverlay" aria-label="Interactive Psychrometric State Points and Processes"></canvas>
-    <div id="yAxisLabel" aria-hidden="true">Humidity Ratio, W (g/kg dry air)</div>
-
     <div id="chartToolbar" role="toolbar" aria-label="Chart Layers and Tools">
       <div id="layerToggles" aria-label="Chart Layer Toggles"></div>
       <div id="chartActions" aria-label="Chart Interactive Tools">
@@ -605,9 +601,15 @@
       </div>
     </div>
 
-    <div id="modeBanner" class="mode-banner" role="status" aria-live="polite"></div>
-    <div id="scenarioBanner" class="scenario-banner" role="status" aria-live="polite"></div>
-    <div id="hud" class="hidden" role="status" aria-live="off">—</div>
+    <div id="chartStage">
+      <canvas id="cvBase" role="img" aria-label="Psychrometric Chart Grid and Curves"></canvas>
+      <canvas id="cvOverlay" aria-label="Interactive Psychrometric State Points and Processes"></canvas>
+      <div id="yAxisLabel" aria-hidden="true">Humidity Ratio, W (g/kg dry air)</div>
+
+      <div id="modeBanner" class="mode-banner" role="status" aria-live="polite"></div>
+      <div id="scenarioBanner" class="scenario-banner" role="status" aria-live="polite"></div>
+      <div id="hud" class="hidden" role="status" aria-live="off">—</div>
+    </div>
   </main>
 
   <!-- ====================================================================

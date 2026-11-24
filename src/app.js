@@ -677,12 +677,13 @@ const _APP_boot = (() => {
     baseRenderer.render(store.state, true);
     overlayRenderer.render(store.state);
 
-    // 6. Responsive ResizeObserver on #chartWrap (with window resize fallback)
-    if (chartWrap && typeof ResizeObserver !== 'undefined') {
+    // 6. Responsive ResizeObserver on #chartStage / #chartWrap (with window resize fallback)
+    const chartStage = CoreDOM.byId('chartStage') || chartWrap;
+    if (chartStage && typeof ResizeObserver !== 'undefined') {
       const ro = new ResizeObserver(() => {
         scheduleRender({ base: true, overlay: true, force: true });
       });
-      ro.observe(chartWrap);
+      ro.observe(chartStage);
     }
     CoreDOM.on(window, 'resize', () => {
       scheduleRender({ base: true, overlay: true, force: true });
