@@ -2050,83 +2050,102 @@ export class OverlayRenderer {
       });
     }
 
-    // 4b. Precision ASHRAE Circular SHR Protractor Dial in upper-left plot corner
-    if (plot.w < 170 * dpi || plot.h < 185 * dpi) return;
+    // 4b. Authentic ASHRAE Chart No. 1 Dual-Scale Circular Protractor (engraved directly on chart paper)
+    if (plot.w < 210 * dpi || plot.h < 200 * dpi) return;
 
     const pxPerDegC = Math.abs(br.xc(21) - br.xc(20)) || 10 * dpi;
     const pxPerKgKg = Math.abs(br.yc(0) - br.yc(0.01)) / 0.01 || 15000 * dpi;
+    const isSI = state.units !== 'IP';
 
-    // Exact chart-scaled inclination angle alpha in [0, PI/2] for graduated ticks in [0, 1]
+    // Exact chart-scaled inclination angle alpha in (-PI/2, PI/2] for any finite/infinite slope dw/dT
+    // Positive slope (up-right on chart) => positive alpha => canvas angle = -alpha (upper-right quadrant)
+    // Negative slope (down-right on chart) => negative alpha => canvas angle = -alpha (lower-right quadrant)
+    const slopeToAlpha = (sl) => {
+      if (!Number.isFinite(sl)) return Math.PI * 0.5;
+      return Math.atan2(sl * pxPerKgKg, pxPerDegC);
+    };
     const shrToAlpha = (s) => {
       if (Math.abs(s) <= 1e-4) return Math.PI * 0.5;
       if (Math.abs(s - 1) <= 1e-6) return 0;
       const sl = ((1 - s) / s) * cpm / 2501;
-      return Math.atan2(sl * pxPerKgKg, pxPerDegC);
+      return slopeToAlpha(sl);
+    };
+    // Exact thermodynamic Δh/ΔW (kJ/kg_w) -> slope dw/dT = cpm / (dh_dw - 2501)
+    const dhdwToAlpha = (dhdwSI) => {
+      if (!Number.isFinite(dhdwSI)) return 0;
+      const denom = dhdwSI - 2501;
+      if (Math.abs(denom) < 1e-3) return Math.PI * 0.5;
+      return slopeToAlpha(cpm / denom);
     };
 
-    const cardW = 142 * dpi;
-    const cardH = 154 * dpi;
-    const cardX = plot.x + 12 * dpi;
-    const cardY = plot.y + 12 * dpi;
-    const cardCx = cardX + cardW * 0.5;
-    // Shift dial slightly right so lower-left radial scale numbers have generous left margin
-    const cx = cardX + 80 * dpi;
-    const cy = cardY + 66 * dpi;
-    const R = 38 * dpi;
+    // Scale protractor radius smoothly to upper-left open chart space (never collides with saturation/enthalpy rail)
+    const R = CoreDOM.clamp(Math.min(plot.w * 0.108, plot.h * 0.112), 44 * dpi, 62 * dpi);
+    const R_in = R * 0.76;
+    const cx = plot.x + R + 34 * dpi;
+    const cy = plot.y + R + 28 * dpi;
 
-    const cardBg = isDark ? 'rgba(11,18,30,0.88)' : 'rgba(255,255,255,0.94)';
-    const cardBorder = isDark ? 'rgba(148,163,184,0.28)' : 'rgba(51,65,85,0.24)';
-    const dialTrack = isDark ? 'rgba(148,163,184,0.26)' : 'rgba(71,85,105,0.26)';
-    const tickCol = isDark ? 'rgba(203,213,225,0.85)' : 'rgba(51,65,85,0.85)';
-    const mutedCol = pal.muted || '#64748b';
+    const plotBg = pal.plotBg || pal.bg || (isDark ? '#0b1220' : '#ffffff');
+    const ringCol = isDark ? 'rgba(148,163,184,0.36)' : 'rgba(51,65,85,0.34)';
+    const ringSubCol = isDark ? 'rgba(148,163,184,0.22)' : 'rgba(71,85,105,0.20)';
+    const tickCol = isDark ? 'rgba(226,232,240,0.86)' : 'rgba(30,41,59,0.84)';
+    const enthCol = pal.enth || (isDark ? '#fb923c' : '#c2410c');
+    const mutedCol = pal.muted || (isDark ? '#94a3b8' : '#64748b');
+
+    const curAlpha = slopeToAlpha(slope);
+    const needleAng = -curAlpha; // Right semicircle ray (0 = 3 o'clock SHR 1.0, -PI/2 = 12 o'clock SHR 0.0)
+    const tailAng = needleAng + Math.PI; // Opposite left semicircle ray pointing to matching Δh/ΔW
 
     ctx.save();
-    // Glass instrument card
-    _OVL.roundRect(ctx, cardX, cardY, cardW, cardH, 8 * dpi);
-    ctx.fillStyle = cardBg;
+
+    // Subtle circular paper-integrated wash inside outer ring (no clunky rectangular box!)
+    ctx.beginPath();
+    ctx.arc(cx, cy, R + 1 * dpi, 0, Math.PI * 2);
+    ctx.fillStyle = _OVL.withAlpha(plotBg, isDark ? 0.78 : 0.86);
     ctx.fill();
-    ctx.strokeStyle = cardBorder;
-    ctx.lineWidth = 1 * dpi;
-    ctx.stroke();
 
-    // Header centered across full card
-    ctx.fillStyle = mutedCol;
-    ctx.font = `700 ${8.2 * dpi}px ${_OVL.FONT_MONO}`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    ctx.fillText('ASHRAE SHR DIAL', cardCx, cardY + 7 * dpi);
+    // Soft shaded active wedge between horizontal (SHR = 1.0) and current needle angle
+    if (Math.abs(curAlpha) > 0.015) {
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.arc(cx, cy, R, needleAng, 0, curAlpha < 0);
+      ctx.closePath();
+      ctx.fillStyle = _OVL.withAlpha(shrCol, isDark ? 0.14 : 0.10);
+      ctx.fill();
+    }
 
-    // Outer protractor bezel circle
+    // Concentric precision drafting rings
     ctx.beginPath();
     ctx.arc(cx, cy, R, 0, Math.PI * 2);
-    ctx.strokeStyle = dialTrack;
-    ctx.lineWidth = 1.2 * dpi;
+    ctx.strokeStyle = ringCol;
+    ctx.lineWidth = 1.25 * dpi;
     ctx.stroke();
 
-    // Subtle highlighted lower-left active arc (SHR 1.0 horizontal down to 0.0 vertical)
     ctx.beginPath();
-    ctx.arc(cx, cy, R, Math.PI * 0.5, Math.PI);
-    ctx.strokeStyle = _OVL.withAlpha(shrCol, 0.35);
-    ctx.lineWidth = 2.2 * dpi;
+    ctx.arc(cx, cy, R_in, 0, Math.PI * 2);
+    ctx.strokeStyle = ringSubCol;
+    ctx.lineWidth = 0.85 * dpi;
     ctx.stroke();
 
-    // Active sweep highlight from SHR = 1.0 down to current needle angle (for SHR in [0, 1])
-    const curAlpha = !Number.isFinite(slope)
-      ? Math.PI * 0.5
-      : CoreDOM.clamp(Math.atan2(slope * pxPerKgKg, pxPerDegC), -Math.PI * 0.48, Math.PI * 0.5);
-    const needleAng = Math.PI - curAlpha;
-    if (curAlpha > 0.01 && curAlpha <= Math.PI * 0.5 + 0.01) {
+    // Highlighted positive SHR upper-right quadrant track (12 o'clock to 3 o'clock)
+    ctx.beginPath();
+    ctx.arc(cx, cy, R, -Math.PI * 0.5, 0);
+    ctx.strokeStyle = _OVL.withAlpha(shrCol, 0.42);
+    ctx.lineWidth = 2.0 * dpi;
+    ctx.stroke();
+
+    // Active swept arc from SHR = 1.0 (3 o'clock) to active needle
+    if (Math.abs(curAlpha) > 0.015) {
       ctx.beginPath();
-      ctx.arc(cx, cy, R, needleAng, Math.PI);
-      ctx.strokeStyle = _OVL.withAlpha(shrCol, 0.85);
+      ctx.arc(cx, cy, R, needleAng, 0, curAlpha < 0);
+      ctx.strokeStyle = _OVL.withAlpha(shrCol, 0.90);
       ctx.lineWidth = 2.4 * dpi;
       ctx.stroke();
     }
 
-    // Crosshair reference axes inside dial (SHR 1.0 horizontal & SHR 0.0 vertical)
-    ctx.strokeStyle = dialTrack;
-    ctx.lineWidth = 0.8 * dpi;
-    ctx.setLineDash([2 * dpi, 2 * dpi]);
+    // Precision drafting crosshair axes inside protractor
+    ctx.strokeStyle = ringSubCol;
+    ctx.lineWidth = 0.85 * dpi;
+    ctx.setLineDash([2.5 * dpi, 2.5 * dpi]);
     ctx.beginPath();
     ctx.moveTo(cx - R, cy);
     ctx.lineTo(cx + R, cy);
@@ -2135,122 +2154,199 @@ export class OverlayRenderer {
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Radial tick marks from SHR = 1.0 (horizontal, PI) down to 0.0 (vertical, PI/2)
-    // Plus mirrored subtle ticks on upper-right (0 to -PI/2)
-    const ticks = [1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.0];
-    const majorSet = new Set([1.0, 0.8, 0.6, 0.4, 0.2, 0.0]);
+    // Small engraved quadrant scale identifiers inside the inner ring
+    ctx.font = `700 ${7.2 * dpi}px ${_OVL.FONT_MONO}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = _OVL.withAlpha(shrCol, 0.85);
+    ctx.fillText('SHR', cx + R_in * 0.48, cy - R_in * 0.48);
+    ctx.fillStyle = _OVL.withAlpha(enthCol, 0.78);
+    ctx.fillText('Δh/ΔW', cx - R_in * 0.48, cy + R_in * 0.46);
 
-    for (const val of ticks) {
-      const alpha = shrToAlpha(val);
-      const isMajor = majorSet.has(val);
-      const angLL = Math.PI - alpha; // 1.0 -> PI (left), 0.0 -> PI/2 (down)
-      const angUR = -alpha;          // 1.0 -> 0 (right), 0.0 -> -PI/2 (up)
-      const innerR = R - (isMajor ? 6.5 : 3.8) * dpi;
+    // 1. Right Semicircle: Positive SHR (upper-right: 0.0..1.0) & Negative SHR (lower-right: -2.0..-0.1)
+    const posMajor = [1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.0];
+    const posMinor = [0.95, 0.85, 0.75, 0.65, 0.55, 0.45, 0.35, 0.25, 0.15, 0.05];
+    const negTicks = [-2.0, -1.0, -0.5, -0.2, -0.1];
 
-      // Primary lower-left tick
-      ctx.strokeStyle = isMajor ? tickCol : _OVL.withAlpha(tickCol, 0.5);
-      ctx.lineWidth = (isMajor ? 1.2 : 0.8) * dpi;
+    // Draw positive minor ticks
+    ctx.strokeStyle = _OVL.withAlpha(tickCol, 0.35);
+    ctx.lineWidth = 0.75 * dpi;
+    for (const val of posMinor) {
+      const ang = -shrToAlpha(val);
+      const r0 = R - 3.6 * dpi;
       ctx.beginPath();
-      ctx.moveTo(cx + Math.cos(angLL) * innerR, cy + Math.sin(angLL) * innerR);
-      ctx.lineTo(cx + Math.cos(angLL) * R, cy + Math.sin(angLL) * R);
-      ctx.stroke();
-
-      // Secondary upper-right mirror tick
-      ctx.strokeStyle = _OVL.withAlpha(tickCol, 0.32);
-      ctx.lineWidth = 0.8 * dpi;
-      ctx.beginPath();
-      ctx.moveTo(cx + Math.cos(angUR) * (R - 3.5 * dpi), cy + Math.sin(angUR) * (R - 3.5 * dpi));
-      ctx.lineTo(cx + Math.cos(angUR) * R, cy + Math.sin(angUR) * R);
+      ctx.moveTo(cx + Math.cos(ang) * r0, cy + Math.sin(ang) * r0);
+      ctx.lineTo(cx + Math.cos(ang) * R, cy + Math.sin(ang) * R);
       ctx.stroke();
     }
 
-    // Precision outward-aligned major labels with exact 2D bounding-box collision guard
-    // Priority order ensures endpoint anchors (1.0 & 0.0) and well-spaced intermediates never collide.
-    const pillY = cardY + cardH - 15 * dpi;
-    const pillClearTop = pillY - 12 * dpi;
+    // Draw positive major ticks (spanning between R_in/inner and R)
+    for (const val of posMajor) {
+      const ang = -shrToAlpha(val);
+      const isKey = (val === 1.0 || val === 0.5 || val === 0.0);
+      const r0 = R - (isKey ? 8.0 : 5.8) * dpi;
+      ctx.strokeStyle = isKey ? tickCol : _OVL.withAlpha(tickCol, 0.72);
+      ctx.lineWidth = (isKey ? 1.3 : 0.95) * dpi;
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(ang) * r0, cy + Math.sin(ang) * r0);
+      ctx.lineTo(cx + Math.cos(ang) * R, cy + Math.sin(ang) * R);
+      ctx.stroke();
+    }
+
+    // Draw negative SHR ticks in lower-right quadrant (evaporative / adiabatic / desiccant slopes)
+    for (const val of negTicks) {
+      const ang = -shrToAlpha(val);
+      const r0 = R - 5.2 * dpi;
+      ctx.strokeStyle = _OVL.withAlpha(mutedCol, 0.62);
+      ctx.lineWidth = 0.9 * dpi;
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(ang) * r0, cy + Math.sin(ang) * r0);
+      ctx.lineTo(cx + Math.cos(ang) * R, cy + Math.sin(ang) * R);
+      ctx.stroke();
+    }
+    // Bottom vertical 0.0 reference tick (6 o'clock)
+    ctx.strokeStyle = _OVL.withAlpha(mutedCol, 0.55);
+    ctx.lineWidth = 1.0 * dpi;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy + R - 6 * dpi);
+    ctx.lineTo(cx, cy + R);
+    ctx.stroke();
+
+    // 2. Left Semicircle: Authentic ASHRAE Δh/ΔW scale (opposite rays of positive/negative slopes)
+    // SI values in kJ/kg_w, IP values in Btu/lb_w (converted to SI kJ/kg_w = Btu/lb * 2.326)
+    const dhdwSpecs = isSI
+      ? [
+          { lbl: '∞', si: Infinity },
+          { lbl: '10k', si: 10000 },
+          { lbl: '5k', si: 5000 },
+          { lbl: '3.5k', si: 3500 },
+          { lbl: '2.5k', si: 2501 },
+          { lbl: '0', si: 0 }
+        ]
+      : [
+          { lbl: '∞', si: Infinity },
+          { lbl: '5k', si: 5000 * 2.326 },
+          { lbl: '2.5k', si: 2500 * 2.326 },
+          { lbl: '1.5k', si: 1500 * 2.326 },
+          { lbl: '1.1k', si: 1075 * 2.326 },
+          { lbl: '0', si: 0 }
+        ];
+
+    for (const sp of dhdwSpecs) {
+      const ang = Math.PI - dhdwToAlpha(sp.si); // Lower-left for Δh/ΔW > 2501, upper-left for Δh/ΔW < 2501
+      const r0 = R - 5.5 * dpi;
+      ctx.strokeStyle = _OVL.withAlpha(enthCol, 0.68);
+      ctx.lineWidth = 1.0 * dpi;
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(ang) * r0, cy + Math.sin(ang) * r0);
+      ctx.lineTo(cx + Math.cos(ang) * R, cy + Math.sin(ang) * R);
+      ctx.stroke();
+    }
+
+    // 3. Precision Outward Scale Labels with Exact 2D Bounding-Box Collision Guard
+    const pillY = cy + R + 21 * dpi;
+    const pillClearTop = pillY - 11.5 * dpi;
     const labelFontPx = 7.8 * dpi;
     ctx.font = `600 ${labelFontPx}px ${_OVL.FONT_MONO}`;
-    const placedTickBoxes = [];
-    const labelOrder = [1.0, 0.0, 0.6, 0.4, 0.2, 0.8];
+    const placedBoxes = [];
 
-    for (const val of labelOrder) {
-      const txt = val.toFixed(1);
-      const alpha = shrToAlpha(val);
-      const angLL = Math.PI - alpha;
-      const ux = Math.cos(angLL);
-      const uy = Math.sin(angLL);
+    const tryPlaceDialLabel = (txt, ang, color, preferCenterTop = false) => {
+      const ux = Math.cos(ang);
+      const uy = Math.sin(ang);
       const tw = ctx.measureText(txt).width;
-      const th = labelFontPx * 1.1;
+      const th = labelFontPx * 1.12;
+      const lr = R + 5.5 * dpi;
+      let lx = cx + ux * lr;
+      let ly = cy + uy * lr;
+      let align = 'center';
+      let baseline = 'middle';
 
-      let lx;
-      let ly;
-      let align;
-      let baseline;
-      let box;
-
-      if (val === 0.0) {
+      if (preferCenterTop) {
         lx = cx;
-        ly = cy + R + 5.5 * dpi;
+        ly = cy - R - 5 * dpi;
         align = 'center';
-        baseline = 'top';
-        box = { x: lx - tw * 0.5, y: ly, w: tw, h: th };
-      } else {
-        const offsetR = R + 5.5 * dpi;
-        lx = cx + ux * offsetR;
-        ly = cy + uy * offsetR;
+        baseline = 'bottom';
+      } else if (ux >= 0.22) {
+        align = 'left';
+        baseline = uy < -0.78 ? 'bottom' : (uy > 0.78 ? 'top' : 'middle');
+      } else if (ux <= -0.22) {
         align = 'right';
-        baseline = uy > 0.72 ? 'top' : 'middle';
-        const by = baseline === 'top' ? ly : (ly - th * 0.5);
-        box = { x: lx - tw, y: by, w: tw, h: th };
+        baseline = uy < -0.78 ? 'bottom' : (uy > 0.78 ? 'top' : 'middle');
+      } else {
+        align = 'center';
+        baseline = uy < 0 ? 'bottom' : 'top';
       }
 
-      // Clamp strictly inside card left margin and cleanly above the SHR readout pill
-      if (box.x < cardX + 4 * dpi) {
-        const shift = (cardX + 4 * dpi) - box.x;
-        lx += shift;
-        box.x += shift;
-      }
-      if (box.y + box.h > pillClearTop) continue;
+      const bx = align === 'left' ? lx : (align === 'right' ? lx - tw : lx - tw * 0.5);
+      const by = baseline === 'top' ? ly : (baseline === 'bottom' ? ly - th : ly - th * 0.5);
+      const box = { x: bx, y: by, w: tw, h: th };
 
-      let overlaps = false;
-      const padX = 3.5 * dpi;
-      const padY = 2.0 * dpi;
-      for (let i = 0; i < placedTickBoxes.length; i++) {
-        const b = placedTickBoxes[i];
+      // Keep inside plot bounds and clear of the bottom SHR readout pill
+      if (box.x < plot.x + 2 * dpi || box.y < plot.y + 2 * dpi) return false;
+      if (box.y + box.h > pillClearTop && box.x + box.w > cx - 44 * dpi && box.x < cx + 44 * dpi) {
+        return false;
+      }
+
+      const padX = 3.0 * dpi;
+      const padY = 1.8 * dpi;
+      for (let i = 0; i < placedBoxes.length; i++) {
+        const b = placedBoxes[i];
         if (
           box.x - padX < b.x + b.w &&
           box.x + box.w + padX > b.x &&
           box.y - padY < b.y + b.h &&
           box.y + box.h + padY > b.y
         ) {
-          overlaps = true;
-          break;
+          return false;
         }
       }
-      if (overlaps) continue;
 
-      placedTickBoxes.push(box);
-      ctx.textAlign = align;
-      ctx.textBaseline = baseline;
-      ctx.fillStyle = tickCol;
-      ctx.fillText(txt, lx, ly);
+      placedBoxes.push(box);
+      _OVL.textHalo(ctx, txt, lx, ly, color, pal, dpi, {
+        sizePx: 7.8,
+        weight: '600',
+        align,
+        baseline,
+        font: _OVL.FONT_MONO
+      });
+      return true;
+    };
+
+    // Priority order guarantees 1.0, 0.0, 0.8, 0.6, 0.4, 0.2 plus fine intermediates whenever clear
+    const posLabelOrder = [1.0, 0.0, 0.8, 0.6, 0.4, 0.2, 0.9, 0.7, 0.5, 0.3, 0.1];
+    for (const val of posLabelOrder) {
+      const ang = -shrToAlpha(val);
+      tryPlaceDialLabel(val.toFixed(1), ang, tickCol, val === 0.0);
     }
 
-    // Current SHR needle (parallel to true slope, smoothly clamped within dial sweep)
-    const tipX = cx + Math.cos(needleAng) * (R - 2 * dpi);
-    const tipY = cy + Math.sin(needleAng) * (R - 2 * dpi);
-    const tailX = cx - Math.cos(needleAng) * (R - 6 * dpi);
-    const tailY = cy - Math.sin(needleAng) * (R - 6 * dpi);
+    // Negative SHR labels along lower-right arc
+    for (const val of [-0.5, -1.0, -0.2]) {
+      const ang = -shrToAlpha(val);
+      tryPlaceDialLabel(val.toFixed(1), ang, mutedCol, false);
+    }
 
-    // Subtle tail
+    // Left Δh/ΔW labels (skip bottom-most if it would crowd the bottom readout pill)
+    for (const sp of dhdwSpecs) {
+      if (sp.si === 2501 || sp.lbl === '1.1k') continue; // right at 6 o'clock where readout pill lives
+      const ang = Math.PI - dhdwToAlpha(sp.si);
+      tryPlaceDialLabel(sp.lbl, ang, _OVL.withAlpha(enthCol, 0.88), false);
+    }
+
+    // 4. Precision Drafting Needle through Center Reticle
+    const tipX = cx + Math.cos(needleAng) * (R - 2.5 * dpi);
+    const tipY = cy + Math.sin(needleAng) * (R - 2.5 * dpi);
+    const tailX = cx + Math.cos(tailAng) * (R - 3.5 * dpi);
+    const tailY = cy + Math.sin(tailAng) * (R - 3.5 * dpi);
+
+    // Opposite tail ray (points to exact Δh/ΔW on left semicircle)
     ctx.strokeStyle = _OVL.withAlpha(shrCol, 0.45);
-    ctx.lineWidth = 1.4 * dpi;
+    ctx.lineWidth = 1.25 * dpi;
     ctx.beginPath();
     ctx.moveTo(cx, cy);
     ctx.lineTo(tailX, tailY);
     ctx.stroke();
 
-    // Active needle shaft
+    // Active SHR pointer shaft
     ctx.strokeStyle = shrCol;
     ctx.lineWidth = 2.2 * dpi;
     ctx.lineCap = 'round';
@@ -2259,30 +2355,49 @@ export class OverlayRenderer {
     ctx.lineTo(tipX, tipY);
     ctx.stroke();
 
-    // Needle pointer head
-    _OVL.drawTaperedArrowhead(ctx, tipX, tipY, needleAng, 7 * dpi, shrCol, 1);
+    // Sharp drafting arrowhead at SHR scale tip
+    _OVL.drawTaperedArrowhead(ctx, tipX, tipY, needleAng, 7.5 * dpi, shrCol, 1);
 
-    // Precision center pivot hub
+    // Precision hollow pivot hub
     ctx.beginPath();
-    ctx.arc(cx, cy, 3 * dpi, 0, Math.PI * 2);
-    ctx.fillStyle = pal.plotBg || pal.bg;
+    ctx.arc(cx, cy, 3.2 * dpi, 0, Math.PI * 2);
+    ctx.fillStyle = plotBg;
     ctx.fill();
     ctx.strokeStyle = shrCol;
     ctx.lineWidth = 1.6 * dpi;
     ctx.stroke();
 
-    // Crisp monospace readout pill in dedicated footer band (generous air gap below 0.0 label)
+    // 5. Crisp Readout Footer directly beneath protractor (SHR + exact Δh/ΔW ratio)
     _OVL.drawBadgePill(
       ctx,
       `SHR ${shr.toFixed(2)}`,
-      cardCx,
+      cx,
       pillY,
       shrCol,
-      _OVL.withAlpha(shrCol, 0.55),
-      _OVL.withAlpha(shrCol, isDark ? 0.14 : 0.10),
+      _OVL.withAlpha(shrCol, 0.60),
+      _OVL.withAlpha(plotBg, 0.92),
       dpi,
-      { fontPx: 9.5, padX: 9, padY: 3, radius: 4.5 }
+      { fontPx: 9.2, padX: 8.5, padY: 2.8, radius: 4.5 }
     );
+
+    // Exact thermodynamic Δh/ΔW companion value cleanly below badge
+    let dhdwStr;
+    if (Math.abs(1 - shr) < 1e-4) {
+      dhdwStr = 'Δh/ΔW = ∞ (Sensible)';
+    } else {
+      const dhdwSI = 2501 / (1 - shr);
+      const dhdwDisp = isSI ? dhdwSI : dhdwSI / 2.326;
+      const absV = Math.abs(dhdwDisp);
+      const fmtV = absV >= 1000 ? `${(dhdwDisp / 1000).toFixed(1)}k` : dhdwDisp.toFixed(0);
+      dhdwStr = `Δh/ΔW ${fmtV} ${isSI ? 'kJ/kg' : 'Btu/lb'}`;
+    }
+    _OVL.textHalo(ctx, dhdwStr, cx, pillY + 16 * dpi, mutedCol, pal, dpi, {
+      sizePx: 7.6,
+      weight: '600',
+      align: 'center',
+      baseline: 'middle',
+      font: _OVL.FONT_MONO
+    });
 
     ctx.restore();
   }
