@@ -6089,7 +6089,7 @@ input[type="checkbox"] {
 <script>
 /* ============================================================================
    PsychroChart Ultra 3.0 — Compiled Single-File Bundle
-   Built: 2026-11-24T21:19:13.509Z
+   Built: 2026-11-25T16:44:35.568Z
    ============================================================================ */
 (() => {
 'use strict';
@@ -19231,8 +19231,8 @@ class OverlayRenderer {
       });
     }
 
-    // 4b. Compact ASHRAE Circular SHR Protractor Dial in upper-left plot corner
-    if (plot.w < 170 * dpi || plot.h < 170 * dpi) return;
+    // 4b. Precision ASHRAE Circular SHR Protractor Dial in upper-left plot corner
+    if (plot.w < 170 * dpi || plot.h < 185 * dpi) return;
 
     const pxPerDegC = Math.abs(br.xc(21) - br.xc(20)) || 10 * dpi;
     const pxPerKgKg = Math.abs(br.yc(0) - br.yc(0.01)) / 0.01 || 15000 * dpi;
@@ -19245,19 +19245,21 @@ class OverlayRenderer {
       return Math.atan2(sl * pxPerKgKg, pxPerDegC);
     };
 
-    const cardW = 114 * dpi;
-    const cardH = 128 * dpi;
+    const cardW = 142 * dpi;
+    const cardH = 154 * dpi;
     const cardX = plot.x + 12 * dpi;
     const cardY = plot.y + 12 * dpi;
-    const cx = cardX + cardW * 0.5;
-    const cy = cardY + 62 * dpi;
-    const R = 36 * dpi;
+    const cardCx = cardX + cardW * 0.5;
+    // Shift dial slightly right so lower-left radial scale numbers have generous left margin
+    const cx = cardX + 80 * dpi;
+    const cy = cardY + 66 * dpi;
+    const R = 38 * dpi;
 
-    const cardBg = isDark ? 'rgba(11,18,30,0.86)' : 'rgba(255,255,255,0.92)';
+    const cardBg = isDark ? 'rgba(11,18,30,0.88)' : 'rgba(255,255,255,0.94)';
     const cardBorder = isDark ? 'rgba(148,163,184,0.28)' : 'rgba(51,65,85,0.24)';
-    const dialTrack = isDark ? 'rgba(148,163,184,0.25)' : 'rgba(71,85,105,0.25)';
-    const tickCol = isDark ? 'rgba(203,213,225,0.75)' : 'rgba(51,65,85,0.75)';
-    const mutedCol = pal.muted || '#94a3b8';
+    const dialTrack = isDark ? 'rgba(148,163,184,0.26)' : 'rgba(71,85,105,0.26)';
+    const tickCol = isDark ? 'rgba(203,213,225,0.85)' : 'rgba(51,65,85,0.85)';
+    const mutedCol = pal.muted || '#64748b';
 
     ctx.save();
     // Glass instrument card
@@ -19268,12 +19270,12 @@ class OverlayRenderer {
     ctx.lineWidth = 1 * dpi;
     ctx.stroke();
 
-    // Header
+    // Header centered across full card
     ctx.fillStyle = mutedCol;
-    ctx.font = `600 ${8 * dpi}px ${_OVL.FONT_MONO}`;
+    ctx.font = `700 ${8.2 * dpi}px ${_OVL.FONT_MONO}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
-    ctx.fillText('ASHRAE SHR DIAL', cx, cardY + 6 * dpi);
+    ctx.fillText('ASHRAE SHR DIAL', cardCx, cardY + 7 * dpi);
 
     // Outer protractor bezel circle
     ctx.beginPath();
@@ -19285,9 +19287,22 @@ class OverlayRenderer {
     // Subtle highlighted lower-left active arc (SHR 1.0 horizontal down to 0.0 vertical)
     ctx.beginPath();
     ctx.arc(cx, cy, R, Math.PI * 0.5, Math.PI);
-    ctx.strokeStyle = _OVL.withAlpha(shrCol, 0.55);
+    ctx.strokeStyle = _OVL.withAlpha(shrCol, 0.35);
     ctx.lineWidth = 2.2 * dpi;
     ctx.stroke();
+
+    // Active sweep highlight from SHR = 1.0 down to current needle angle (for SHR in [0, 1])
+    const curAlpha = !Number.isFinite(slope)
+      ? Math.PI * 0.5
+      : CoreDOM.clamp(Math.atan2(slope * pxPerKgKg, pxPerDegC), -Math.PI * 0.48, Math.PI * 0.5);
+    const needleAng = Math.PI - curAlpha;
+    if (curAlpha > 0.01 && curAlpha <= Math.PI * 0.5 + 0.01) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, R, needleAng, Math.PI);
+      ctx.strokeStyle = _OVL.withAlpha(shrCol, 0.85);
+      ctx.lineWidth = 2.4 * dpi;
+      ctx.stroke();
+    }
 
     // Crosshair reference axes inside dial (SHR 1.0 horizontal & SHR 0.0 vertical)
     ctx.strokeStyle = dialTrack;
@@ -19305,11 +19320,6 @@ class OverlayRenderer {
     // Plus mirrored subtle ticks on upper-right (0 to -PI/2)
     const ticks = [1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.0];
     const majorSet = new Set([1.0, 0.8, 0.6, 0.4, 0.2, 0.0]);
-    let lastLabelAngle = -999;
-
-    ctx.font = `500 ${7.5 * dpi}px ${_OVL.FONT_MONO}`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
 
     for (const val of ticks) {
       const alpha = shrToAlpha(val);
@@ -19333,23 +19343,81 @@ class OverlayRenderer {
       ctx.moveTo(cx + Math.cos(angUR) * (R - 3.5 * dpi), cy + Math.sin(angUR) * (R - 3.5 * dpi));
       ctx.lineTo(cx + Math.cos(angUR) * R, cy + Math.sin(angUR) * R);
       ctx.stroke();
+    }
 
-      // Labels along lower-left outer perimeter with collision guard
-      if (isMajor && Math.abs(angLL - lastLabelAngle) >= 0.24) {
-        const lr = R + 10 * dpi;
-        const lx = cx + Math.cos(angLL) * lr;
-        const ly = cy + Math.sin(angLL) * lr;
-        ctx.fillStyle = tickCol;
-        ctx.fillText(val.toFixed(1), lx, ly);
-        lastLabelAngle = angLL;
+    // Precision outward-aligned major labels with exact 2D bounding-box collision guard
+    // Priority order ensures endpoint anchors (1.0 & 0.0) and well-spaced intermediates never collide.
+    const pillY = cardY + cardH - 15 * dpi;
+    const pillClearTop = pillY - 12 * dpi;
+    const labelFontPx = 7.8 * dpi;
+    ctx.font = `600 ${labelFontPx}px ${_OVL.FONT_MONO}`;
+    const placedTickBoxes = [];
+    const labelOrder = [1.0, 0.0, 0.6, 0.4, 0.2, 0.8];
+
+    for (const val of labelOrder) {
+      const txt = val.toFixed(1);
+      const alpha = shrToAlpha(val);
+      const angLL = Math.PI - alpha;
+      const ux = Math.cos(angLL);
+      const uy = Math.sin(angLL);
+      const tw = ctx.measureText(txt).width;
+      const th = labelFontPx * 1.1;
+
+      let lx;
+      let ly;
+      let align;
+      let baseline;
+      let box;
+
+      if (val === 0.0) {
+        lx = cx;
+        ly = cy + R + 5.5 * dpi;
+        align = 'center';
+        baseline = 'top';
+        box = { x: lx - tw * 0.5, y: ly, w: tw, h: th };
+      } else {
+        const offsetR = R + 5.5 * dpi;
+        lx = cx + ux * offsetR;
+        ly = cy + uy * offsetR;
+        align = 'right';
+        baseline = uy > 0.72 ? 'top' : 'middle';
+        const by = baseline === 'top' ? ly : (ly - th * 0.5);
+        box = { x: lx - tw, y: by, w: tw, h: th };
       }
+
+      // Clamp strictly inside card left margin and cleanly above the SHR readout pill
+      if (box.x < cardX + 4 * dpi) {
+        const shift = (cardX + 4 * dpi) - box.x;
+        lx += shift;
+        box.x += shift;
+      }
+      if (box.y + box.h > pillClearTop) continue;
+
+      let overlaps = false;
+      const padX = 3.5 * dpi;
+      const padY = 2.0 * dpi;
+      for (let i = 0; i < placedTickBoxes.length; i++) {
+        const b = placedTickBoxes[i];
+        if (
+          box.x - padX < b.x + b.w &&
+          box.x + box.w + padX > b.x &&
+          box.y - padY < b.y + b.h &&
+          box.y + box.h + padY > b.y
+        ) {
+          overlaps = true;
+          break;
+        }
+      }
+      if (overlaps) continue;
+
+      placedTickBoxes.push(box);
+      ctx.textAlign = align;
+      ctx.textBaseline = baseline;
+      ctx.fillStyle = tickCol;
+      ctx.fillText(txt, lx, ly);
     }
 
     // Current SHR needle (parallel to true slope, smoothly clamped within dial sweep)
-    const curAlpha = !Number.isFinite(slope)
-      ? Math.PI * 0.5
-      : CoreDOM.clamp(Math.atan2(slope * pxPerKgKg, pxPerDegC), -Math.PI * 0.48, Math.PI * 0.5);
-    const needleAng = Math.PI - curAlpha;
     const tipX = cx + Math.cos(needleAng) * (R - 2 * dpi);
     const tipY = cy + Math.sin(needleAng) * (R - 2 * dpi);
     const tailX = cx - Math.cos(needleAng) * (R - 6 * dpi);
@@ -19384,17 +19452,17 @@ class OverlayRenderer {
     ctx.lineWidth = 1.6 * dpi;
     ctx.stroke();
 
-    // Crisp monospace readout pill at bottom of dial card (displays true SHR value)
+    // Crisp monospace readout pill in dedicated footer band (generous air gap below 0.0 label)
     _OVL.drawBadgePill(
       ctx,
       `SHR ${shr.toFixed(2)}`,
-      cx,
-      cardY + cardH - 13 * dpi,
+      cardCx,
+      pillY,
       shrCol,
       _OVL.withAlpha(shrCol, 0.55),
       _OVL.withAlpha(shrCol, isDark ? 0.14 : 0.10),
       dpi,
-      { fontPx: 9.5, padX: 7, padY: 2.5, radius: 4 }
+      { fontPx: 9.5, padX: 9, padY: 3, radius: 4.5 }
     );
 
     ctx.restore();
