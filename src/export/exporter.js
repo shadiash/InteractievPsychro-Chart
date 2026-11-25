@@ -2292,9 +2292,38 @@ export const Exporter = (() => {
         let midX = 0.5 * (ax + bx);
         let midY = 0.5 * (ay + by);
 
-        if (pr.curved && !nonCoil && pr.adp?.coilCurvePts?.length >= 3) {
-          // Use exact ASHRAE cooling-coil trajectory computed by HVAC.calcADP
-          const cPts = pr.adp.coilCurvePts.map(pt => [xc(pt.T), yc(pt.w)]);
+        if (pr.curved && !nonCoil && b.T < a.T && b.w < a.w) {
+          // Always use exact saturation-clamped ASHRAE cooling-coil trajectory (even when ADP misses saturation)
+          let curveModel = null;
+          if (HVAC && typeof HVAC.buildCoilCurvePts === 'function') {
+            try { curveModel = HVAC.buildCoilCurvePts(a, b, pPa, 32); } catch (_) { curveModel = null; }
+          }
+          if ((!curveModel || curveModel.length < 3) && pr.adp?.coilCurvePts?.length >= 3) {
+            curveModel = pr.adp.coilCurvePts;
+          }
+          let cPts;
+          if (curveModel && curveModel.length >= 3) {
+            cPts = curveModel.map(pt => [xc(pt.T), yc(pt.w)]);
+          } else {
+            // Defensive saturation-clamped fallback
+            const steps = 28;
+            const ctrlT = b.T + (a.T - b.T) * 0.35;
+            const ctrlW = Math.min(a.w - (a.w - b.w) * 0.14, Psy.wsat_at(ctrlT, pPa) * 0.996);
+            cPts = [];
+            let prevW = a.w;
+            for (let si = 0; si <= steps; si++) {
+              const t = si / steps;
+              const omt = 1 - t;
+              const T = omt * omt * a.T + 2 * omt * t * ctrlT + t * t * b.T;
+              let w = omt * omt * a.w + 2 * omt * t * ctrlW + t * t * b.w;
+              if (si > 0 && si < steps) {
+                const wSat = Psy.wsat_at(T, pPa);
+                w = CoreDOM.clamp(w, Math.min(b.w, wSat), Math.min(prevW, wSat * 0.996));
+              }
+              prevW = w;
+              cPts.push([xc(T), yc(w)]);
+            }
+          }
           const lastIdx = cPts.length - 1;
           const prevPt = cPts[lastIdx - 1];
           const endPt = cPts[lastIdx];
@@ -2309,17 +2338,6 @@ export const Exporter = (() => {
           const midPt = cPts[Math.floor(cPts.length * 0.5)];
           midX = midPt[0];
           midY = midPt[1];
-        } else if (pr.curved && !nonCoil && b.T < a.T && b.w < a.w) {
-          // Physically bowed cooling-coil curve fallback
-          const ctrlX = ax + (bx - ax) * 0.62;
-          const ctrlY = ay + (by - ay) * 0.22;
-          procParts.push(
-            `<path d="M${f2(sx)},${f2(sy)} Q${f2(ctrlX)},${f2(ctrlY)} ${f2(ex)},${f2(ey)}" ` +
-            `fill="none" stroke="${esc(procColor)}" stroke-width="${f2(arrowW)}" stroke-linecap="round" ` +
-            `marker-end="url(#${esc(markerId)})"/>`
-          );
-          midX = 0.25 * sx + 0.5 * ctrlX + 0.25 * ex;
-          midY = 0.25 * sy + 0.5 * ctrlY + 0.25 * ey;
         } else {
           procParts.push(
             `<line x1="${f2(sx)}" y1="${f2(sy)}" x2="${f2(ex)}" y2="${f2(ey)}" ` +

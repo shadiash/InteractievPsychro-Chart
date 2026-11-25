@@ -6100,7 +6100,7 @@ input[type="checkbox"] {
 <script>
 /* ============================================================================
    PsychroChart Ultra 3.0 — Compiled Single-File Bundle
-   Built: 2026-11-25T17:47:32.025Z
+   Built: 2026-11-25T17:54:59.248Z
    ============================================================================ */
 (() => {
 'use strict';
@@ -9176,8 +9176,8 @@ const HVAC = (() => {
   /* --------------------------------------------------------------------------
      3. Apparatus Dew Point (ADP), Bypass Factor (BPF) & Curved Coil Trajectory
      -------------------------------------------------------------------------- */
-  function buildCoilCurvePts(a, b, pPa) {
-    const N = 16;
+  function buildCoilCurvePts(a, b, pPa, numPts = 16) {
+    const N = Math.max(4, Math.round(numPts || 16));
     const pts = [];
     const dT = a.T - b.T;
     const dW = a.w - b.w;
@@ -9196,8 +9196,8 @@ const HVAC = (() => {
     }
 
     // ASHRAE cooling & dehumidification coil conditioning curve:
-    // Begins nearly sensibly toward inlet dew point, then curves smoothly near
-    // saturation approaching leaving state b toward ADP.
+    // Begins nearly sensibly toward inlet dew point, then curves smoothly inside
+    // the saturation boundary approaching leaving state b toward ADP.
     const tdpA = getTdp(a.w, pPa);
     const tKnee = clamp(tdpA, b.T + 0.15 * dT, a.T - 0.25 * dT);
 
@@ -9207,10 +9207,10 @@ const HVAC = (() => {
     const p3W = b.w;
 
     const p1T = a.T + 0.65 * (tKnee - a.T);
-    const p1W = Math.min(a.w - 0.08 * dW, Psy.wsat_at(p1T, pPa));
+    const p1W = Math.min(a.w - 0.08 * dW, Psy.wsat_at(p1T, pPa) * 0.996);
 
     const p2T = b.T + 0.35 * (tKnee - b.T);
-    const p2W = Math.min(a.w, b.w + 0.65 * dW, Psy.wsat_at(p2T, pPa));
+    const p2W = Math.min(a.w, b.w + 0.65 * dW, Psy.wsat_at(p2T, pPa) * 0.996);
 
     for (let i = 0; i < N; i++) {
       if (i === 0) {
@@ -9231,9 +9231,10 @@ const HVAC = (() => {
       const T = om3 * p0T + 3 * om2 * u * p1T + 3 * om * u2 * p2T + u3 * p3T;
       let w = om3 * p0W + 3 * om2 * u * p1W + 3 * om * u2 * p2W + u3 * p3W;
 
-      // Enforce physical bounds: never supersaturated and monotonically within [b.w, a.w]
+      // Enforce strict physical bounds: strictly inside saturation (including chord sagitta) & within [b.w, a.w]
       const wSat = Psy.wsat_at(T, pPa);
-      w = clamp(w, b.w, Math.min(a.w, wSat));
+      const wMaxSafe = Math.min(a.w, wSat * 0.996);
+      w = clamp(w, Math.min(b.w, wSat), Math.max(Math.min(b.w, wSat), wMaxSafe));
       pts.push({ T, w });
     }
 
@@ -10271,6 +10272,7 @@ const HVAC = (() => {
     classifyProcess,
     calcProcessMetrics,
     calcADP,
+    buildCoilCurvePts,
     solveSHRSaturation,
     calcMixing,
     calcERV,
@@ -17840,10 +17842,23 @@ const _OVL = {
     return raw.map(s => ({ pt: s.pt, m: s.m, frac: s.m / total }));
   },
 
-  buildCoilCurvePixelPath(a, b, adp, br) {
-    if (adp && Array.isArray(adp.coilCurvePts) && adp.coilCurvePts.length >= 2) {
+  buildCoilCurvePixelPath(a, b, adp, br, pPa = 101325) {
+    // Always generate a high-resolution, physically saturation-clamped ASHRAE cooling coil trajectory
+    // (even when the straight line misses saturation so calcADP.valid is false!)
+    let curvePts = null;
+    if (HVAC && typeof HVAC.buildCoilCurvePts === 'function') {
+      try {
+        curvePts = HVAC.buildCoilCurvePts(a, b, pPa, 32);
+      } catch (_) {
+        curvePts = null;
+      }
+    }
+    if ((!curvePts || curvePts.length < 2) && adp && Array.isArray(adp.coilCurvePts) && adp.coilCurvePts.length >= 2) {
+      curvePts = adp.coilCurvePts;
+    }
+    if (curvePts && curvePts.length >= 2) {
       const pts = [];
-      for (const cp of adp.coilCurvePts) {
+      for (const cp of curvePts) {
         const T = Array.isArray(cp) ? cp[0] : cp.T;
         const w = Array.isArray(cp) ? cp[1] : cp.w;
         if (Number.isFinite(T) && Number.isFinite(w)) {
@@ -17853,16 +17868,22 @@ const _OVL = {
       if (pts.length >= 2) return pts;
     }
 
-    // Fallback smooth psychrometric coil bend if coilCurvePts not returned
-    const steps = 20;
+    // Defensive saturation-clamped fallback if HVAC module is unavailable
+    const steps = 28;
     const pts = [];
     const ctrlT = b.T + (a.T - b.T) * 0.35;
-    const ctrlW = a.w - (a.w - b.w) * 0.14;
+    const ctrlW = Math.min(a.w - (a.w - b.w) * 0.14, Psy.wsat_at(ctrlT, pPa) * 0.996);
+    let prevW = a.w;
     for (let i = 0; i <= steps; i++) {
       const t = i / steps;
       const omt = 1 - t;
       const T = omt * omt * a.T + 2 * omt * t * ctrlT + t * t * b.T;
-      const w = omt * omt * a.w + 2 * omt * t * ctrlW + t * t * b.w;
+      let w = omt * omt * a.w + 2 * omt * t * ctrlW + t * t * b.w;
+      if (i > 0 && i < steps) {
+        const wSat = Psy.wsat_at(T, pPa);
+        w = CoreDOM.clamp(w, Math.min(b.w, wSat), Math.min(prevW, wSat * 0.996));
+      }
+      prevW = w;
       pts.push([br.xc(T), br.yc(w)]);
     }
     return pts;
@@ -19127,7 +19148,7 @@ class OverlayRenderer {
       // Build polyline path (curved coil trajectory or direct vector)
       let rawPath;
       if (proc.showCurve && isCoolDehum && !isNonCoilRole) {
-        rawPath = _OVL.buildCoilCurvePixelPath(a, b, adp, br);
+        rawPath = _OVL.buildCoilCurvePixelPath(a, b, adp, br, pPa);
       } else {
         rawPath = [[ax, ay], [bx, by]];
       }
@@ -21224,7 +21245,7 @@ class OverlayRenderer {
         } catch (_) {
           adp = null;
         }
-        poly = _OVL.buildCoilCurvePixelPath(a, b, adp, this.br);
+        poly = _OVL.buildCoilCurvePixelPath(a, b, adp, this.br, pPa);
       } else {
         poly = [
           [this.br.xc(a.T), this.br.yc(a.w)],
@@ -23578,9 +23599,38 @@ const Exporter = (() => {
         let midX = 0.5 * (ax + bx);
         let midY = 0.5 * (ay + by);
 
-        if (pr.curved && !nonCoil && pr.adp?.coilCurvePts?.length >= 3) {
-          // Use exact ASHRAE cooling-coil trajectory computed by HVAC.calcADP
-          const cPts = pr.adp.coilCurvePts.map(pt => [xc(pt.T), yc(pt.w)]);
+        if (pr.curved && !nonCoil && b.T < a.T && b.w < a.w) {
+          // Always use exact saturation-clamped ASHRAE cooling-coil trajectory (even when ADP misses saturation)
+          let curveModel = null;
+          if (HVAC && typeof HVAC.buildCoilCurvePts === 'function') {
+            try { curveModel = HVAC.buildCoilCurvePts(a, b, pPa, 32); } catch (_) { curveModel = null; }
+          }
+          if ((!curveModel || curveModel.length < 3) && pr.adp?.coilCurvePts?.length >= 3) {
+            curveModel = pr.adp.coilCurvePts;
+          }
+          let cPts;
+          if (curveModel && curveModel.length >= 3) {
+            cPts = curveModel.map(pt => [xc(pt.T), yc(pt.w)]);
+          } else {
+            // Defensive saturation-clamped fallback
+            const steps = 28;
+            const ctrlT = b.T + (a.T - b.T) * 0.35;
+            const ctrlW = Math.min(a.w - (a.w - b.w) * 0.14, Psy.wsat_at(ctrlT, pPa) * 0.996);
+            cPts = [];
+            let prevW = a.w;
+            for (let si = 0; si <= steps; si++) {
+              const t = si / steps;
+              const omt = 1 - t;
+              const T = omt * omt * a.T + 2 * omt * t * ctrlT + t * t * b.T;
+              let w = omt * omt * a.w + 2 * omt * t * ctrlW + t * t * b.w;
+              if (si > 0 && si < steps) {
+                const wSat = Psy.wsat_at(T, pPa);
+                w = CoreDOM.clamp(w, Math.min(b.w, wSat), Math.min(prevW, wSat * 0.996));
+              }
+              prevW = w;
+              cPts.push([xc(T), yc(w)]);
+            }
+          }
           const lastIdx = cPts.length - 1;
           const prevPt = cPts[lastIdx - 1];
           const endPt = cPts[lastIdx];
@@ -23595,17 +23645,6 @@ const Exporter = (() => {
           const midPt = cPts[Math.floor(cPts.length * 0.5)];
           midX = midPt[0];
           midY = midPt[1];
-        } else if (pr.curved && !nonCoil && b.T < a.T && b.w < a.w) {
-          // Physically bowed cooling-coil curve fallback
-          const ctrlX = ax + (bx - ax) * 0.62;
-          const ctrlY = ay + (by - ay) * 0.22;
-          procParts.push(
-            `<path d="M${f2(sx)},${f2(sy)} Q${f2(ctrlX)},${f2(ctrlY)} ${f2(ex)},${f2(ey)}" ` +
-            `fill="none" stroke="${esc(procColor)}" stroke-width="${f2(arrowW)}" stroke-linecap="round" ` +
-            `marker-end="url(#${esc(markerId)})"/>`
-          );
-          midX = 0.25 * sx + 0.5 * ctrlX + 0.25 * ex;
-          midY = 0.25 * sy + 0.5 * ctrlY + 0.25 * ey;
         } else {
           procParts.push(
             `<line x1="${f2(sx)}" y1="${f2(sy)}" x2="${f2(ex)}" y2="${f2(ey)}" ` +

@@ -285,10 +285,23 @@ const _OVL = {
     return raw.map(s => ({ pt: s.pt, m: s.m, frac: s.m / total }));
   },
 
-  buildCoilCurvePixelPath(a, b, adp, br) {
-    if (adp && Array.isArray(adp.coilCurvePts) && adp.coilCurvePts.length >= 2) {
+  buildCoilCurvePixelPath(a, b, adp, br, pPa = 101325) {
+    // Always generate a high-resolution, physically saturation-clamped ASHRAE cooling coil trajectory
+    // (even when the straight line misses saturation so calcADP.valid is false!)
+    let curvePts = null;
+    if (HVAC && typeof HVAC.buildCoilCurvePts === 'function') {
+      try {
+        curvePts = HVAC.buildCoilCurvePts(a, b, pPa, 32);
+      } catch (_) {
+        curvePts = null;
+      }
+    }
+    if ((!curvePts || curvePts.length < 2) && adp && Array.isArray(adp.coilCurvePts) && adp.coilCurvePts.length >= 2) {
+      curvePts = adp.coilCurvePts;
+    }
+    if (curvePts && curvePts.length >= 2) {
       const pts = [];
-      for (const cp of adp.coilCurvePts) {
+      for (const cp of curvePts) {
         const T = Array.isArray(cp) ? cp[0] : cp.T;
         const w = Array.isArray(cp) ? cp[1] : cp.w;
         if (Number.isFinite(T) && Number.isFinite(w)) {
@@ -298,16 +311,22 @@ const _OVL = {
       if (pts.length >= 2) return pts;
     }
 
-    // Fallback smooth psychrometric coil bend if coilCurvePts not returned
-    const steps = 20;
+    // Defensive saturation-clamped fallback if HVAC module is unavailable
+    const steps = 28;
     const pts = [];
     const ctrlT = b.T + (a.T - b.T) * 0.35;
-    const ctrlW = a.w - (a.w - b.w) * 0.14;
+    const ctrlW = Math.min(a.w - (a.w - b.w) * 0.14, Psy.wsat_at(ctrlT, pPa) * 0.996);
+    let prevW = a.w;
     for (let i = 0; i <= steps; i++) {
       const t = i / steps;
       const omt = 1 - t;
       const T = omt * omt * a.T + 2 * omt * t * ctrlT + t * t * b.T;
-      const w = omt * omt * a.w + 2 * omt * t * ctrlW + t * t * b.w;
+      let w = omt * omt * a.w + 2 * omt * t * ctrlW + t * t * b.w;
+      if (i > 0 && i < steps) {
+        const wSat = Psy.wsat_at(T, pPa);
+        w = CoreDOM.clamp(w, Math.min(b.w, wSat), Math.min(prevW, wSat * 0.996));
+      }
+      prevW = w;
       pts.push([br.xc(T), br.yc(w)]);
     }
     return pts;
@@ -1572,7 +1591,7 @@ export class OverlayRenderer {
       // Build polyline path (curved coil trajectory or direct vector)
       let rawPath;
       if (proc.showCurve && isCoolDehum && !isNonCoilRole) {
-        rawPath = _OVL.buildCoilCurvePixelPath(a, b, adp, br);
+        rawPath = _OVL.buildCoilCurvePixelPath(a, b, adp, br, pPa);
       } else {
         rawPath = [[ax, ay], [bx, by]];
       }
@@ -3669,7 +3688,7 @@ export class OverlayRenderer {
         } catch (_) {
           adp = null;
         }
-        poly = _OVL.buildCoilCurvePixelPath(a, b, adp, this.br);
+        poly = _OVL.buildCoilCurvePixelPath(a, b, adp, this.br, pPa);
       } else {
         poly = [
           [this.br.xc(a.T), this.br.yc(a.w)],

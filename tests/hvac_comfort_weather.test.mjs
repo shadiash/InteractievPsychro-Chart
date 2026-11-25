@@ -1292,4 +1292,39 @@ describe('4. State Store & Legacy Compatibility (Store)', () => {
     assert.ok(sDesignWide < sWide, 'Design city markers must stay subtler than primary process markers');
     assert.ok(sZoomIn <= 1.25 && sMaxOut >= 0.44);
   });
+
+  it('keeps curved cooling coil trajectory strictly inside 100% RH saturation even when ADP misses saturation', () => {
+    const pPa = 101325;
+    const cases = [
+      // Exact extreme no-ADP coil case: MA (41°C, 22.5 g/kg) -> CC Out (8.2°C, 5.8 g/kg)
+      { name: 'Hot-humid no-ADP coil', a: { T: 41.0, w: 0.0225 }, b: { T: 8.2, w: 0.0058 } },
+      // Extreme near-saturated coil where straight chord crosses into fog zone
+      { name: 'Near-saturated coil', a: { T: 35.0, w: Psy.wsat_at(35, pPa) * 0.96 }, b: { T: 6.0, w: Psy.wsat_at(6, pPa) * 0.98 } },
+      // High altitude Denver coil
+      { name: 'High-altitude coil', a: { T: 34.0, w: 0.018 }, b: { T: 7.0, w: 0.0055 }, p: Psy.baroPa(1609) }
+    ];
+
+    for (const tc of cases) {
+      const p = tc.p || pPa;
+      const curve = HVAC.buildCoilCurvePts(tc.a, tc.b, p, 32);
+      assert.equal(curve.length, 32, `${tc.name}: expected 32 curve samples`);
+      approxEqual(curve[0].T, tc.a.T, 1e-12);
+      approxEqual(curve[0].w, tc.a.w, 1e-12);
+      approxEqual(curve[31].T, tc.b.T, 1e-12);
+      approxEqual(curve[31].w, tc.b.w, 1e-12);
+      for (let i = 0; i < curve.length; i++) {
+        const ws = Psy.wsat_at(curve[i].T, p);
+        assert.ok(curve[i].w <= ws + 1e-9, `${tc.name} pt[${i}] supersaturated: w=${curve[i].w} > wsat=${ws} at T=${curve[i].T}`);
+        if (i > 0) {
+          assert.ok(curve[i].T <= curve[i - 1].T + 1e-9, `${tc.name} T must be monotonically non-increasing`);
+          assert.ok(curve[i].w <= curve[i - 1].w + 1e-9, `${tc.name} w must be monotonically non-increasing`);
+          // Also verify chord midpoint between consecutive samples stays inside saturation!
+          const mT = 0.5 * (curve[i - 1].T + curve[i].T);
+          const mW = 0.5 * (curve[i - 1].w + curve[i].w);
+          const mWs = Psy.wsat_at(mT, p);
+          assert.ok(mW <= mWs + 1e-6, `${tc.name} seg[${i}] midpoint crossed saturation: w=${mW} > wsat=${mWs} at T=${mT}`);
+        }
+      }
+    }
+  });
 });

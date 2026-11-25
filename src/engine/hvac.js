@@ -239,8 +239,8 @@ export const HVAC = (() => {
   /* --------------------------------------------------------------------------
      3. Apparatus Dew Point (ADP), Bypass Factor (BPF) & Curved Coil Trajectory
      -------------------------------------------------------------------------- */
-  function buildCoilCurvePts(a, b, pPa) {
-    const N = 16;
+  function buildCoilCurvePts(a, b, pPa, numPts = 16) {
+    const N = Math.max(4, Math.round(numPts || 16));
     const pts = [];
     const dT = a.T - b.T;
     const dW = a.w - b.w;
@@ -259,8 +259,8 @@ export const HVAC = (() => {
     }
 
     // ASHRAE cooling & dehumidification coil conditioning curve:
-    // Begins nearly sensibly toward inlet dew point, then curves smoothly near
-    // saturation approaching leaving state b toward ADP.
+    // Begins nearly sensibly toward inlet dew point, then curves smoothly inside
+    // the saturation boundary approaching leaving state b toward ADP.
     const tdpA = getTdp(a.w, pPa);
     const tKnee = clamp(tdpA, b.T + 0.15 * dT, a.T - 0.25 * dT);
 
@@ -270,10 +270,10 @@ export const HVAC = (() => {
     const p3W = b.w;
 
     const p1T = a.T + 0.65 * (tKnee - a.T);
-    const p1W = Math.min(a.w - 0.08 * dW, Psy.wsat_at(p1T, pPa));
+    const p1W = Math.min(a.w - 0.08 * dW, Psy.wsat_at(p1T, pPa) * 0.996);
 
     const p2T = b.T + 0.35 * (tKnee - b.T);
-    const p2W = Math.min(a.w, b.w + 0.65 * dW, Psy.wsat_at(p2T, pPa));
+    const p2W = Math.min(a.w, b.w + 0.65 * dW, Psy.wsat_at(p2T, pPa) * 0.996);
 
     for (let i = 0; i < N; i++) {
       if (i === 0) {
@@ -294,9 +294,10 @@ export const HVAC = (() => {
       const T = om3 * p0T + 3 * om2 * u * p1T + 3 * om * u2 * p2T + u3 * p3T;
       let w = om3 * p0W + 3 * om2 * u * p1W + 3 * om * u2 * p2W + u3 * p3W;
 
-      // Enforce physical bounds: never supersaturated and monotonically within [b.w, a.w]
+      // Enforce strict physical bounds: strictly inside saturation (including chord sagitta) & within [b.w, a.w]
       const wSat = Psy.wsat_at(T, pPa);
-      w = clamp(w, b.w, Math.min(a.w, wSat));
+      const wMaxSafe = Math.min(a.w, wSat * 0.996);
+      w = clamp(w, Math.min(b.w, wSat), Math.max(Math.min(b.w, wSat), wMaxSafe));
       pts.push({ T, w });
     }
 
@@ -1334,6 +1335,7 @@ export const HVAC = (() => {
     classifyProcess,
     calcProcessMetrics,
     calcADP,
+    buildCoilCurvePts,
     solveSHRSaturation,
     calcMixing,
     calcERV,
