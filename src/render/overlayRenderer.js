@@ -782,6 +782,7 @@ export class OverlayRenderer {
     this._lastState = null;
     this._lastFrameTime = 0;
     this._resolvedLabels = new Map();
+    this._shrGeom = null;
 
     this._onVisibilityChange = () => {
       if (typeof document === 'undefined') return;
@@ -801,6 +802,10 @@ export class OverlayRenderer {
 
   getResolvedLabelPos(ptId) {
     return this._resolvedLabels.get(ptId) || null;
+  }
+
+  getSHRGeometry() {
+    return this._shrGeom || null;
   }
 
   _shouldAnimate(state) {
@@ -952,8 +957,9 @@ export class OverlayRenderer {
         occupiedRects.push(mRect);
       }
     }
-    if (state.shr && state.shr.show && plot.w >= 170 * dpi && plot.h >= 170 * dpi) {
-      occupiedRects.push([plot.x + 12 * dpi, plot.y + 12 * dpi, 114 * dpi, 128 * dpi]);
+    if (state.shr && state.shr.show && plot.w >= 210 * dpi && plot.h >= 200 * dpi) {
+      const rDial = CoreDOM.clamp(Math.min(plot.w * 0.108, plot.h * 0.112), 44 * dpi, 62 * dpi);
+      occupiedRects.push([plot.x + 8 * dpi, plot.y + 8 * dpi, 2 * rDial + 68 * dpi, 2 * rDial + 82 * dpi]);
     }
 
     ctx.save();
@@ -1012,7 +1018,9 @@ export class OverlayRenderer {
 
     // 7. Interactive ASHRAE SHR Protractor & Reference Slope Line
     if (state.shr && state.shr.show) {
-      this._drawSHRReferenceAndProtractor(ctx, br, plot, state, pal, isDark, dpi, isExport);
+      this._drawSHRReferenceAndProtractor(ctx, br, plot, state, pal, isDark, dpi, isExport, occupiedRects);
+    } else if (!isExport) {
+      this._shrGeom = null;
     }
 
     // 8. State Points & Labels
@@ -1955,18 +1963,46 @@ export class OverlayRenderer {
   /* --------------------------------------------------------------------------
      4. Interactive ASHRAE SHR Protractor & Reference Slope Line
      -------------------------------------------------------------------------- */
-  _drawSHRReferenceAndProtractor(ctx, br, plot, state, pal, isDark, dpi, isExport = false) {
+  _drawSHRReferenceAndProtractor(ctx, br, plot, state, pal, isDark, dpi, isExport = false, occupiedRects = null) {
     const rawShr = Number(state.shr?.value);
     const shr = Number.isFinite(rawShr) ? CoreDOM.clamp(rawShr, -2, 2) : 0.75;
     const pts = state.points || [];
+    const procs = state.processes || [];
+    const ui = state.ui || {};
     const pPa = state.pPa || 101325;
+    const isSI = state.units !== 'IP';
     const shrCol = pal.wb || '#f59e0b';
+    const plotBg = pal.plotBg || pal.bg || (isDark ? '#0b1220' : '#ffffff');
+    const isMonochrome = state.theme === 'print-bw';
+    const liveCol = isMonochrome
+      ? (isDark ? '#e2e8f0' : '#1e293b')
+      : (pal.accent || (isDark ? '#38bdf8' : '#0284c7'));
 
-    // Determine reference point: explicit refPtId -> chart plot center when null
+    const isDialActive = !isExport && (ui.hovShrPart === 'dial' || ui.dragShrPart === 'dial');
+    const isAnchorActive = !isExport && (
+      ui.hovShrPart === 'anchor' || ui.hovShrPart === 'line' || ui.dragShrPart === 'anchor'
+    );
+
+    // Precompute protractor geometry early so line/ADP labels never collide with the dial
+    const hasDial = plot.w >= 210 * dpi && plot.h >= 200 * dpi;
+    const R = CoreDOM.clamp(Math.min(plot.w * 0.108, plot.h * 0.112), 44 * dpi, 62 * dpi);
+    const R_in = R * 0.76;
+    const cx = plot.x + R + 34 * dpi;
+    const cy = plot.y + R + 28 * dpi;
+
+    // Resolve reference point: explicit refPointId -> custom dragged anchorTw -> chart plot center
     let refPt = null;
+    let isPointAnchored = false;
     const explicitId = state.shr?.refPtId ?? state.shr?.refPointId;
     if (explicitId != null && explicitId !== '') {
-      refPt = pts.find(p => p.id === explicitId || String(p.id) === String(explicitId)) || null;
+      const matched = pts.find(p => p.id === explicitId || String(p.id) === String(explicitId)) || null;
+      if (matched) {
+        refPt = matched;
+        isPointAnchored = true;
+      }
+    }
+    if (!refPt && state.shr?.anchorTw && Number.isFinite(state.shr.anchorTw.T) && Number.isFinite(state.shr.anchorTw.w)) {
+      refPt = { T: state.shr.anchorTw.T, w: state.shr.anchorTw.w, isCustomAnchor: true, label: 'Custom' };
     }
     if (!refPt) {
       const tMinV = state.view?.tMin ?? -10;
@@ -1974,13 +2010,84 @@ export class OverlayRenderer {
       const wMaxV = state.view?.wMax ?? 0.030;
       const centerT = 0.5 * (tMinV + tMaxV);
       const centerW = Math.max(0.0005, Math.min(0.45 * wMaxV, Psy.wsat_at(centerT, pPa) * 0.72));
-      refPt = { T: centerT, w: centerW, isChartCenter: true };
+      refPt = { T: centerT, w: centerW, isChartCenter: true, label: 'Center' };
     }
 
-    const cpm = 1.006 + 1.86 * (refPt ? refPt.w : 0.010);
-    const slope = Math.abs(shr) <= 1e-4 ? Infinity : (Math.abs(shr - 1) <= 1e-6 ? 0 : ((1 - shr) / shr) * cpm / 2501);
+    // Solve exact slope, Δh/ΔW, and 100% RH Saturation / Coil ADP intersection
+    const solved = typeof HVAC?.solveSHRSaturation === 'function'
+      ? HVAC.solveSHRSaturation(refPt, shr, pPa)
+      : (() => {
+          const cpmF = 1.006 + 1.86 * (refPt ? refPt.w : 0.010);
+          const slF = Math.abs(shr) <= 1e-4 ? Infinity : (Math.abs(shr - 1) <= 1e-6 ? 0 : ((1 - shr) / shr) * cpmF / 2501);
+          return { shr, cpm: cpmF, slope: slF, dhdw_kJkg: Math.abs(1 - shr) < 1e-4 ? Infinity : 2501 / (1 - shr), satHit: null, satStatus: 'none', tZero: null };
+        })();
+    const { cpm, slope, satHit, satStatus, tZero } = solved;
 
-    // 4a. Dashed SHR Reference Slope Line through refPt
+    // Resolve live dynamic vector for secondary moving indicator needle:
+    // Priority: Measure caliper -> Process of dragged point -> Hovered process -> Selected process -> Room / primary process
+    const buildVectorFromPair = (a, b, label, kind, procId = null, anchorPtId = null) => {
+      if (!a || !b || !Number.isFinite(a.T) || !Number.isFinite(b.T)) return null;
+      const dT = b.T - a.T;
+      const dW = b.w - a.w;
+      if (Math.hypot(dT, dW * 1000) < 0.06) return null;
+      const dh = Psy.h_kJkg(b.T, b.w) - Psy.h_kJkg(a.T, a.w);
+      const dhSens = Psy.h_kJkg(b.T, a.w) - Psy.h_kJkg(a.T, a.w);
+      const liveShr = Math.abs(dh) > 1e-4 ? (dhSens / dh) : (Math.abs(dT) > 1e-4 ? 1.0 : NaN);
+      const liveSlope = Math.abs(dT) > 1e-6 ? (dW / dT) : Infinity;
+      return {
+        shr: liveShr,
+        slope: liveSlope,
+        label,
+        kind,
+        procId,
+        anchorPtId
+      };
+    };
+
+    const resolveProcVector = (proc) => {
+      if (!proc) return null;
+      const idx = procs.indexOf(proc);
+      const ep = _OVL.resolveProcEndpoints(proc, pts);
+      if (!ep) return null;
+      const tag = proc.tag || `S${idx >= 0 ? idx + 1 : 1}`;
+      const higherTPt = ep.b.T >= ep.a.T ? ep.b : ep.a;
+      return buildVectorFromPair(ep.a, ep.b, tag, 'process', proc.id, higherTPt.id ?? null);
+    };
+
+    let liveVector = null;
+    if (!isExport && ui.measureStart && ui.measureEnd) {
+      liveVector = buildVectorFromPair(ui.measureStart, ui.measureEnd, 'Measure', 'measure', null, null);
+    }
+    if (!liveVector && !isExport && ui.dragPtId != null && procs.length > 0) {
+      const touches = (p) => {
+        const ep = _OVL.resolveProcEndpoints(p, pts);
+        return ep && (ep.a.id === ui.dragPtId || ep.b.id === ui.dragPtId);
+      };
+      const selMatch = ui.selectedProcId != null ? procs.find(p => p.id === ui.selectedProcId && touches(p)) : null;
+      const nonMixMatch = procs.find(p => p.role !== 'mix' && touches(p));
+      const anyMatch = procs.find(touches);
+      liveVector = resolveProcVector(selMatch || nonMixMatch || anyMatch);
+    }
+    if (!liveVector && !isExport && ui.hovProcId != null && procs.length > 0) {
+      const hp = procs.find(p => p.id === ui.hovProcId);
+      liveVector = resolveProcVector(hp);
+    }
+    if (!liveVector && ui.selectedProcId != null && procs.length > 0) {
+      const sp = procs.find(p => p.id === ui.selectedProcId);
+      liveVector = resolveProcVector(sp);
+    }
+    if (!liveVector && procs.length > 0) {
+      const fallbackProc = procs.find(p => p.role === 'room')
+        || procs.find(p => p.role !== 'mix')
+        || procs[0];
+      liveVector = resolveProcVector(fallbackProc);
+    }
+
+    // 4a. Dashed SHR Reference Slope Line through refPt + Anchor Handle + Exact Saturation / ADP Marker
+    let rpx = NaN;
+    let rpy = NaN;
+    let lineSeg = null;
+
     if (refPt && Number.isFinite(refPt.T) && Number.isFinite(refPt.w)) {
       const tMin = (state.view?.tMin ?? -10) - 5;
       const tMax = (state.view?.tMax ?? 55) + 5;
@@ -1988,10 +2095,13 @@ export class OverlayRenderer {
 
       ctx.save();
       ctx.strokeStyle = shrCol;
-      ctx.lineWidth = 1.6 * dpi;
+      ctx.lineWidth = (isAnchorActive || isDialActive ? 2.15 : 1.65) * dpi;
       ctx.setLineDash([7 * dpi, 4.5 * dpi]);
-      ctx.globalAlpha = 0.82;
+      ctx.globalAlpha = (isAnchorActive || isDialActive) ? 0.96 : 0.84;
       ctx.beginPath();
+
+      let segFirst = null;
+      let segLast = null;
 
       if (!Number.isFinite(slope)) {
         // Vertical (SHR = 0)
@@ -2001,6 +2111,8 @@ export class OverlayRenderer {
         const yTop = br.yc(Math.min(ws, wMax));
         ctx.moveTo(px, yBot);
         ctx.lineTo(px, yTop);
+        segFirst = { x: px, y: yBot };
+        segLast = { x: px, y: yTop };
       } else {
         let started = false;
         const step = Math.max(0.15, (tMax - tMin) / 260);
@@ -2020,42 +2132,173 @@ export class OverlayRenderer {
           if (!started) {
             ctx.moveTo(px, py);
             started = true;
+            if (!segFirst) segFirst = { x: px, y: py };
           } else {
             ctx.lineTo(px, py);
           }
+          segLast = { x: px, y: py };
         }
       }
       ctx.stroke();
 
-      // Subtle anchor marker when anchored to chart center
-      const rpx = br.xc(refPt.T);
-      const rpy = br.yc(refPt.w);
-      if (refPt.isChartCenter) {
-        ctx.setLineDash([]);
+      if (segFirst && segLast) {
+        lineSeg = { x1: segFirst.x, y1: segFirst.y, x2: segLast.x, y2: segLast.y };
+      }
+
+      // Anchor marker / draggable parallel-ruler handle at refPt
+      rpx = br.xc(refPt.T);
+      rpy = br.yc(refPt.w);
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
+
+      if (isPointAnchored) {
+        // Sleek dashed ring around the pinned state point (never obscures point core)
+        ctx.save();
+        ctx.strokeStyle = shrCol;
+        ctx.lineWidth = (isAnchorActive ? 1.8 : 1.35) * dpi;
+        ctx.setLineDash([3 * dpi, 2.5 * dpi]);
         ctx.beginPath();
-        ctx.arc(rpx, rpy, 4 * dpi, 0, Math.PI * 2);
-        ctx.fillStyle = pal.plotBg || pal.bg;
-        ctx.fill();
-        ctx.lineWidth = 1.5 * dpi;
+        ctx.arc(rpx, rpy, (isAnchorActive ? 12.5 : 10.5) * dpi, 0, Math.PI * 2);
         ctx.stroke();
+        ctx.restore();
+      } else {
+        // Tactile circular grab handle on free / center-anchored parallel line
+        if (isAnchorActive) {
+          ctx.beginPath();
+          ctx.arc(rpx, rpy, 10.5 * dpi, 0, Math.PI * 2);
+          ctx.fillStyle = _OVL.withAlpha(shrCol, isDark ? 0.22 : 0.16);
+          ctx.fill();
+        }
+        ctx.beginPath();
+        ctx.arc(rpx, rpy, (isAnchorActive ? 6.2 : 4.8) * dpi, 0, Math.PI * 2);
+        ctx.fillStyle = plotBg;
+        ctx.fill();
+        ctx.strokeStyle = shrCol;
+        ctx.lineWidth = (isAnchorActive ? 2.1 : 1.6) * dpi;
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(rpx, rpy, 1.7 * dpi, 0, Math.PI * 2);
+        ctx.fillStyle = shrCol;
+        ctx.fill();
+      }
+
+      // Exact Saturation / Coil ADP Intersection Marker on 100% RH curve
+      if (satHit && Number.isFinite(satHit.T) && Number.isFinite(satHit.w)) {
+        const satPx = br.xc(satHit.T);
+        const satPy = br.yc(satHit.w);
+        const satInPlot = (
+          satPx >= plot.x + 2 * dpi &&
+          satPx <= plot.right - 2 * dpi &&
+          satPy >= plot.y + 2 * dpi &&
+          satPy <= plot.bottom - 2 * dpi
+        );
+        if (satInPlot) {
+          const dr = 5.2 * dpi;
+          ctx.beginPath();
+          ctx.moveTo(satPx, satPy - dr);
+          ctx.lineTo(satPx + dr, satPy);
+          ctx.lineTo(satPx, satPy + dr);
+          ctx.lineTo(satPx - dr, satPy);
+          ctx.closePath();
+          ctx.fillStyle = plotBg;
+          ctx.fill();
+          ctx.strokeStyle = shrCol;
+          ctx.lineWidth = 1.8 * dpi;
+          ctx.stroke();
+
+          ctx.beginPath();
+          ctx.arc(satPx, satPy, 1.6 * dpi, 0, Math.PI * 2);
+          ctx.fillStyle = shrCol;
+          ctx.fill();
+
+          const satTDisp = isSI
+            ? `${satHit.T.toFixed(1)}°C`
+            : `${CoreDOM.cToF(satHit.T).toFixed(1)}°F`;
+          const satTag = (shr > 0 && shr <= 1) ? `ADP ${satTDisp}` : `Sat ${satTDisp}`;
+
+          ctx.font = `700 ${8.6 * dpi}px ${_OVL.FONT_MONO}`;
+          const stw = ctx.measureText(satTag).width + 6 * dpi;
+          const sth = 12.5 * dpi;
+          const satCands = [
+            [satPx - stw - 8 * dpi, satPy - sth - 5 * dpi, stw, sth],
+            [satPx + 9 * dpi, satPy + 8 * dpi, stw, sth],
+            [satPx + 9 * dpi, satPy - sth - 6 * dpi, stw, sth],
+            [satPx - stw - 8 * dpi, satPy + 8 * dpi, stw, sth],
+            [satPx - stw * 0.5, satPy - sth - 14 * dpi, stw, sth],
+            [satPx - stw * 0.5, satPy + 16 * dpi, stw, sth]
+          ];
+          const placedSat = occupiedRects
+            ? this._placeNonCollidingRect(satCands, plot, occupiedRects, 3 * dpi)
+            : satCands[1];
+          const sLblX = placedSat ? placedSat[0] + 3 * dpi : satPx + 9 * dpi;
+          const sLblY = placedSat ? placedSat[1] + placedSat[3] * 0.5 : satPy + 12 * dpi;
+          _OVL.textHalo(ctx, satTag, sLblX, sLblY, shrCol, pal, dpi, {
+            sizePx: 8.6,
+            weight: '700',
+            align: 'left',
+            baseline: 'middle',
+            font: _OVL.FONT_MONO
+          });
+        }
+      } else if (satStatus === 'no-hit' && Number.isFinite(tZero)) {
+        const zPx = br.xc(tZero);
+        const zPy = br.yc(0);
+        if (zPx >= plot.x + 12 * dpi && zPx <= plot.right - 12 * dpi) {
+          const cr = 3.8 * dpi;
+          ctx.strokeStyle = shrCol;
+          ctx.lineWidth = 1.6 * dpi;
+          ctx.beginPath();
+          ctx.moveTo(zPx - cr, zPy - cr);
+          ctx.lineTo(zPx + cr, zPy + cr);
+          ctx.moveTo(zPx + cr, zPy - cr);
+          ctx.lineTo(zPx - cr, zPy + cr);
+          ctx.stroke();
+
+          const noHitX = CoreDOM.clamp(zPx + 6 * dpi, plot.x + 8 * dpi, plot.right - 126 * dpi);
+          _OVL.textHalo(ctx, 'No Sat. Hit (Reheat)', noHitX, zPy - 12 * dpi, shrCol, pal, dpi, {
+            sizePx: 8.2,
+            weight: '700',
+            align: 'left',
+            font: _OVL.FONT_MONO
+          });
+        }
       }
       ctx.restore();
 
-      // Inline SHR label offset nicely from refPt and clamped inside plot
-      const lblX = CoreDOM.clamp(rpx + 18 * dpi, plot.x + 8 * dpi, Math.max(plot.x + 8 * dpi, plot.right - 78 * dpi));
-      const lblY = CoreDOM.clamp(rpy - 12 * dpi, plot.y + 18 * dpi, plot.bottom - 8 * dpi);
-      _OVL.textHalo(ctx, `SHR = ${shr.toFixed(2)}`, lblX, lblY, shrCol, pal, dpi, {
+      // Inline SHR label placed cleanly near refPt via 2D collision solver (avoids point/process labels & protractor)
+      const shrTag = `SHR = ${shr.toFixed(2)}`;
+      ctx.font = `600 ${9.5 * dpi}px ${_OVL.FONT_SANS}`;
+      const ltw = ctx.measureText(shrTag).width + 6 * dpi;
+      const lth = 13 * dpi;
+      const shrCands = [
+        [rpx + 16 * dpi, rpy - lth - 8 * dpi, ltw, lth],
+        [rpx + 16 * dpi, rpy + 10 * dpi, ltw, lth],
+        [rpx - ltw - 14 * dpi, rpy - lth - 8 * dpi, ltw, lth],
+        [rpx - ltw - 14 * dpi, rpy + 10 * dpi, ltw, lth],
+        [rpx + 32 * dpi, rpy - lth * 0.5, ltw, lth]
+      ];
+      const placedLbl = occupiedRects
+        ? this._placeNonCollidingRect(shrCands, plot, occupiedRects, 3 * dpi)
+        : shrCands[0];
+      const lblX = placedLbl ? placedLbl[0] + 3 * dpi : CoreDOM.clamp(rpx + 18 * dpi, plot.x + 8 * dpi, plot.right - 78 * dpi);
+      const lblY = placedLbl ? placedLbl[1] + placedLbl[3] * 0.5 : CoreDOM.clamp(rpy - 12 * dpi, plot.y + 18 * dpi, plot.bottom - 8 * dpi);
+      _OVL.textHalo(ctx, shrTag, lblX, lblY, shrCol, pal, dpi, {
         sizePx: 9.5,
-        weight: '600'
+        weight: '600',
+        align: 'left',
+        baseline: 'middle'
       });
     }
 
     // 4b. Authentic ASHRAE Chart No. 1 Dual-Scale Circular Protractor (engraved directly on chart paper)
-    if (plot.w < 210 * dpi || plot.h < 200 * dpi) return;
+    if (!hasDial) {
+      if (!isExport) this._shrGeom = null;
+      return;
+    }
 
     const pxPerDegC = Math.abs(br.xc(21) - br.xc(20)) || 10 * dpi;
     const pxPerKgKg = Math.abs(br.yc(0) - br.yc(0.01)) / 0.01 || 15000 * dpi;
-    const isSI = state.units !== 'IP';
 
     // Exact chart-scaled inclination angle alpha in (-PI/2, PI/2] for any finite/infinite slope dw/dT
     // Positive slope (up-right on chart) => positive alpha => canvas angle = -alpha (upper-right quadrant)
@@ -2078,13 +2321,6 @@ export class OverlayRenderer {
       return slopeToAlpha(cpm / denom);
     };
 
-    // Scale protractor radius smoothly to upper-left open chart space (never collides with saturation/enthalpy rail)
-    const R = CoreDOM.clamp(Math.min(plot.w * 0.108, plot.h * 0.112), 44 * dpi, 62 * dpi);
-    const R_in = R * 0.76;
-    const cx = plot.x + R + 34 * dpi;
-    const cy = plot.y + R + 28 * dpi;
-
-    const plotBg = pal.plotBg || pal.bg || (isDark ? '#0b1220' : '#ffffff');
     const ringCol = isDark ? 'rgba(148,163,184,0.36)' : 'rgba(51,65,85,0.34)';
     const ringSubCol = isDark ? 'rgba(148,163,184,0.22)' : 'rgba(71,85,105,0.20)';
     const tickCol = isDark ? 'rgba(226,232,240,0.86)' : 'rgba(30,41,59,0.84)';
@@ -2096,6 +2332,15 @@ export class OverlayRenderer {
     const tailAng = needleAng + Math.PI; // Opposite left semicircle ray pointing to matching Δh/ΔW
 
     ctx.save();
+
+    // Subtle interactive outer ring glow when hovering or rotating the protractor dial
+    if (isDialActive) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, R + 3 * dpi, 0, Math.PI * 2);
+      ctx.strokeStyle = _OVL.withAlpha(shrCol, isDark ? 0.34 : 0.26);
+      ctx.lineWidth = 4.0 * dpi;
+      ctx.stroke();
+    }
 
     // Subtle circular paper-integrated wash inside outer ring (no clunky rectangular box!)
     ctx.beginPath();
@@ -2109,15 +2354,15 @@ export class OverlayRenderer {
       ctx.moveTo(cx, cy);
       ctx.arc(cx, cy, R, needleAng, 0, curAlpha < 0);
       ctx.closePath();
-      ctx.fillStyle = _OVL.withAlpha(shrCol, isDark ? 0.14 : 0.10);
+      ctx.fillStyle = _OVL.withAlpha(shrCol, isDark ? (isDialActive ? 0.20 : 0.14) : (isDialActive ? 0.15 : 0.10));
       ctx.fill();
     }
 
     // Concentric precision drafting rings
     ctx.beginPath();
     ctx.arc(cx, cy, R, 0, Math.PI * 2);
-    ctx.strokeStyle = ringCol;
-    ctx.lineWidth = 1.25 * dpi;
+    ctx.strokeStyle = isDialActive ? _OVL.withAlpha(shrCol, 0.75) : ringCol;
+    ctx.lineWidth = (isDialActive ? 1.55 : 1.25) * dpi;
     ctx.stroke();
 
     ctx.beginPath();
@@ -2332,9 +2577,57 @@ export class OverlayRenderer {
       tryPlaceDialLabel(sp.lbl, ang, _OVL.withAlpha(enthCol, 0.88), false);
     }
 
-    // 4. Precision Drafting Needle through Center Reticle
+    // 4a. Live Dynamic Secondary Indicator Needle (tracks active Measure caliper / dragged point / hovered or selected process!)
+    if (liveVector && Number.isFinite(liveVector.shr)) {
+      const liveAlpha = slopeToAlpha(liveVector.slope);
+      const liveAng = -liveAlpha;
+      const liveTailAng = liveAng + Math.PI;
+      const lTipX = cx + Math.cos(liveAng) * R;
+      const lTipY = cy + Math.sin(liveAng) * R;
+      const lTailX = cx + Math.cos(liveTailAng) * (R * 0.72);
+      const lTailY = cy + Math.sin(liveTailAng) * (R * 0.72);
+
+      ctx.save();
+      // Subtle opposite tail
+      ctx.strokeStyle = _OVL.withAlpha(liveCol, 0.32);
+      ctx.lineWidth = 1.05 * dpi;
+      ctx.setLineDash([3 * dpi, 2.5 * dpi]);
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(lTailX, lTailY);
+      ctx.stroke();
+
+      // Primary live tracking needle
+      ctx.strokeStyle = _OVL.withAlpha(liveCol, 0.92);
+      ctx.lineWidth = 1.65 * dpi;
+      ctx.setLineDash([4.5 * dpi, 2.5 * dpi]);
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(lTipX, lTipY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Soft glowing indicator beacon on outer ring
+      ctx.beginPath();
+      ctx.arc(lTipX, lTipY, 6.0 * dpi, 0, Math.PI * 2);
+      ctx.fillStyle = _OVL.withAlpha(liveCol, isDark ? 0.28 : 0.20);
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(lTipX, lTipY, 3.3 * dpi, 0, Math.PI * 2);
+      ctx.fillStyle = isMonochrome ? plotBg : liveCol;
+      ctx.fill();
+      ctx.strokeStyle = isMonochrome ? liveCol : plotBg;
+      ctx.lineWidth = 1.35 * dpi;
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // 4b. Target SHR Precision Drafting Needle + Tactile Rim Grab Knob
     const tipX = cx + Math.cos(needleAng) * (R - 2.5 * dpi);
     const tipY = cy + Math.sin(needleAng) * (R - 2.5 * dpi);
+    const rimX = cx + Math.cos(needleAng) * R;
+    const rimY = cy + Math.sin(needleAng) * R;
     const tailX = cx + Math.cos(tailAng) * (R - 3.5 * dpi);
     const tailY = cy + Math.sin(tailAng) * (R - 3.5 * dpi);
 
@@ -2348,7 +2641,7 @@ export class OverlayRenderer {
 
     // Active SHR pointer shaft
     ctx.strokeStyle = shrCol;
-    ctx.lineWidth = 2.2 * dpi;
+    ctx.lineWidth = (isDialActive ? 2.6 : 2.2) * dpi;
     ctx.lineCap = 'round';
     ctx.beginPath();
     ctx.moveTo(cx, cy);
@@ -2356,7 +2649,24 @@ export class OverlayRenderer {
     ctx.stroke();
 
     // Sharp drafting arrowhead at SHR scale tip
-    _OVL.drawTaperedArrowhead(ctx, tipX, tipY, needleAng, 7.5 * dpi, shrCol, 1);
+    _OVL.drawTaperedArrowhead(ctx, tipX, tipY, needleAng, (isDialActive ? 8.2 : 7.5) * dpi, shrCol, 1);
+
+    // Tactile interactive grab ring right on the outer rim (expands gently when hovering/spinning dial)
+    if (!isExport) {
+      if (isDialActive) {
+        ctx.beginPath();
+        ctx.arc(rimX, rimY, 7.5 * dpi, 0, Math.PI * 2);
+        ctx.fillStyle = _OVL.withAlpha(shrCol, isDark ? 0.24 : 0.18);
+        ctx.fill();
+      }
+      ctx.beginPath();
+      ctx.arc(rimX, rimY, (isDialActive ? 4.4 : 2.7) * dpi, 0, Math.PI * 2);
+      ctx.fillStyle = plotBg;
+      ctx.fill();
+      ctx.strokeStyle = shrCol;
+      ctx.lineWidth = (isDialActive ? 2.0 : 1.4) * dpi;
+      ctx.stroke();
+    }
 
     // Precision hollow pivot hub
     ctx.beginPath();
@@ -2367,14 +2677,14 @@ export class OverlayRenderer {
     ctx.lineWidth = 1.6 * dpi;
     ctx.stroke();
 
-    // 5. Crisp Readout Footer directly beneath protractor (SHR + exact Δh/ΔW ratio)
+    // 5. Crisp Readout Footer directly beneath protractor (Target SHR + Δh/ΔW + Live Process Comparison)
     _OVL.drawBadgePill(
       ctx,
       `SHR ${shr.toFixed(2)}`,
       cx,
       pillY,
       shrCol,
-      _OVL.withAlpha(shrCol, 0.60),
+      _OVL.withAlpha(shrCol, isDialActive ? 0.90 : 0.60),
       _OVL.withAlpha(plotBg, 0.92),
       dpi,
       { fontPx: 9.2, padX: 8.5, padY: 2.8, radius: 4.5 }
@@ -2391,15 +2701,82 @@ export class OverlayRenderer {
       const fmtV = absV >= 1000 ? `${(dhdwDisp / 1000).toFixed(1)}k` : dhdwDisp.toFixed(0);
       dhdwStr = `Δh/ΔW ${fmtV} ${isSI ? 'kJ/kg' : 'Btu/lb'}`;
     }
-    _OVL.textHalo(ctx, dhdwStr, cx, pillY + 16 * dpi, mutedCol, pal, dpi, {
-      sizePx: 7.6,
+    _OVL.textHalo(ctx, dhdwStr, cx, pillY + 15.5 * dpi, mutedCol, pal, dpi, {
+      sizePx: 7.5,
       weight: '600',
       align: 'center',
       baseline: 'middle',
       font: _OVL.FONT_MONO
     });
 
+    // Live process / measure comparison line (or Saturation ADP readout when no process exists)
+    let line3Text = null;
+    let line3Color = liveCol;
+    if (liveVector && Number.isFinite(liveVector.shr)) {
+      const clampedDisp = Math.abs(liveVector.shr) > 9.99
+        ? (liveVector.shr > 0 ? '>9.9' : '<-9.9')
+        : liveVector.shr.toFixed(2);
+      const dShr = liveVector.shr - shr;
+      const deltaStr = Math.abs(dShr) <= 9.99
+        ? ` (${dShr >= 0 ? '+' : ''}${dShr.toFixed(2)})`
+        : '';
+      line3Text = `${liveVector.label}: ${clampedDisp}${deltaStr}`;
+      line3Color = liveCol;
+    } else if (satHit && Number.isFinite(satHit.T)) {
+      const satTDisp = isSI ? `${satHit.T.toFixed(1)}°C` : `${CoreDOM.cToF(satHit.T).toFixed(1)}°F`;
+      line3Text = `${shr > 0 && shr <= 1 ? 'ADP' : 'Sat'} ${satTDisp}`;
+      line3Color = shrCol;
+    } else if (satStatus === 'no-hit') {
+      line3Text = 'No Sat. Hit (Reheat)';
+      line3Color = shrCol;
+    }
+
+    if (line3Text) {
+      _OVL.textHalo(ctx, line3Text, cx, pillY + 27 * dpi, line3Color, pal, dpi, {
+        sizePx: 7.5,
+        weight: '700',
+        align: 'center',
+        baseline: 'middle',
+        font: _OVL.FONT_MONO
+      });
+    }
+
+    // Subtle micro-hint shown ONLY while actively hovering/rotating the dial (keeps default chart publication-clean)
+    if (isDialActive) {
+      const hintText = liveVector && Number.isFinite(liveVector.shr)
+        ? 'Drag ring · Dbl-click match'
+        : 'Drag ring · Shift = 0.05';
+      _OVL.textHalo(ctx, hintText, cx, pillY + (line3Text ? 38 : 27) * dpi, mutedCol, pal, dpi, {
+        sizePx: 6.8,
+        weight: '600',
+        align: 'center',
+        baseline: 'middle',
+        font: _OVL.FONT_SANS
+      });
+    }
+
     ctx.restore();
+
+    if (!isExport) {
+      this._shrGeom = {
+        cx,
+        cy,
+        R,
+        pxPerDegC,
+        pxPerKgKg,
+        cpm,
+        shr,
+        slope,
+        anchorPx: rpx,
+        anchorPy: rpy,
+        isPointAnchored,
+        refPt: refPt ? { T: refPt.T, w: refPt.w, id: refPt.id ?? null, label: refPt.label ?? null } : null,
+        lineSeg,
+        satHit,
+        satStatus,
+        liveVector
+      };
+    }
   }
 
   /* --------------------------------------------------------------------------

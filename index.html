@@ -4873,15 +4873,19 @@ input[type="checkbox"] {
             </select>
           </div>
           <div class="field">
-            <label for="shrVal" title="Target Sensible Heat Ratio slope (SHR = Qs / Qt)">SHR Value</label>
+            <label for="shrVal" title="Target Sensible Heat Ratio slope (SHR = Qs / Qt) — or drag the circular dial directly on the chart">SHR Value</label>
             <input id="shrVal" type="number" value="0.75" step="0.01" min="-2" max="2" />
           </div>
           <div class="field">
-            <label for="shrRefPt">Ref Point</label>
+            <label for="shrRefPt" title="Pin parallel SHR line to a state point, or drag the dashed line on the chart to slide freely">Ref Point</label>
             <select id="shrRefPt">
               <option value="">Center</option>
             </select>
           </div>
+        </div>
+        <div id="shrLiveBar" style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-top:6px;padding:4px 7px;border-radius:5px;border:1px solid var(--border);background:var(--panel2,rgba(128,128,128,0.06));font-size:10.5px;">
+          <span id="shrLiveReadout" style="font-family:var(--mono);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Drag dial on chart · ADP —</span>
+          <button type="button" id="btnShrMatch" class="btn xs auto" title="Turn on SHR Protractor and match slope &amp; anchor to the selected (or room) process">Match Proc</button>
         </div>
       </details>
     </div>
@@ -6089,7 +6093,7 @@ input[type="checkbox"] {
 <script>
 /* ============================================================================
    PsychroChart Ultra 3.0 — Compiled Single-File Bundle
-   Built: 2026-11-25T17:03:30.066Z
+   Built: 2026-11-25T17:33:42.735Z
    ============================================================================ */
 (() => {
 'use strict';
@@ -10123,10 +10127,115 @@ const HVAC = (() => {
     };
   }
 
+  /**
+   * Solve the exact intersection of an ASHRAE SHR reference slope line through
+   * `refPt = { T, w }` with the 100% RH saturation curve (Apparatus Dew Point /
+   * Coil Saturation Point), plus exact Δh/ΔW (kJ/kg_w) ratio.
+   */
+  function solveSHRSaturation(refPt, shrVal = 0.75, pPa = 101325) {
+    const shr = Number.isFinite(Number(shrVal)) ? clamp(Number(shrVal), -2, 2) : 0.75;
+    const validPt = refPt && Number.isFinite(refPt.T) && Number.isFinite(refPt.w);
+    const wRef = validPt ? Math.max(0, refPt.w) : 0.010;
+    const cpm = 1.006 + 1.86 * wRef;
+    const slope = Math.abs(shr) <= 1e-4
+      ? Infinity
+      : (Math.abs(shr - 1) <= 1e-6 ? 0 : ((1 - shr) / shr) * cpm / 2501);
+    const dhdw_kJkg = Math.abs(1 - shr) < 1e-4 ? Infinity : 2501 / (1 - shr);
+    const tZero = (validPt && Number.isFinite(slope) && slope > 1e-9)
+      ? (refPt.T - wRef / slope)
+      : null;
+
+    let satHit = null;
+    let satStatus = 'none';
+
+    if (validPt) {
+      const wsRef = Psy.wsat_at(refPt.T, pPa);
+      if (wRef >= wsRef - 1e-5) {
+        satHit = { T: refPt.T, w: wsRef };
+        satStatus = 'saturated';
+      } else if (!Number.isFinite(slope)) {
+        satHit = { T: refPt.T, w: wsRef };
+        satStatus = 'hit';
+      } else if (Math.abs(slope) <= 1e-9) {
+        const pv = Psy.pv_from_w(Math.max(1e-7, wRef), pPa);
+        const tDp = Psy.dewpoint_from_pv(pv);
+        if (Number.isFinite(tDp) && tDp >= -40 && tDp <= refPt.T + 1e-4) {
+          satHit = { T: tDp, w: wRef };
+          satStatus = 'hit';
+        }
+      } else if (slope > 0) {
+        // Cooling / Room SHR line (0 < SHR < 1): march downward in T from refPt.T toward w = 0
+        const tStop = Math.max(-35, tZero);
+        let prevT = refPt.T;
+        let bracket = null;
+        const stepT = 0.4;
+        for (let T = refPt.T - stepT; T >= tStop - 1e-6; T -= stepT) {
+          const Tc = Math.max(tStop, T);
+          const wL = wRef + slope * (Tc - refPt.T);
+          const ws = Psy.wsat_at(Tc, pPa);
+          if (wL >= ws) {
+            bracket = [Tc, prevT];
+            break;
+          }
+          prevT = Tc;
+          if (Tc <= tStop) break;
+        }
+        if (bracket) {
+          let lo = bracket[0];
+          let hi = bracket[1];
+          for (let it = 0; it < 28; it++) {
+            const mid = 0.5 * (lo + hi);
+            const wL = wRef + slope * (mid - refPt.T);
+            const ws = Psy.wsat_at(mid, pPa);
+            if (wL >= ws) lo = mid;
+            else hi = mid;
+          }
+          const Tsat = 0.5 * (lo + hi);
+          satHit = { T: Tsat, w: Psy.wsat_at(Tsat, pPa) };
+          satStatus = 'hit';
+        } else {
+          // Latent load too steep to intersect saturation curve without reheat or desiccant
+          satStatus = 'no-hit';
+        }
+      } else {
+        // Negative slope (evaporative cooling / desiccant / SHR < 0 or SHR > 1): guaranteed left intersection
+        let prevT = refPt.T;
+        let bracket = null;
+        const stepT = 0.5;
+        for (let T = refPt.T - stepT; T >= -35; T -= stepT) {
+          const wL = wRef + slope * (T - refPt.T);
+          const ws = Psy.wsat_at(T, pPa);
+          if (wL >= ws) {
+            bracket = [T, prevT];
+            break;
+          }
+          prevT = T;
+        }
+        if (bracket) {
+          let lo = bracket[0];
+          let hi = bracket[1];
+          for (let it = 0; it < 28; it++) {
+            const mid = 0.5 * (lo + hi);
+            const wL = wRef + slope * (mid - refPt.T);
+            const ws = Psy.wsat_at(mid, pPa);
+            if (wL >= ws) lo = mid;
+            else hi = mid;
+          }
+          const Tsat = 0.5 * (lo + hi);
+          satHit = { T: Tsat, w: Psy.wsat_at(Tsat, pPa) };
+          satStatus = 'hit';
+        }
+      }
+    }
+
+    return { shr, cpm, slope, dhdw_kJkg, satHit, satStatus, tZero };
+  }
+
   return {
     classifyProcess,
     calcProcessMetrics,
     calcADP,
+    solveSHRSaturation,
     calcMixing,
     calcERV,
     calcEvapCooler,
@@ -11941,6 +12050,7 @@ function createStore() {
     show: false,
     value: 0.75,
     refPointId: null,
+    anchorTw: null,
     protractorPos: null
   };
 
@@ -11998,6 +12108,8 @@ function createStore() {
       hovLabelId: null,
       dragPtId: null,
       dragSnapLabel: null,
+      hovShrPart: null,
+      dragShrPart: null,
       leftCollapsed: false,
       rightCollapsed: false
     }
@@ -13016,6 +13128,7 @@ function createStore() {
     state.ui.selectedPtId = state.points[0]?.id ?? null;
     state.ui.selectedProcId = state.processes[0]?.id ?? null;
     state.shr.refPointId = null;
+    state.shr.anchorTw = null;
 
     emit('overlay-dirty', { reason: 'load-cycle' });
     emit('change', { reason: 'load-cycle', label: historyLabel });
@@ -13031,6 +13144,7 @@ function createStore() {
     state.ui.selectedPtId = null;
     state.ui.selectedProcId = null;
     state.shr.refPointId = null;
+    state.shr.anchorTw = null;
 
     emit('overlay-dirty', { reason: 'clear-all' });
     emit('change', { reason: 'clear-all' });
@@ -13381,7 +13495,7 @@ function createStore() {
     autosave();
   }
 
-  function setSHR(patch = {}, recordHistory = false) {
+  function setSHR(patch = {}, recordHistory = false, opts = {}) {
     if (!patch || typeof patch !== 'object') return;
     if (recordHistory) {
       pushHistory('Update SHR');
@@ -13393,14 +13507,34 @@ function createStore() {
     }
     if ('refPointId' in patch) {
       state.shr.refPointId = patch.refPointId != null ? (getPoint(patch.refPointId)?.id ?? null) : null;
+      if (state.shr.refPointId != null && !('anchorTw' in patch)) {
+        state.shr.anchorTw = null;
+      }
+    }
+    if ('anchorTw' in patch) {
+      const a = patch.anchorTw;
+      if (a && Number.isFinite(Number(a.T)) && Number.isFinite(Number(a.w))) {
+        state.shr.anchorTw = { T: Number(a.T), w: Number(a.w) };
+        if (!('refPointId' in patch)) {
+          state.shr.refPointId = null;
+        }
+      } else {
+        state.shr.anchorTw = null;
+      }
     }
     if ('protractorPos' in patch) {
       state.shr.protractorPos = patch.protractorPos ? deepClone(patch.protractorPos) : null;
     }
 
     emit('overlay-dirty', { reason: 'shr' });
-    emit('change', { reason: 'shr' });
-    autosave();
+    if (opts?.silentChange) {
+      emit('shr-live', { shr: state.shr });
+    } else {
+      emit('change', { reason: 'shr' });
+    }
+    if (!opts?.skipAutosave) {
+      autosave();
+    }
   }
 
   function setGrid(patch = {}) {
@@ -14003,7 +14137,9 @@ function createStore() {
       ]);
     }
     if (state.shr.show) {
-      compact.shr = [1, CoreDOM.round(state.shr.value, 4), state.shr.refPointId];
+      compact.shr = state.shr.anchorTw
+        ? [1, CoreDOM.round(state.shr.value, 4), state.shr.refPointId, [CoreDOM.round(state.shr.anchorTw.T, 3), CoreDOM.round(state.shr.anchorTw.w, 6)]]
+        : [1, CoreDOM.round(state.shr.value, 4), state.shr.refPointId];
     }
     if (state.theme === 'custom') {
       compact.ct = state.customTheme;
@@ -14107,7 +14243,15 @@ function createStore() {
             }))
           : [],
         shr: Array.isArray(data.shr)
-          ? { show: Boolean(data.shr[0]), value: data.shr[1] ?? 0.75, refPointId: data.shr[2] ?? null, protractorPos: null }
+          ? {
+              show: Boolean(data.shr[0]),
+              value: data.shr[1] ?? 0.75,
+              refPointId: data.shr[2] ?? null,
+              anchorTw: Array.isArray(data.shr[3]) && data.shr[3].length >= 2
+                ? { T: Number(data.shr[3][0]), w: Number(data.shr[3][1]) }
+                : null,
+              protractorPos: null
+            }
           : { ...DEFAULT_SHR },
         ...(data.ax && typeof data.ax === 'object' ? { axisStyle: data.ax } : {}),
         ...(data.tr && typeof data.tr === 'object' ? { trendStyle: data.tr } : {}),
@@ -17963,6 +18107,7 @@ class OverlayRenderer {
     this._lastState = null;
     this._lastFrameTime = 0;
     this._resolvedLabels = new Map();
+    this._shrGeom = null;
 
     this._onVisibilityChange = () => {
       if (typeof document === 'undefined') return;
@@ -17982,6 +18127,10 @@ class OverlayRenderer {
 
   getResolvedLabelPos(ptId) {
     return this._resolvedLabels.get(ptId) || null;
+  }
+
+  getSHRGeometry() {
+    return this._shrGeom || null;
   }
 
   _shouldAnimate(state) {
@@ -18133,8 +18282,9 @@ class OverlayRenderer {
         occupiedRects.push(mRect);
       }
     }
-    if (state.shr && state.shr.show && plot.w >= 170 * dpi && plot.h >= 170 * dpi) {
-      occupiedRects.push([plot.x + 12 * dpi, plot.y + 12 * dpi, 114 * dpi, 128 * dpi]);
+    if (state.shr && state.shr.show && plot.w >= 210 * dpi && plot.h >= 200 * dpi) {
+      const rDial = CoreDOM.clamp(Math.min(plot.w * 0.108, plot.h * 0.112), 44 * dpi, 62 * dpi);
+      occupiedRects.push([plot.x + 8 * dpi, plot.y + 8 * dpi, 2 * rDial + 68 * dpi, 2 * rDial + 82 * dpi]);
     }
 
     ctx.save();
@@ -18193,7 +18343,9 @@ class OverlayRenderer {
 
     // 7. Interactive ASHRAE SHR Protractor & Reference Slope Line
     if (state.shr && state.shr.show) {
-      this._drawSHRReferenceAndProtractor(ctx, br, plot, state, pal, isDark, dpi, isExport);
+      this._drawSHRReferenceAndProtractor(ctx, br, plot, state, pal, isDark, dpi, isExport, occupiedRects);
+    } else if (!isExport) {
+      this._shrGeom = null;
     }
 
     // 8. State Points & Labels
@@ -19136,18 +19288,46 @@ class OverlayRenderer {
   /* --------------------------------------------------------------------------
      4. Interactive ASHRAE SHR Protractor & Reference Slope Line
      -------------------------------------------------------------------------- */
-  _drawSHRReferenceAndProtractor(ctx, br, plot, state, pal, isDark, dpi, isExport = false) {
+  _drawSHRReferenceAndProtractor(ctx, br, plot, state, pal, isDark, dpi, isExport = false, occupiedRects = null) {
     const rawShr = Number(state.shr?.value);
     const shr = Number.isFinite(rawShr) ? CoreDOM.clamp(rawShr, -2, 2) : 0.75;
     const pts = state.points || [];
+    const procs = state.processes || [];
+    const ui = state.ui || {};
     const pPa = state.pPa || 101325;
+    const isSI = state.units !== 'IP';
     const shrCol = pal.wb || '#f59e0b';
+    const plotBg = pal.plotBg || pal.bg || (isDark ? '#0b1220' : '#ffffff');
+    const isMonochrome = state.theme === 'print-bw';
+    const liveCol = isMonochrome
+      ? (isDark ? '#e2e8f0' : '#1e293b')
+      : (pal.accent || (isDark ? '#38bdf8' : '#0284c7'));
 
-    // Determine reference point: explicit refPtId -> chart plot center when null
+    const isDialActive = !isExport && (ui.hovShrPart === 'dial' || ui.dragShrPart === 'dial');
+    const isAnchorActive = !isExport && (
+      ui.hovShrPart === 'anchor' || ui.hovShrPart === 'line' || ui.dragShrPart === 'anchor'
+    );
+
+    // Precompute protractor geometry early so line/ADP labels never collide with the dial
+    const hasDial = plot.w >= 210 * dpi && plot.h >= 200 * dpi;
+    const R = CoreDOM.clamp(Math.min(plot.w * 0.108, plot.h * 0.112), 44 * dpi, 62 * dpi);
+    const R_in = R * 0.76;
+    const cx = plot.x + R + 34 * dpi;
+    const cy = plot.y + R + 28 * dpi;
+
+    // Resolve reference point: explicit refPointId -> custom dragged anchorTw -> chart plot center
     let refPt = null;
+    let isPointAnchored = false;
     const explicitId = state.shr?.refPtId ?? state.shr?.refPointId;
     if (explicitId != null && explicitId !== '') {
-      refPt = pts.find(p => p.id === explicitId || String(p.id) === String(explicitId)) || null;
+      const matched = pts.find(p => p.id === explicitId || String(p.id) === String(explicitId)) || null;
+      if (matched) {
+        refPt = matched;
+        isPointAnchored = true;
+      }
+    }
+    if (!refPt && state.shr?.anchorTw && Number.isFinite(state.shr.anchorTw.T) && Number.isFinite(state.shr.anchorTw.w)) {
+      refPt = { T: state.shr.anchorTw.T, w: state.shr.anchorTw.w, isCustomAnchor: true, label: 'Custom' };
     }
     if (!refPt) {
       const tMinV = state.view?.tMin ?? -10;
@@ -19155,13 +19335,84 @@ class OverlayRenderer {
       const wMaxV = state.view?.wMax ?? 0.030;
       const centerT = 0.5 * (tMinV + tMaxV);
       const centerW = Math.max(0.0005, Math.min(0.45 * wMaxV, Psy.wsat_at(centerT, pPa) * 0.72));
-      refPt = { T: centerT, w: centerW, isChartCenter: true };
+      refPt = { T: centerT, w: centerW, isChartCenter: true, label: 'Center' };
     }
 
-    const cpm = 1.006 + 1.86 * (refPt ? refPt.w : 0.010);
-    const slope = Math.abs(shr) <= 1e-4 ? Infinity : (Math.abs(shr - 1) <= 1e-6 ? 0 : ((1 - shr) / shr) * cpm / 2501);
+    // Solve exact slope, Δh/ΔW, and 100% RH Saturation / Coil ADP intersection
+    const solved = typeof HVAC?.solveSHRSaturation === 'function'
+      ? HVAC.solveSHRSaturation(refPt, shr, pPa)
+      : (() => {
+          const cpmF = 1.006 + 1.86 * (refPt ? refPt.w : 0.010);
+          const slF = Math.abs(shr) <= 1e-4 ? Infinity : (Math.abs(shr - 1) <= 1e-6 ? 0 : ((1 - shr) / shr) * cpmF / 2501);
+          return { shr, cpm: cpmF, slope: slF, dhdw_kJkg: Math.abs(1 - shr) < 1e-4 ? Infinity : 2501 / (1 - shr), satHit: null, satStatus: 'none', tZero: null };
+        })();
+    const { cpm, slope, satHit, satStatus, tZero } = solved;
 
-    // 4a. Dashed SHR Reference Slope Line through refPt
+    // Resolve live dynamic vector for secondary moving indicator needle:
+    // Priority: Measure caliper -> Process of dragged point -> Hovered process -> Selected process -> Room / primary process
+    const buildVectorFromPair = (a, b, label, kind, procId = null, anchorPtId = null) => {
+      if (!a || !b || !Number.isFinite(a.T) || !Number.isFinite(b.T)) return null;
+      const dT = b.T - a.T;
+      const dW = b.w - a.w;
+      if (Math.hypot(dT, dW * 1000) < 0.06) return null;
+      const dh = Psy.h_kJkg(b.T, b.w) - Psy.h_kJkg(a.T, a.w);
+      const dhSens = Psy.h_kJkg(b.T, a.w) - Psy.h_kJkg(a.T, a.w);
+      const liveShr = Math.abs(dh) > 1e-4 ? (dhSens / dh) : (Math.abs(dT) > 1e-4 ? 1.0 : NaN);
+      const liveSlope = Math.abs(dT) > 1e-6 ? (dW / dT) : Infinity;
+      return {
+        shr: liveShr,
+        slope: liveSlope,
+        label,
+        kind,
+        procId,
+        anchorPtId
+      };
+    };
+
+    const resolveProcVector = (proc) => {
+      if (!proc) return null;
+      const idx = procs.indexOf(proc);
+      const ep = _OVL.resolveProcEndpoints(proc, pts);
+      if (!ep) return null;
+      const tag = proc.tag || `S${idx >= 0 ? idx + 1 : 1}`;
+      const higherTPt = ep.b.T >= ep.a.T ? ep.b : ep.a;
+      return buildVectorFromPair(ep.a, ep.b, tag, 'process', proc.id, higherTPt.id ?? null);
+    };
+
+    let liveVector = null;
+    if (!isExport && ui.measureStart && ui.measureEnd) {
+      liveVector = buildVectorFromPair(ui.measureStart, ui.measureEnd, 'Measure', 'measure', null, null);
+    }
+    if (!liveVector && !isExport && ui.dragPtId != null && procs.length > 0) {
+      const touches = (p) => {
+        const ep = _OVL.resolveProcEndpoints(p, pts);
+        return ep && (ep.a.id === ui.dragPtId || ep.b.id === ui.dragPtId);
+      };
+      const selMatch = ui.selectedProcId != null ? procs.find(p => p.id === ui.selectedProcId && touches(p)) : null;
+      const nonMixMatch = procs.find(p => p.role !== 'mix' && touches(p));
+      const anyMatch = procs.find(touches);
+      liveVector = resolveProcVector(selMatch || nonMixMatch || anyMatch);
+    }
+    if (!liveVector && !isExport && ui.hovProcId != null && procs.length > 0) {
+      const hp = procs.find(p => p.id === ui.hovProcId);
+      liveVector = resolveProcVector(hp);
+    }
+    if (!liveVector && ui.selectedProcId != null && procs.length > 0) {
+      const sp = procs.find(p => p.id === ui.selectedProcId);
+      liveVector = resolveProcVector(sp);
+    }
+    if (!liveVector && procs.length > 0) {
+      const fallbackProc = procs.find(p => p.role === 'room')
+        || procs.find(p => p.role !== 'mix')
+        || procs[0];
+      liveVector = resolveProcVector(fallbackProc);
+    }
+
+    // 4a. Dashed SHR Reference Slope Line through refPt + Anchor Handle + Exact Saturation / ADP Marker
+    let rpx = NaN;
+    let rpy = NaN;
+    let lineSeg = null;
+
     if (refPt && Number.isFinite(refPt.T) && Number.isFinite(refPt.w)) {
       const tMin = (state.view?.tMin ?? -10) - 5;
       const tMax = (state.view?.tMax ?? 55) + 5;
@@ -19169,10 +19420,13 @@ class OverlayRenderer {
 
       ctx.save();
       ctx.strokeStyle = shrCol;
-      ctx.lineWidth = 1.6 * dpi;
+      ctx.lineWidth = (isAnchorActive || isDialActive ? 2.15 : 1.65) * dpi;
       ctx.setLineDash([7 * dpi, 4.5 * dpi]);
-      ctx.globalAlpha = 0.82;
+      ctx.globalAlpha = (isAnchorActive || isDialActive) ? 0.96 : 0.84;
       ctx.beginPath();
+
+      let segFirst = null;
+      let segLast = null;
 
       if (!Number.isFinite(slope)) {
         // Vertical (SHR = 0)
@@ -19182,6 +19436,8 @@ class OverlayRenderer {
         const yTop = br.yc(Math.min(ws, wMax));
         ctx.moveTo(px, yBot);
         ctx.lineTo(px, yTop);
+        segFirst = { x: px, y: yBot };
+        segLast = { x: px, y: yTop };
       } else {
         let started = false;
         const step = Math.max(0.15, (tMax - tMin) / 260);
@@ -19201,42 +19457,173 @@ class OverlayRenderer {
           if (!started) {
             ctx.moveTo(px, py);
             started = true;
+            if (!segFirst) segFirst = { x: px, y: py };
           } else {
             ctx.lineTo(px, py);
           }
+          segLast = { x: px, y: py };
         }
       }
       ctx.stroke();
 
-      // Subtle anchor marker when anchored to chart center
-      const rpx = br.xc(refPt.T);
-      const rpy = br.yc(refPt.w);
-      if (refPt.isChartCenter) {
-        ctx.setLineDash([]);
+      if (segFirst && segLast) {
+        lineSeg = { x1: segFirst.x, y1: segFirst.y, x2: segLast.x, y2: segLast.y };
+      }
+
+      // Anchor marker / draggable parallel-ruler handle at refPt
+      rpx = br.xc(refPt.T);
+      rpy = br.yc(refPt.w);
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
+
+      if (isPointAnchored) {
+        // Sleek dashed ring around the pinned state point (never obscures point core)
+        ctx.save();
+        ctx.strokeStyle = shrCol;
+        ctx.lineWidth = (isAnchorActive ? 1.8 : 1.35) * dpi;
+        ctx.setLineDash([3 * dpi, 2.5 * dpi]);
         ctx.beginPath();
-        ctx.arc(rpx, rpy, 4 * dpi, 0, Math.PI * 2);
-        ctx.fillStyle = pal.plotBg || pal.bg;
-        ctx.fill();
-        ctx.lineWidth = 1.5 * dpi;
+        ctx.arc(rpx, rpy, (isAnchorActive ? 12.5 : 10.5) * dpi, 0, Math.PI * 2);
         ctx.stroke();
+        ctx.restore();
+      } else {
+        // Tactile circular grab handle on free / center-anchored parallel line
+        if (isAnchorActive) {
+          ctx.beginPath();
+          ctx.arc(rpx, rpy, 10.5 * dpi, 0, Math.PI * 2);
+          ctx.fillStyle = _OVL.withAlpha(shrCol, isDark ? 0.22 : 0.16);
+          ctx.fill();
+        }
+        ctx.beginPath();
+        ctx.arc(rpx, rpy, (isAnchorActive ? 6.2 : 4.8) * dpi, 0, Math.PI * 2);
+        ctx.fillStyle = plotBg;
+        ctx.fill();
+        ctx.strokeStyle = shrCol;
+        ctx.lineWidth = (isAnchorActive ? 2.1 : 1.6) * dpi;
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(rpx, rpy, 1.7 * dpi, 0, Math.PI * 2);
+        ctx.fillStyle = shrCol;
+        ctx.fill();
+      }
+
+      // Exact Saturation / Coil ADP Intersection Marker on 100% RH curve
+      if (satHit && Number.isFinite(satHit.T) && Number.isFinite(satHit.w)) {
+        const satPx = br.xc(satHit.T);
+        const satPy = br.yc(satHit.w);
+        const satInPlot = (
+          satPx >= plot.x + 2 * dpi &&
+          satPx <= plot.right - 2 * dpi &&
+          satPy >= plot.y + 2 * dpi &&
+          satPy <= plot.bottom - 2 * dpi
+        );
+        if (satInPlot) {
+          const dr = 5.2 * dpi;
+          ctx.beginPath();
+          ctx.moveTo(satPx, satPy - dr);
+          ctx.lineTo(satPx + dr, satPy);
+          ctx.lineTo(satPx, satPy + dr);
+          ctx.lineTo(satPx - dr, satPy);
+          ctx.closePath();
+          ctx.fillStyle = plotBg;
+          ctx.fill();
+          ctx.strokeStyle = shrCol;
+          ctx.lineWidth = 1.8 * dpi;
+          ctx.stroke();
+
+          ctx.beginPath();
+          ctx.arc(satPx, satPy, 1.6 * dpi, 0, Math.PI * 2);
+          ctx.fillStyle = shrCol;
+          ctx.fill();
+
+          const satTDisp = isSI
+            ? `${satHit.T.toFixed(1)}°C`
+            : `${CoreDOM.cToF(satHit.T).toFixed(1)}°F`;
+          const satTag = (shr > 0 && shr <= 1) ? `ADP ${satTDisp}` : `Sat ${satTDisp}`;
+
+          ctx.font = `700 ${8.6 * dpi}px ${_OVL.FONT_MONO}`;
+          const stw = ctx.measureText(satTag).width + 6 * dpi;
+          const sth = 12.5 * dpi;
+          const satCands = [
+            [satPx - stw - 8 * dpi, satPy - sth - 5 * dpi, stw, sth],
+            [satPx + 9 * dpi, satPy + 8 * dpi, stw, sth],
+            [satPx + 9 * dpi, satPy - sth - 6 * dpi, stw, sth],
+            [satPx - stw - 8 * dpi, satPy + 8 * dpi, stw, sth],
+            [satPx - stw * 0.5, satPy - sth - 14 * dpi, stw, sth],
+            [satPx - stw * 0.5, satPy + 16 * dpi, stw, sth]
+          ];
+          const placedSat = occupiedRects
+            ? this._placeNonCollidingRect(satCands, plot, occupiedRects, 3 * dpi)
+            : satCands[1];
+          const sLblX = placedSat ? placedSat[0] + 3 * dpi : satPx + 9 * dpi;
+          const sLblY = placedSat ? placedSat[1] + placedSat[3] * 0.5 : satPy + 12 * dpi;
+          _OVL.textHalo(ctx, satTag, sLblX, sLblY, shrCol, pal, dpi, {
+            sizePx: 8.6,
+            weight: '700',
+            align: 'left',
+            baseline: 'middle',
+            font: _OVL.FONT_MONO
+          });
+        }
+      } else if (satStatus === 'no-hit' && Number.isFinite(tZero)) {
+        const zPx = br.xc(tZero);
+        const zPy = br.yc(0);
+        if (zPx >= plot.x + 12 * dpi && zPx <= plot.right - 12 * dpi) {
+          const cr = 3.8 * dpi;
+          ctx.strokeStyle = shrCol;
+          ctx.lineWidth = 1.6 * dpi;
+          ctx.beginPath();
+          ctx.moveTo(zPx - cr, zPy - cr);
+          ctx.lineTo(zPx + cr, zPy + cr);
+          ctx.moveTo(zPx + cr, zPy - cr);
+          ctx.lineTo(zPx - cr, zPy + cr);
+          ctx.stroke();
+
+          const noHitX = CoreDOM.clamp(zPx + 6 * dpi, plot.x + 8 * dpi, plot.right - 126 * dpi);
+          _OVL.textHalo(ctx, 'No Sat. Hit (Reheat)', noHitX, zPy - 12 * dpi, shrCol, pal, dpi, {
+            sizePx: 8.2,
+            weight: '700',
+            align: 'left',
+            font: _OVL.FONT_MONO
+          });
+        }
       }
       ctx.restore();
 
-      // Inline SHR label offset nicely from refPt and clamped inside plot
-      const lblX = CoreDOM.clamp(rpx + 18 * dpi, plot.x + 8 * dpi, Math.max(plot.x + 8 * dpi, plot.right - 78 * dpi));
-      const lblY = CoreDOM.clamp(rpy - 12 * dpi, plot.y + 18 * dpi, plot.bottom - 8 * dpi);
-      _OVL.textHalo(ctx, `SHR = ${shr.toFixed(2)}`, lblX, lblY, shrCol, pal, dpi, {
+      // Inline SHR label placed cleanly near refPt via 2D collision solver (avoids point/process labels & protractor)
+      const shrTag = `SHR = ${shr.toFixed(2)}`;
+      ctx.font = `600 ${9.5 * dpi}px ${_OVL.FONT_SANS}`;
+      const ltw = ctx.measureText(shrTag).width + 6 * dpi;
+      const lth = 13 * dpi;
+      const shrCands = [
+        [rpx + 16 * dpi, rpy - lth - 8 * dpi, ltw, lth],
+        [rpx + 16 * dpi, rpy + 10 * dpi, ltw, lth],
+        [rpx - ltw - 14 * dpi, rpy - lth - 8 * dpi, ltw, lth],
+        [rpx - ltw - 14 * dpi, rpy + 10 * dpi, ltw, lth],
+        [rpx + 32 * dpi, rpy - lth * 0.5, ltw, lth]
+      ];
+      const placedLbl = occupiedRects
+        ? this._placeNonCollidingRect(shrCands, plot, occupiedRects, 3 * dpi)
+        : shrCands[0];
+      const lblX = placedLbl ? placedLbl[0] + 3 * dpi : CoreDOM.clamp(rpx + 18 * dpi, plot.x + 8 * dpi, plot.right - 78 * dpi);
+      const lblY = placedLbl ? placedLbl[1] + placedLbl[3] * 0.5 : CoreDOM.clamp(rpy - 12 * dpi, plot.y + 18 * dpi, plot.bottom - 8 * dpi);
+      _OVL.textHalo(ctx, shrTag, lblX, lblY, shrCol, pal, dpi, {
         sizePx: 9.5,
-        weight: '600'
+        weight: '600',
+        align: 'left',
+        baseline: 'middle'
       });
     }
 
     // 4b. Authentic ASHRAE Chart No. 1 Dual-Scale Circular Protractor (engraved directly on chart paper)
-    if (plot.w < 210 * dpi || plot.h < 200 * dpi) return;
+    if (!hasDial) {
+      if (!isExport) this._shrGeom = null;
+      return;
+    }
 
     const pxPerDegC = Math.abs(br.xc(21) - br.xc(20)) || 10 * dpi;
     const pxPerKgKg = Math.abs(br.yc(0) - br.yc(0.01)) / 0.01 || 15000 * dpi;
-    const isSI = state.units !== 'IP';
 
     // Exact chart-scaled inclination angle alpha in (-PI/2, PI/2] for any finite/infinite slope dw/dT
     // Positive slope (up-right on chart) => positive alpha => canvas angle = -alpha (upper-right quadrant)
@@ -19259,13 +19646,6 @@ class OverlayRenderer {
       return slopeToAlpha(cpm / denom);
     };
 
-    // Scale protractor radius smoothly to upper-left open chart space (never collides with saturation/enthalpy rail)
-    const R = CoreDOM.clamp(Math.min(plot.w * 0.108, plot.h * 0.112), 44 * dpi, 62 * dpi);
-    const R_in = R * 0.76;
-    const cx = plot.x + R + 34 * dpi;
-    const cy = plot.y + R + 28 * dpi;
-
-    const plotBg = pal.plotBg || pal.bg || (isDark ? '#0b1220' : '#ffffff');
     const ringCol = isDark ? 'rgba(148,163,184,0.36)' : 'rgba(51,65,85,0.34)';
     const ringSubCol = isDark ? 'rgba(148,163,184,0.22)' : 'rgba(71,85,105,0.20)';
     const tickCol = isDark ? 'rgba(226,232,240,0.86)' : 'rgba(30,41,59,0.84)';
@@ -19277,6 +19657,15 @@ class OverlayRenderer {
     const tailAng = needleAng + Math.PI; // Opposite left semicircle ray pointing to matching Δh/ΔW
 
     ctx.save();
+
+    // Subtle interactive outer ring glow when hovering or rotating the protractor dial
+    if (isDialActive) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, R + 3 * dpi, 0, Math.PI * 2);
+      ctx.strokeStyle = _OVL.withAlpha(shrCol, isDark ? 0.34 : 0.26);
+      ctx.lineWidth = 4.0 * dpi;
+      ctx.stroke();
+    }
 
     // Subtle circular paper-integrated wash inside outer ring (no clunky rectangular box!)
     ctx.beginPath();
@@ -19290,15 +19679,15 @@ class OverlayRenderer {
       ctx.moveTo(cx, cy);
       ctx.arc(cx, cy, R, needleAng, 0, curAlpha < 0);
       ctx.closePath();
-      ctx.fillStyle = _OVL.withAlpha(shrCol, isDark ? 0.14 : 0.10);
+      ctx.fillStyle = _OVL.withAlpha(shrCol, isDark ? (isDialActive ? 0.20 : 0.14) : (isDialActive ? 0.15 : 0.10));
       ctx.fill();
     }
 
     // Concentric precision drafting rings
     ctx.beginPath();
     ctx.arc(cx, cy, R, 0, Math.PI * 2);
-    ctx.strokeStyle = ringCol;
-    ctx.lineWidth = 1.25 * dpi;
+    ctx.strokeStyle = isDialActive ? _OVL.withAlpha(shrCol, 0.75) : ringCol;
+    ctx.lineWidth = (isDialActive ? 1.55 : 1.25) * dpi;
     ctx.stroke();
 
     ctx.beginPath();
@@ -19513,9 +19902,57 @@ class OverlayRenderer {
       tryPlaceDialLabel(sp.lbl, ang, _OVL.withAlpha(enthCol, 0.88), false);
     }
 
-    // 4. Precision Drafting Needle through Center Reticle
+    // 4a. Live Dynamic Secondary Indicator Needle (tracks active Measure caliper / dragged point / hovered or selected process!)
+    if (liveVector && Number.isFinite(liveVector.shr)) {
+      const liveAlpha = slopeToAlpha(liveVector.slope);
+      const liveAng = -liveAlpha;
+      const liveTailAng = liveAng + Math.PI;
+      const lTipX = cx + Math.cos(liveAng) * R;
+      const lTipY = cy + Math.sin(liveAng) * R;
+      const lTailX = cx + Math.cos(liveTailAng) * (R * 0.72);
+      const lTailY = cy + Math.sin(liveTailAng) * (R * 0.72);
+
+      ctx.save();
+      // Subtle opposite tail
+      ctx.strokeStyle = _OVL.withAlpha(liveCol, 0.32);
+      ctx.lineWidth = 1.05 * dpi;
+      ctx.setLineDash([3 * dpi, 2.5 * dpi]);
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(lTailX, lTailY);
+      ctx.stroke();
+
+      // Primary live tracking needle
+      ctx.strokeStyle = _OVL.withAlpha(liveCol, 0.92);
+      ctx.lineWidth = 1.65 * dpi;
+      ctx.setLineDash([4.5 * dpi, 2.5 * dpi]);
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(lTipX, lTipY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Soft glowing indicator beacon on outer ring
+      ctx.beginPath();
+      ctx.arc(lTipX, lTipY, 6.0 * dpi, 0, Math.PI * 2);
+      ctx.fillStyle = _OVL.withAlpha(liveCol, isDark ? 0.28 : 0.20);
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(lTipX, lTipY, 3.3 * dpi, 0, Math.PI * 2);
+      ctx.fillStyle = isMonochrome ? plotBg : liveCol;
+      ctx.fill();
+      ctx.strokeStyle = isMonochrome ? liveCol : plotBg;
+      ctx.lineWidth = 1.35 * dpi;
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // 4b. Target SHR Precision Drafting Needle + Tactile Rim Grab Knob
     const tipX = cx + Math.cos(needleAng) * (R - 2.5 * dpi);
     const tipY = cy + Math.sin(needleAng) * (R - 2.5 * dpi);
+    const rimX = cx + Math.cos(needleAng) * R;
+    const rimY = cy + Math.sin(needleAng) * R;
     const tailX = cx + Math.cos(tailAng) * (R - 3.5 * dpi);
     const tailY = cy + Math.sin(tailAng) * (R - 3.5 * dpi);
 
@@ -19529,7 +19966,7 @@ class OverlayRenderer {
 
     // Active SHR pointer shaft
     ctx.strokeStyle = shrCol;
-    ctx.lineWidth = 2.2 * dpi;
+    ctx.lineWidth = (isDialActive ? 2.6 : 2.2) * dpi;
     ctx.lineCap = 'round';
     ctx.beginPath();
     ctx.moveTo(cx, cy);
@@ -19537,7 +19974,24 @@ class OverlayRenderer {
     ctx.stroke();
 
     // Sharp drafting arrowhead at SHR scale tip
-    _OVL.drawTaperedArrowhead(ctx, tipX, tipY, needleAng, 7.5 * dpi, shrCol, 1);
+    _OVL.drawTaperedArrowhead(ctx, tipX, tipY, needleAng, (isDialActive ? 8.2 : 7.5) * dpi, shrCol, 1);
+
+    // Tactile interactive grab ring right on the outer rim (expands gently when hovering/spinning dial)
+    if (!isExport) {
+      if (isDialActive) {
+        ctx.beginPath();
+        ctx.arc(rimX, rimY, 7.5 * dpi, 0, Math.PI * 2);
+        ctx.fillStyle = _OVL.withAlpha(shrCol, isDark ? 0.24 : 0.18);
+        ctx.fill();
+      }
+      ctx.beginPath();
+      ctx.arc(rimX, rimY, (isDialActive ? 4.4 : 2.7) * dpi, 0, Math.PI * 2);
+      ctx.fillStyle = plotBg;
+      ctx.fill();
+      ctx.strokeStyle = shrCol;
+      ctx.lineWidth = (isDialActive ? 2.0 : 1.4) * dpi;
+      ctx.stroke();
+    }
 
     // Precision hollow pivot hub
     ctx.beginPath();
@@ -19548,14 +20002,14 @@ class OverlayRenderer {
     ctx.lineWidth = 1.6 * dpi;
     ctx.stroke();
 
-    // 5. Crisp Readout Footer directly beneath protractor (SHR + exact Δh/ΔW ratio)
+    // 5. Crisp Readout Footer directly beneath protractor (Target SHR + Δh/ΔW + Live Process Comparison)
     _OVL.drawBadgePill(
       ctx,
       `SHR ${shr.toFixed(2)}`,
       cx,
       pillY,
       shrCol,
-      _OVL.withAlpha(shrCol, 0.60),
+      _OVL.withAlpha(shrCol, isDialActive ? 0.90 : 0.60),
       _OVL.withAlpha(plotBg, 0.92),
       dpi,
       { fontPx: 9.2, padX: 8.5, padY: 2.8, radius: 4.5 }
@@ -19572,15 +20026,82 @@ class OverlayRenderer {
       const fmtV = absV >= 1000 ? `${(dhdwDisp / 1000).toFixed(1)}k` : dhdwDisp.toFixed(0);
       dhdwStr = `Δh/ΔW ${fmtV} ${isSI ? 'kJ/kg' : 'Btu/lb'}`;
     }
-    _OVL.textHalo(ctx, dhdwStr, cx, pillY + 16 * dpi, mutedCol, pal, dpi, {
-      sizePx: 7.6,
+    _OVL.textHalo(ctx, dhdwStr, cx, pillY + 15.5 * dpi, mutedCol, pal, dpi, {
+      sizePx: 7.5,
       weight: '600',
       align: 'center',
       baseline: 'middle',
       font: _OVL.FONT_MONO
     });
 
+    // Live process / measure comparison line (or Saturation ADP readout when no process exists)
+    let line3Text = null;
+    let line3Color = liveCol;
+    if (liveVector && Number.isFinite(liveVector.shr)) {
+      const clampedDisp = Math.abs(liveVector.shr) > 9.99
+        ? (liveVector.shr > 0 ? '>9.9' : '<-9.9')
+        : liveVector.shr.toFixed(2);
+      const dShr = liveVector.shr - shr;
+      const deltaStr = Math.abs(dShr) <= 9.99
+        ? ` (${dShr >= 0 ? '+' : ''}${dShr.toFixed(2)})`
+        : '';
+      line3Text = `${liveVector.label}: ${clampedDisp}${deltaStr}`;
+      line3Color = liveCol;
+    } else if (satHit && Number.isFinite(satHit.T)) {
+      const satTDisp = isSI ? `${satHit.T.toFixed(1)}°C` : `${CoreDOM.cToF(satHit.T).toFixed(1)}°F`;
+      line3Text = `${shr > 0 && shr <= 1 ? 'ADP' : 'Sat'} ${satTDisp}`;
+      line3Color = shrCol;
+    } else if (satStatus === 'no-hit') {
+      line3Text = 'No Sat. Hit (Reheat)';
+      line3Color = shrCol;
+    }
+
+    if (line3Text) {
+      _OVL.textHalo(ctx, line3Text, cx, pillY + 27 * dpi, line3Color, pal, dpi, {
+        sizePx: 7.5,
+        weight: '700',
+        align: 'center',
+        baseline: 'middle',
+        font: _OVL.FONT_MONO
+      });
+    }
+
+    // Subtle micro-hint shown ONLY while actively hovering/rotating the dial (keeps default chart publication-clean)
+    if (isDialActive) {
+      const hintText = liveVector && Number.isFinite(liveVector.shr)
+        ? 'Drag ring · Dbl-click match'
+        : 'Drag ring · Shift = 0.05';
+      _OVL.textHalo(ctx, hintText, cx, pillY + (line3Text ? 38 : 27) * dpi, mutedCol, pal, dpi, {
+        sizePx: 6.8,
+        weight: '600',
+        align: 'center',
+        baseline: 'middle',
+        font: _OVL.FONT_SANS
+      });
+    }
+
     ctx.restore();
+
+    if (!isExport) {
+      this._shrGeom = {
+        cx,
+        cy,
+        R,
+        pxPerDegC,
+        pxPerKgKg,
+        cpm,
+        shr,
+        slope,
+        anchorPx: rpx,
+        anchorPy: rpy,
+        isPointAnchored,
+        refPt: refPt ? { T: refPt.T, w: refPt.w, id: refPt.id ?? null, label: refPt.label ?? null } : null,
+        lineSeg,
+        satHit,
+        satStatus,
+        liveVector
+      };
+    }
   }
 
   /* --------------------------------------------------------------------------
@@ -25042,6 +25563,72 @@ function initChartInteraction(store, baseRenderer, overlayRenderer, callbacks = 
     return null;
   }
 
+  function pickSHRAtPx(px, py) {
+    const st = getState();
+    if (!st?.shr?.show) return null;
+    const geom = overlayRenderer?.getSHRGeometry?.();
+    if (!geom) return null;
+    const dpi = getDpi();
+
+    // 1. Circular Protractor Dial (center, ring & outer scale)
+    if (Math.hypot(px - geom.cx, py - geom.cy) <= geom.R + 18 * dpi) {
+      return 'dial';
+    }
+
+    // 2. Free / center-anchored Reference Line grab handle
+    if (!geom.isPointAnchored && Number.isFinite(geom.anchorPx) && Number.isFinite(geom.anchorPy)) {
+      if (Math.hypot(px - geom.anchorPx, py - geom.anchorPy) <= 13 * dpi) {
+        return 'anchor';
+      }
+    }
+
+    // 3. Dashed SHR Reference Slope Line segment (slideable parallel ruler)
+    if (geom.lineSeg) {
+      const { x1, y1, x2, y2 } = geom.lineSeg;
+      const dx = x2 - x1;
+      const dy = y2 - y1;
+      const lenSq = dx * dx + dy * dy;
+      if (lenSq > 4) {
+        const t = clamp(((px - x1) * dx + (py - y1) * dy) / lenSq, 0, 1);
+        const nx = x1 + t * dx;
+        const ny = y1 + t * dy;
+        if (Math.hypot(px - nx, py - ny) <= 9 * dpi) {
+          return 'line';
+        }
+      }
+    }
+    return null;
+  }
+
+  function computeShrFromDialPx(px, py, geom, shiftKey = false) {
+    if (!geom) return getState().shr?.value ?? 0.75;
+    const dx = px - geom.cx;
+    const dy = py - geom.cy;
+    if (Math.hypot(dx, dy) < 4) {
+      return geom.shr ?? (getState().shr?.value ?? 0.75);
+    }
+    // Map pulls on either semicircle (SHR right or Δh/ΔW left) to canonical right-going slope ray
+    const runPx = dx >= 0 ? dx : -dx;
+    const risePx = dx >= 0 ? -dy : dy;
+    let rawShr;
+    if (runPx < 1e-3) {
+      rawShr = 0.0;
+    } else {
+      const slope = (risePx / Math.max(1e-6, geom.pxPerKgKg)) / (runPx / Math.max(1e-6, geom.pxPerDegC));
+      const cpm = geom.cpm || 1.02;
+      const denom = cpm + 2501 * slope;
+      if (Math.abs(denom) < 1e-4) {
+        rawShr = denom >= 0 ? 2.0 : -2.0;
+      } else {
+        rawShr = cpm / denom;
+      }
+    }
+    const clamped = clamp(rawShr, -2.0, 2.0);
+    const step = shiftKey ? 0.05 : 0.01;
+    const snapped = Math.round(clamped / step) * step;
+    return Math.abs(snapped) < 1e-9 ? 0 : Number(snapped.toFixed(2));
+  }
+
   // --------------------------------------------------------------------------
   // Psychrometric State, HUD & 10-Property Clipboard Formatter (SI & True IP)
   // --------------------------------------------------------------------------
@@ -25142,6 +25729,65 @@ function initChartInteraction(store, baseRenderer, overlayRenderer, callbacks = 
     ];
     if (procName) {
       items.push(`<span class="hud-item"><span class="hud-val" style="color:var(--accent)">${esc(procName)}</span></span>`);
+    }
+
+    hudEl.innerHTML = items.join('<span class="hud-sep"></span>');
+    hudEl.classList.remove('hidden');
+  }
+
+  function resolveCurrentShrRefPt() {
+    const st = getState();
+    const shr = st?.shr || {};
+    const explicitId = shr.refPtId ?? shr.refPointId;
+    if (explicitId != null && explicitId !== '') {
+      const pt = getPoint(explicitId);
+      if (pt) return { T: pt.T, w: pt.w, label: pt.label || 'Point' };
+    }
+    if (shr.anchorTw && Number.isFinite(shr.anchorTw.T) && Number.isFinite(shr.anchorTw.w)) {
+      return { T: shr.anchorTw.T, w: shr.anchorTw.w, label: 'Custom' };
+    }
+    const v = getView();
+    const pPa = getPressurePa();
+    const centerT = 0.5 * (v.tMin + v.tMax);
+    const centerW = Math.max(0.0005, Math.min(0.45 * v.wMax, Psy.wsat_at(centerT, pPa) * 0.72));
+    return { T: centerT, w: centerW, label: 'Center' };
+  }
+
+  function updateHudShr(shrVal, snapPtLabel = null) {
+    if (!hudEl) return;
+    const isSI = getUnits() === 'SI';
+    const refPt = resolveCurrentShrRefPt();
+    const solved = typeof HVAC?.solveSHRSaturation === 'function'
+      ? HVAC.solveSHRSaturation(refPt, shrVal, getPressurePa())
+      : null;
+
+    let dhdwStr;
+    if (Math.abs(1 - shrVal) < 1e-4) {
+      dhdwStr = '∞ (Sensible)';
+    } else {
+      const si = 2501 / (1 - shrVal);
+      const disp = isSI ? si : si / 2.326;
+      const fmt = Math.abs(disp) >= 1000 ? `${(disp / 1000).toFixed(1)}k` : disp.toFixed(0);
+      dhdwStr = `${fmt} ${isSI ? 'kJ/kg' : 'Btu/lb'}`;
+    }
+
+    let satStr = '—';
+    if (solved?.satHit && Number.isFinite(solved.satHit.T)) {
+      satStr = isSI ? `${solved.satHit.T.toFixed(1)}°C` : `${cToF(solved.satHit.T).toFixed(1)}°F`;
+    } else if (solved?.satStatus === 'no-hit') {
+      satStr = 'No Hit (Reheat Req.)';
+    }
+
+    const items = [
+      `<span class="hud-item"><span class="hud-val" style="color:var(--warn)">SHR DIAL</span></span>`,
+      hudItem('SHR', Number(shrVal).toFixed(2)),
+      hudItem('Δh/ΔW', dhdwStr),
+      hudItem(shrVal > 0 && shrVal <= 1 ? 'Sat / ADP' : 'Sat Hit', satStr)
+    ];
+    if (snapPtLabel) {
+      items.push(`<span class="hud-item"><span class="hud-val" style="color:var(--accent)">Anchor → ${esc(snapPtLabel)}</span></span>`);
+    } else if (refPt?.label) {
+      items.push(hudItem('Anchor', refPt.label));
     }
 
     hudEl.innerHTML = items.join('<span class="hud-sep"></span>');
@@ -25872,11 +26518,11 @@ function initChartInteraction(store, baseRenderer, overlayRenderer, callbacks = 
     const ui = getUI();
     const m = ui.activeTool || 'select';
 
-    if (dragKind === 'pan' || dragKind === 'point') {
+    if (dragKind === 'pan' || dragKind === 'point' || dragKind === 'shr-dial') {
       setWrapCursorClass('cursor-grabbing');
       return;
     }
-    if (dragKind === 'label' || dragKind === 'annotation') {
+    if (dragKind === 'label' || dragKind === 'annotation' || dragKind === 'shr-anchor') {
       setWrapCursorClass('cursor-move');
       return;
     }
@@ -25909,11 +26555,13 @@ function initChartInteraction(store, baseRenderer, overlayRenderer, callbacks = 
       return;
     }
 
-    // Select mode hover cursors (Point priority over Label)
-    if (ui.hovPickId != null) {
+    // Select mode hover cursors (Dial -> Point -> Label/Annotation -> Process -> SHR Line)
+    if (ui.hovShrPart === 'dial') {
+      setWrapCursorClass('cursor-grab');
+    } else if (ui.hovPickId != null) {
       const pt = getPoint(ui.hovPickId);
       setWrapCursorClass(pt?.locked || isDerivedMixPoint(pt) ? 'cursor-pointer' : 'cursor-grab');
-    } else if (ui.hovLabelId != null || ui.hovAnnId != null) {
+    } else if (ui.hovLabelId != null || ui.hovAnnId != null || ui.hovShrPart === 'anchor' || ui.hovShrPart === 'line') {
       setWrapCursorClass('cursor-move');
     } else if (ui.hovProcId != null) {
       setWrapCursorClass('cursor-pointer');
@@ -26010,7 +26658,7 @@ function initChartInteraction(store, baseRenderer, overlayRenderer, callbacks = 
   // 2. Mouse, Wheel & Touch Interactions on #cvOverlay
   // --------------------------------------------------------------------------
   function handlePointerDown(px, py, opts = {}) {
-    const { button = 0, altKey = false } = opts;
+    const { button = 0, altKey = false, shiftKey = false } = opts;
     if (button === 2) return;
 
     hideContextMenu();
@@ -26073,7 +26721,26 @@ function initChartInteraction(store, baseRenderer, overlayRenderer, callbacks = 
       return;
     }
 
-    // Select Mode: priority Point -> Label -> Annotation -> Process -> Pan
+    // Select Mode: priority SHR Dial -> Point -> Label -> Annotation -> Process -> SHR Parallel Line -> Pan
+    const shrHit = pickSHRAtPx(px, py);
+    if (shrHit === 'dial') {
+      const geom = overlayRenderer?.getSHRGeometry?.();
+      dragKind = 'shr-dial';
+      ui.dragShrPart = 'dial';
+      ui.hovShrPart = 'dial';
+      store?.pushHistory?.('Adjust SHR Protractor');
+      dragHistoryPushed = true;
+      const nextShr = computeShrFromDialPx(px, py, geom, shiftKey);
+      store?.setSHR?.({ value: nextShr }, false, { silentChange: true, skipAutosave: true });
+      const shrInput = byId('shrVal');
+      if (shrInput) shrInput.value = nextShr.toFixed(2);
+      hudEl?.classList.add('hud-dragging');
+      updateHudShr(nextShr);
+      document.body.style.userSelect = 'none';
+      updateCursor();
+      return;
+    }
+
     const hitPtId = pickPointAtPx(px, py);
     if (hitPtId != null) {
       const pt = getPoint(hitPtId);
@@ -26141,6 +26808,19 @@ function initChartInteraction(store, baseRenderer, overlayRenderer, callbacks = 
       return;
     }
 
+    if (shrHit === 'anchor' || shrHit === 'line') {
+      dragKind = 'shr-anchor';
+      ui.dragShrPart = 'anchor';
+      ui.hovShrPart = 'anchor';
+      store?.pushHistory?.('Slide SHR Reference Line');
+      dragHistoryPushed = true;
+      hudEl?.classList.add('hud-dragging');
+      document.body.style.userSelect = 'none';
+      updateHudShr(getState().shr?.value ?? 0.75);
+      updateCursor();
+      return;
+    }
+
     // Empty chart space -> smooth pan
     ui.selectedAnnId = null;
     dragKind = 'pan';
@@ -26166,6 +26846,37 @@ function initChartInteraction(store, baseRenderer, overlayRenderer, callbacks = 
       const dpi = getDpi();
       if (!dragMoved && Math.hypot(px - dragStartPx.x, py - dragStartPx.y) > 3 * dpi) {
         dragMoved = true;
+      }
+
+      if (dragKind === 'shr-dial') {
+        const geom = overlayRenderer?.getSHRGeometry?.();
+        const nextShr = computeShrFromDialPx(px, py, geom, shiftKey);
+        store?.setSHR?.({ value: nextShr }, false, { silentChange: true, skipAutosave: true });
+        const shrInput = byId('shrVal');
+        if (shrInput) shrInput.value = nextShr.toFixed(2);
+        updateHudShr(nextShr);
+        return;
+      }
+
+      if (dragKind === 'shr-anchor') {
+        const curShr = getState().shr?.value ?? 0.75;
+        const snapId = pickPointAtPx(px, py);
+        if (snapId != null) {
+          const snapPt = getPoint(snapId);
+          if (snapPt) {
+            store?.setSHR?.({ refPointId: snapPt.id, anchorTw: null }, false, { silentChange: true, skipAutosave: true });
+            const selRef = byId('shrRefPt');
+            if (selRef) selRef.value = String(snapPt.id);
+            updateHudShr(curShr, snapPt.label || 'Point');
+            return;
+          }
+        }
+        const safe = clampTwToSaturation(tw.T, tw.w, true);
+        store?.setSHR?.({ refPointId: null, anchorTw: { T: safe.T, w: safe.w } }, false, { silentChange: true, skipAutosave: true });
+        const selRef = byId('shrRefPt');
+        if (selRef) selRef.value = '';
+        updateHudShr(curShr, 'Custom');
+        return;
       }
 
       if (dragKind === 'locked-mix') {
@@ -26286,22 +26997,37 @@ function initChartInteraction(store, baseRenderer, overlayRenderer, callbacks = 
       }
     }
 
-    // Idle Hover Hit-Testing & Live HUD (Point priority over Label)
+    // Idle Hover Hit-Testing & Live HUD (Dial -> Point -> Label -> Annotation -> Process -> SHR Line)
     if (inside) {
       const tool = getActiveTool();
       const prevPick = ui.hovPickId;
       const prevLbl = ui.hovLabelId;
       const prevAnn = ui.hovAnnId;
       const prevProc = ui.hovProcId;
+      const prevShrPart = ui.hovShrPart;
 
-      ui.hovPickId = (tool === 'select' || tool === 'process' || tool === 'mix') ? pickPointAtPx(px, py) : null;
-      ui.hovLabelId = (tool === 'select' && ui.hovPickId == null) ? pickLabelAtPx(px, py) : null;
-      ui.hovAnnId = tool === 'select' && ui.hovPickId == null && ui.hovLabelId == null ? pickAnnotationAtPx(px, py) : null;
-      ui.hovProcId = tool === 'select' && ui.hovPickId == null && ui.hovLabelId == null && ui.hovAnnId == null
-        ? pickProcessAtPx(px, py)
-        : null;
+      const rawShrHit = tool === 'select' ? pickSHRAtPx(px, py) : null;
+      if (rawShrHit === 'dial') {
+        ui.hovShrPart = 'dial';
+        ui.hovPickId = null;
+        ui.hovLabelId = null;
+        ui.hovAnnId = null;
+        ui.hovProcId = null;
+      } else {
+        ui.hovPickId = (tool === 'select' || tool === 'process' || tool === 'mix') ? pickPointAtPx(px, py) : null;
+        ui.hovLabelId = (tool === 'select' && ui.hovPickId == null) ? pickLabelAtPx(px, py) : null;
+        ui.hovAnnId = tool === 'select' && ui.hovPickId == null && ui.hovLabelId == null ? pickAnnotationAtPx(px, py) : null;
+        ui.hovProcId = tool === 'select' && ui.hovPickId == null && ui.hovLabelId == null && ui.hovAnnId == null
+          ? pickProcessAtPx(px, py)
+          : null;
+        ui.hovShrPart = (tool === 'select' && ui.hovPickId == null && ui.hovLabelId == null && ui.hovAnnId == null && ui.hovProcId == null)
+          ? rawShrHit
+          : null;
+      }
 
-      if (ui.hovPickId != null && tool === 'select') {
+      if (ui.hovShrPart === 'dial') {
+        updateHudShr(getState().shr?.value ?? 0.75);
+      } else if (ui.hovPickId != null && tool === 'select') {
         const hp = getPoint(ui.hovPickId);
         if (hp) updateHudAtTw(hp.T, hp.w, hp.label || null);
       } else if (measureLocked && ui.measureStart && ui.measureEnd && tool === 'measure') {
@@ -26316,6 +27042,7 @@ function initChartInteraction(store, baseRenderer, overlayRenderer, callbacks = 
         prevLbl !== ui.hovLabelId ||
         prevAnn !== ui.hovAnnId ||
         prevProc !== ui.hovProcId ||
+        prevShrPart !== ui.hovShrPart ||
         ui.hoverPx != null
       ) {
         emitOverlayDirty('hover');
@@ -26335,8 +27062,18 @@ function initChartInteraction(store, baseRenderer, overlayRenderer, callbacks = 
     activeSnapLabel = null;
     ui.dragPtId = null;
     ui.dragSnapLabel = null;
+    ui.dragShrPart = null;
     hudEl?.classList.remove('hud-dragging');
     document.body.style.userSelect = '';
+
+    if (finished === 'shr-dial' || finished === 'shr-anchor') {
+      const s = getState().shr || {};
+      store?.setSHR?.({ value: s.value, refPointId: s.refPointId, anchorTw: s.anchorTw }, false);
+      suppressNextClick = true;
+      updateCursor();
+      emitOverlayDirty('shr-drag-end');
+      return;
+    }
 
     if (finished === 'boxzoom' && ui.boxZoom) {
       const b = ui.boxZoom;
@@ -26511,6 +27248,25 @@ function initChartInteraction(store, baseRenderer, overlayRenderer, callbacks = 
     if (getActiveTool() !== 'select') return;
     const pos = clientToCanvasPx(e.clientX, e.clientY);
 
+    // Double-click SHR protractor dial -> snap Target SHR to active process / measure SHR
+    if (pickSHRAtPx(pos.px, pos.py) === 'dial') {
+      const geom = overlayRenderer?.getSHRGeometry?.();
+      const lv = geom?.liveVector;
+      if (lv && Number.isFinite(lv.shr)) {
+        const matched = Number(clamp(lv.shr, -2, 2).toFixed(2));
+        const stShr = getState().shr || {};
+        const patch = { value: matched };
+        if (stShr.refPointId == null && !stShr.anchorTw && lv.anchorPtId != null) {
+          patch.refPointId = lv.anchorPtId;
+        }
+        store?.setSHR?.(patch, true);
+        toast(`Matched SHR Protractor to ${lv.label} (SHR ${matched.toFixed(2)})`, 'success');
+      } else {
+        toast('Select or hover a process to match its SHR slope', 'info');
+      }
+      return;
+    }
+
     // Double-click point -> toggle lock/unlock
     const hitPtId = pickPointAtPx(pos.px, pos.py);
     if (hitPtId != null) {
@@ -26545,7 +27301,7 @@ function initChartInteraction(store, baseRenderer, overlayRenderer, callbacks = 
   bind(cvOverlay, 'mousedown', e => {
     if (e.button === 2) return;
     const pos = clientToCanvasPx(e.clientX, e.clientY);
-    handlePointerDown(pos.px, pos.py, { button: e.button, altKey: e.altKey });
+    handlePointerDown(pos.px, pos.py, { button: e.button, altKey: e.altKey, shiftKey: e.shiftKey });
   });
 
   bind(window, 'mousemove', e => {
@@ -26560,6 +27316,7 @@ function initChartInteraction(store, baseRenderer, overlayRenderer, callbacks = 
         ui.hovLabelId = null;
         ui.hovAnnId = null;
         ui.hovProcId = null;
+        ui.hovShrPart = null;
         hideHud();
         emitOverlayDirty('hover-exit');
       }
@@ -26584,6 +27341,7 @@ function initChartInteraction(store, baseRenderer, overlayRenderer, callbacks = 
     ui.hovLabelId = null;
     ui.hovAnnId = null;
     ui.hovProcId = null;
+    ui.hovShrPart = null;
     hideHud();
     emitOverlayDirty('hover-leave');
   });
@@ -27573,6 +28331,7 @@ function initChartInteraction(store, baseRenderer, overlayRenderer, callbacks = 
 
 
 
+
 function initLeftPanel(store, callbacks = {}) {
   const { byId, on, esc, clamp, tToDisp, dispToT, wToDisp, dispToW } = CoreDOM;
   const toast = typeof callbacks.toast === 'function' ? callbacks.toast : () => {};
@@ -27641,6 +28400,8 @@ function initLeftPanel(store, callbacks = {}) {
     shrShow: byId('shrShow'),
     shrVal: byId('shrVal'),
     shrRefPt: byId('shrRefPt'),
+    shrLiveReadout: byId('shrLiveReadout'),
+    btnShrMatch: byId('btnShrMatch'),
     // Tab 2: State Points
     inMode1: byId('inMode1'),
     inVal1: byId('inVal1'),
@@ -29159,7 +29920,7 @@ function initLeftPanel(store, callbacks = {}) {
       const matched = pts.find((p, i) => String(p.id ?? i) === refVal);
       if (matched) refPointId = matched.id ?? null;
     }
-    setStoreSHR({ show, value, refPointId });
+    setStoreSHR({ show, value, refPointId, ...(refPointId == null ? { anchorTw: null } : {}) });
   }
 
   on(el.shrShow, 'change', pushShrFromUI);
@@ -29167,9 +29928,44 @@ function initLeftPanel(store, callbacks = {}) {
   on(el.shrVal, 'change', pushShrFromUI);
   on(el.shrRefPt, 'change', pushShrFromUI);
 
-  function syncShrControls() {
-    const shr = getState().shr || {};
+  on(el.btnShrMatch, 'click', () => {
+    const st = getState();
     const pts = getPoints();
+    const procs = st.processes || [];
+    if (!procs.length) {
+      toast('Add a process first to match its SHR slope', 'warn');
+      return;
+    }
+    const selId = st.ui?.selectedProcId;
+    let proc = selId != null ? procs.find((p) => p.id === selId) : null;
+    if (!proc || proc.role === 'mix') {
+      proc = procs.find((p) => p.role === 'room') || procs.find((p) => p.role !== 'mix') || proc || procs[0];
+    }
+    const findPt = (id) => pts.find((p) => p.id === id);
+    const a = findPt(proc.aId ?? proc.fromId);
+    const b = findPt(proc.bId ?? proc.toId);
+    if (!a || !b) {
+      toast('Selected process has missing endpoints', 'warn');
+      return;
+    }
+    const dh = Psy.h_kJkg(b.T, b.w) - Psy.h_kJkg(a.T, a.w);
+    const dhSens = Psy.h_kJkg(b.T, a.w) - Psy.h_kJkg(a.T, a.w);
+    const rawShr = Math.abs(dh) > 1e-4 ? (dhSens / dh) : 1.0;
+    const matchedShr = Number(clamp(rawShr, -2, 2).toFixed(2));
+    const anchorPt = b.T >= a.T ? b : a;
+    if (typeof store?.selectProcess === 'function') store.selectProcess(proc.id);
+    else if (typeof store?.setUI === 'function') store.setUI({ selectedProcId: proc.id });
+    setStoreSHR({ show: true, value: matchedShr, refPointId: anchorPt.id, anchorTw: null }, true);
+    const tag = proc.tag || `S${procs.indexOf(proc) + 1}`;
+    toast(`SHR Protractor matched to ${tag} (${matchedShr.toFixed(2)}, anchored at ${anchorPt.label || 'Point'})`, 'success');
+  });
+
+  function syncShrControls() {
+    const st = getState();
+    const shr = st.shr || {};
+    const pts = getPoints();
+    const isSI = getUnits() === 'SI';
+    const pPa = getPressurePa();
 
     if (el.shrShow && document.activeElement !== el.shrShow) {
       const isOn = !!shr.show;
@@ -29178,14 +29974,15 @@ function initLeftPanel(store, callbacks = {}) {
     }
     if (el.shrVal && document.activeElement !== el.shrVal) {
       const v = shr.value;
-      if (Number.isFinite(v)) el.shrVal.value = String(v);
+      if (Number.isFinite(v)) el.shrVal.value = Number(v).toFixed(2);
     }
     if (el.shrRefPt) {
       const desired = shr.refPointId != null ? String(shr.refPointId) : '';
-      const sig = pts.map((p, i) => `${p.id ?? i}:${p.label || ''}`).join('|');
+      const hasCustom = shr.refPointId == null && shr.anchorTw != null;
+      const sig = `${hasCustom ? 'C|' : ''}` + pts.map((p, i) => `${p.id ?? i}:${p.label || ''}`).join('|');
       if (el.shrRefPt.dataset.sig !== sig) {
         el.shrRefPt.dataset.sig = sig;
-        el.shrRefPt.innerHTML = '<option value="">Center</option>';
+        el.shrRefPt.innerHTML = `<option value="">${hasCustom ? 'Custom (Dragged)' : 'Center'}</option>`;
         pts.forEach((p, i) => {
           const opt = document.createElement('option');
           opt.value = String(p.id ?? i);
@@ -29196,6 +29993,37 @@ function initLeftPanel(store, callbacks = {}) {
       if (document.activeElement !== el.shrRefPt) {
         const hasMatch = Array.from(el.shrRefPt.options).some((o) => o.value === desired);
         el.shrRefPt.value = hasMatch ? desired : '';
+      }
+    }
+    if (el.shrLiveReadout) {
+      let refPt = null;
+      if (shr.refPointId != null) {
+        refPt = pts.find((p) => p.id === shr.refPointId || String(p.id) === String(shr.refPointId)) || null;
+      }
+      if (!refPt && shr.anchorTw && Number.isFinite(shr.anchorTw.T)) {
+        refPt = shr.anchorTw;
+      }
+      if (!refPt) {
+        const v = st.view || { tMin: -10, tMax: 55, wMax: 0.03 };
+        const cT = 0.5 * (v.tMin + v.tMax);
+        refPt = { T: cT, w: Math.max(0.0005, Math.min(0.45 * v.wMax, Psy.wsat_at(cT, pPa) * 0.72)) };
+      }
+      const val = Number.isFinite(Number(shr.value)) ? Number(shr.value) : 0.75;
+      const solved = typeof HVAC?.solveSHRSaturation === 'function'
+        ? HVAC.solveSHRSaturation(refPt, val, pPa)
+        : null;
+      if (!shr.show) {
+        el.shrLiveReadout.textContent = 'Turn On · drag dial or line on chart';
+      } else if (solved?.satHit && Number.isFinite(solved.satHit.T)) {
+        const tDisp = isSI
+          ? `${solved.satHit.T.toFixed(1)}°C`
+          : `${tToDisp(solved.satHit.T, 'IP').toFixed(1)}°F`;
+        const lbl = val > 0 && val <= 1 ? 'ADP' : 'Sat';
+        el.shrLiveReadout.textContent = `${lbl} ${tDisp} · drag dial/line`;
+      } else if (solved?.satStatus === 'no-hit') {
+        el.shrLiveReadout.textContent = 'No Sat. Hit · Reheat/Desiccant Req.';
+      } else {
+        el.shrLiveReadout.textContent = 'Drag dial on chart · Dbl-click match';
       }
     }
   }
@@ -30095,11 +30923,13 @@ function initLeftPanel(store, callbacks = {}) {
     _dragSyncRaf = requestAnimationFrame(() => {
       _dragSyncRaf = 0;
       refreshPointsTable();
+      syncShrControls();
     });
   }
 
   subscribe('change', syncAllFromStore);
   subscribe('point-drag', schedulePointDragSync);
+  subscribe('shr-live', syncShrControls);
   subscribe('theme-changed', () => {
     syncChartCurveControls();
     syncAxisAndTrendControls(true);

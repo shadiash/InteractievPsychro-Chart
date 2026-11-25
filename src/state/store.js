@@ -69,6 +69,7 @@ export function createStore() {
     show: false,
     value: 0.75,
     refPointId: null,
+    anchorTw: null,
     protractorPos: null
   };
 
@@ -126,6 +127,8 @@ export function createStore() {
       hovLabelId: null,
       dragPtId: null,
       dragSnapLabel: null,
+      hovShrPart: null,
+      dragShrPart: null,
       leftCollapsed: false,
       rightCollapsed: false
     }
@@ -1144,6 +1147,7 @@ export function createStore() {
     state.ui.selectedPtId = state.points[0]?.id ?? null;
     state.ui.selectedProcId = state.processes[0]?.id ?? null;
     state.shr.refPointId = null;
+    state.shr.anchorTw = null;
 
     emit('overlay-dirty', { reason: 'load-cycle' });
     emit('change', { reason: 'load-cycle', label: historyLabel });
@@ -1159,6 +1163,7 @@ export function createStore() {
     state.ui.selectedPtId = null;
     state.ui.selectedProcId = null;
     state.shr.refPointId = null;
+    state.shr.anchorTw = null;
 
     emit('overlay-dirty', { reason: 'clear-all' });
     emit('change', { reason: 'clear-all' });
@@ -1509,7 +1514,7 @@ export function createStore() {
     autosave();
   }
 
-  function setSHR(patch = {}, recordHistory = false) {
+  function setSHR(patch = {}, recordHistory = false, opts = {}) {
     if (!patch || typeof patch !== 'object') return;
     if (recordHistory) {
       pushHistory('Update SHR');
@@ -1521,14 +1526,34 @@ export function createStore() {
     }
     if ('refPointId' in patch) {
       state.shr.refPointId = patch.refPointId != null ? (getPoint(patch.refPointId)?.id ?? null) : null;
+      if (state.shr.refPointId != null && !('anchorTw' in patch)) {
+        state.shr.anchorTw = null;
+      }
+    }
+    if ('anchorTw' in patch) {
+      const a = patch.anchorTw;
+      if (a && Number.isFinite(Number(a.T)) && Number.isFinite(Number(a.w))) {
+        state.shr.anchorTw = { T: Number(a.T), w: Number(a.w) };
+        if (!('refPointId' in patch)) {
+          state.shr.refPointId = null;
+        }
+      } else {
+        state.shr.anchorTw = null;
+      }
     }
     if ('protractorPos' in patch) {
       state.shr.protractorPos = patch.protractorPos ? deepClone(patch.protractorPos) : null;
     }
 
     emit('overlay-dirty', { reason: 'shr' });
-    emit('change', { reason: 'shr' });
-    autosave();
+    if (opts?.silentChange) {
+      emit('shr-live', { shr: state.shr });
+    } else {
+      emit('change', { reason: 'shr' });
+    }
+    if (!opts?.skipAutosave) {
+      autosave();
+    }
   }
 
   function setGrid(patch = {}) {
@@ -2131,7 +2156,9 @@ export function createStore() {
       ]);
     }
     if (state.shr.show) {
-      compact.shr = [1, CoreDOM.round(state.shr.value, 4), state.shr.refPointId];
+      compact.shr = state.shr.anchorTw
+        ? [1, CoreDOM.round(state.shr.value, 4), state.shr.refPointId, [CoreDOM.round(state.shr.anchorTw.T, 3), CoreDOM.round(state.shr.anchorTw.w, 6)]]
+        : [1, CoreDOM.round(state.shr.value, 4), state.shr.refPointId];
     }
     if (state.theme === 'custom') {
       compact.ct = state.customTheme;
@@ -2235,7 +2262,15 @@ export function createStore() {
             }))
           : [],
         shr: Array.isArray(data.shr)
-          ? { show: Boolean(data.shr[0]), value: data.shr[1] ?? 0.75, refPointId: data.shr[2] ?? null, protractorPos: null }
+          ? {
+              show: Boolean(data.shr[0]),
+              value: data.shr[1] ?? 0.75,
+              refPointId: data.shr[2] ?? null,
+              anchorTw: Array.isArray(data.shr[3]) && data.shr[3].length >= 2
+                ? { T: Number(data.shr[3][0]), w: Number(data.shr[3][1]) }
+                : null,
+              protractorPos: null
+            }
           : { ...DEFAULT_SHR },
         ...(data.ax && typeof data.ax === 'object' ? { axisStyle: data.ax } : {}),
         ...(data.tr && typeof data.tr === 'object' ? { trendStyle: data.tr } : {}),

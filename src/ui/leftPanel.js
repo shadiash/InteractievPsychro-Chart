@@ -8,6 +8,7 @@
 import { CoreDOM, POINT_PALETTE, UNIT_LABELS, DEFAULT_AXIS_STYLE, DEFAULT_TREND_STYLE } from '../core/contracts.js';
 import { Psy } from '../engine/psychro.js';
 import { Comfort } from '../engine/comfort.js';
+import { HVAC } from '../engine/hvac.js';
 import { Weather } from '../engine/weather.js';
 
 export function initLeftPanel(store, callbacks = {}) {
@@ -78,6 +79,8 @@ export function initLeftPanel(store, callbacks = {}) {
     shrShow: byId('shrShow'),
     shrVal: byId('shrVal'),
     shrRefPt: byId('shrRefPt'),
+    shrLiveReadout: byId('shrLiveReadout'),
+    btnShrMatch: byId('btnShrMatch'),
     // Tab 2: State Points
     inMode1: byId('inMode1'),
     inVal1: byId('inVal1'),
@@ -1596,7 +1599,7 @@ export function initLeftPanel(store, callbacks = {}) {
       const matched = pts.find((p, i) => String(p.id ?? i) === refVal);
       if (matched) refPointId = matched.id ?? null;
     }
-    setStoreSHR({ show, value, refPointId });
+    setStoreSHR({ show, value, refPointId, ...(refPointId == null ? { anchorTw: null } : {}) });
   }
 
   on(el.shrShow, 'change', pushShrFromUI);
@@ -1604,9 +1607,44 @@ export function initLeftPanel(store, callbacks = {}) {
   on(el.shrVal, 'change', pushShrFromUI);
   on(el.shrRefPt, 'change', pushShrFromUI);
 
-  function syncShrControls() {
-    const shr = getState().shr || {};
+  on(el.btnShrMatch, 'click', () => {
+    const st = getState();
     const pts = getPoints();
+    const procs = st.processes || [];
+    if (!procs.length) {
+      toast('Add a process first to match its SHR slope', 'warn');
+      return;
+    }
+    const selId = st.ui?.selectedProcId;
+    let proc = selId != null ? procs.find((p) => p.id === selId) : null;
+    if (!proc || proc.role === 'mix') {
+      proc = procs.find((p) => p.role === 'room') || procs.find((p) => p.role !== 'mix') || proc || procs[0];
+    }
+    const findPt = (id) => pts.find((p) => p.id === id);
+    const a = findPt(proc.aId ?? proc.fromId);
+    const b = findPt(proc.bId ?? proc.toId);
+    if (!a || !b) {
+      toast('Selected process has missing endpoints', 'warn');
+      return;
+    }
+    const dh = Psy.h_kJkg(b.T, b.w) - Psy.h_kJkg(a.T, a.w);
+    const dhSens = Psy.h_kJkg(b.T, a.w) - Psy.h_kJkg(a.T, a.w);
+    const rawShr = Math.abs(dh) > 1e-4 ? (dhSens / dh) : 1.0;
+    const matchedShr = Number(clamp(rawShr, -2, 2).toFixed(2));
+    const anchorPt = b.T >= a.T ? b : a;
+    if (typeof store?.selectProcess === 'function') store.selectProcess(proc.id);
+    else if (typeof store?.setUI === 'function') store.setUI({ selectedProcId: proc.id });
+    setStoreSHR({ show: true, value: matchedShr, refPointId: anchorPt.id, anchorTw: null }, true);
+    const tag = proc.tag || `S${procs.indexOf(proc) + 1}`;
+    toast(`SHR Protractor matched to ${tag} (${matchedShr.toFixed(2)}, anchored at ${anchorPt.label || 'Point'})`, 'success');
+  });
+
+  function syncShrControls() {
+    const st = getState();
+    const shr = st.shr || {};
+    const pts = getPoints();
+    const isSI = getUnits() === 'SI';
+    const pPa = getPressurePa();
 
     if (el.shrShow && document.activeElement !== el.shrShow) {
       const isOn = !!shr.show;
@@ -1615,14 +1653,15 @@ export function initLeftPanel(store, callbacks = {}) {
     }
     if (el.shrVal && document.activeElement !== el.shrVal) {
       const v = shr.value;
-      if (Number.isFinite(v)) el.shrVal.value = String(v);
+      if (Number.isFinite(v)) el.shrVal.value = Number(v).toFixed(2);
     }
     if (el.shrRefPt) {
       const desired = shr.refPointId != null ? String(shr.refPointId) : '';
-      const sig = pts.map((p, i) => `${p.id ?? i}:${p.label || ''}`).join('|');
+      const hasCustom = shr.refPointId == null && shr.anchorTw != null;
+      const sig = `${hasCustom ? 'C|' : ''}` + pts.map((p, i) => `${p.id ?? i}:${p.label || ''}`).join('|');
       if (el.shrRefPt.dataset.sig !== sig) {
         el.shrRefPt.dataset.sig = sig;
-        el.shrRefPt.innerHTML = '<option value="">Center</option>';
+        el.shrRefPt.innerHTML = `<option value="">${hasCustom ? 'Custom (Dragged)' : 'Center'}</option>`;
         pts.forEach((p, i) => {
           const opt = document.createElement('option');
           opt.value = String(p.id ?? i);
@@ -1633,6 +1672,37 @@ export function initLeftPanel(store, callbacks = {}) {
       if (document.activeElement !== el.shrRefPt) {
         const hasMatch = Array.from(el.shrRefPt.options).some((o) => o.value === desired);
         el.shrRefPt.value = hasMatch ? desired : '';
+      }
+    }
+    if (el.shrLiveReadout) {
+      let refPt = null;
+      if (shr.refPointId != null) {
+        refPt = pts.find((p) => p.id === shr.refPointId || String(p.id) === String(shr.refPointId)) || null;
+      }
+      if (!refPt && shr.anchorTw && Number.isFinite(shr.anchorTw.T)) {
+        refPt = shr.anchorTw;
+      }
+      if (!refPt) {
+        const v = st.view || { tMin: -10, tMax: 55, wMax: 0.03 };
+        const cT = 0.5 * (v.tMin + v.tMax);
+        refPt = { T: cT, w: Math.max(0.0005, Math.min(0.45 * v.wMax, Psy.wsat_at(cT, pPa) * 0.72)) };
+      }
+      const val = Number.isFinite(Number(shr.value)) ? Number(shr.value) : 0.75;
+      const solved = typeof HVAC?.solveSHRSaturation === 'function'
+        ? HVAC.solveSHRSaturation(refPt, val, pPa)
+        : null;
+      if (!shr.show) {
+        el.shrLiveReadout.textContent = 'Turn On · drag dial or line on chart';
+      } else if (solved?.satHit && Number.isFinite(solved.satHit.T)) {
+        const tDisp = isSI
+          ? `${solved.satHit.T.toFixed(1)}°C`
+          : `${tToDisp(solved.satHit.T, 'IP').toFixed(1)}°F`;
+        const lbl = val > 0 && val <= 1 ? 'ADP' : 'Sat';
+        el.shrLiveReadout.textContent = `${lbl} ${tDisp} · drag dial/line`;
+      } else if (solved?.satStatus === 'no-hit') {
+        el.shrLiveReadout.textContent = 'No Sat. Hit · Reheat/Desiccant Req.';
+      } else {
+        el.shrLiveReadout.textContent = 'Drag dial on chart · Dbl-click match';
       }
     }
   }
@@ -2532,11 +2602,13 @@ export function initLeftPanel(store, callbacks = {}) {
     _dragSyncRaf = requestAnimationFrame(() => {
       _dragSyncRaf = 0;
       refreshPointsTable();
+      syncShrControls();
     });
   }
 
   subscribe('change', syncAllFromStore);
   subscribe('point-drag', schedulePointDragSync);
+  subscribe('shr-live', syncShrControls);
   subscribe('theme-changed', () => {
     syncChartCurveControls();
     syncAxisAndTrendControls(true);

@@ -402,15 +402,19 @@
             </select>
           </div>
           <div class="field">
-            <label for="shrVal" title="Target Sensible Heat Ratio slope (SHR = Qs / Qt)">SHR Value</label>
+            <label for="shrVal" title="Target Sensible Heat Ratio slope (SHR = Qs / Qt) — or drag the circular dial directly on the chart">SHR Value</label>
             <input id="shrVal" type="number" value="0.75" step="0.01" min="-2" max="2" />
           </div>
           <div class="field">
-            <label for="shrRefPt">Ref Point</label>
+            <label for="shrRefPt" title="Pin parallel SHR line to a state point, or drag the dashed line on the chart to slide freely">Ref Point</label>
             <select id="shrRefPt">
               <option value="">Center</option>
             </select>
           </div>
+        </div>
+        <div id="shrLiveBar" style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-top:6px;padding:4px 7px;border-radius:5px;border:1px solid var(--border);background:var(--panel2,rgba(128,128,128,0.06));font-size:10.5px;">
+          <span id="shrLiveReadout" style="font-family:var(--mono);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Drag dial on chart · ADP —</span>
+          <button type="button" id="btnShrMatch" class="btn xs auto" title="Turn on SHR Protractor and match slope &amp; anchor to the selected (or room) process">Match Proc</button>
         </div>
       </details>
     </div>

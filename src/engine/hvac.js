@@ -1226,10 +1226,115 @@ export const HVAC = (() => {
     };
   }
 
+  /**
+   * Solve the exact intersection of an ASHRAE SHR reference slope line through
+   * `refPt = { T, w }` with the 100% RH saturation curve (Apparatus Dew Point /
+   * Coil Saturation Point), plus exact Δh/ΔW (kJ/kg_w) ratio.
+   */
+  function solveSHRSaturation(refPt, shrVal = 0.75, pPa = 101325) {
+    const shr = Number.isFinite(Number(shrVal)) ? clamp(Number(shrVal), -2, 2) : 0.75;
+    const validPt = refPt && Number.isFinite(refPt.T) && Number.isFinite(refPt.w);
+    const wRef = validPt ? Math.max(0, refPt.w) : 0.010;
+    const cpm = 1.006 + 1.86 * wRef;
+    const slope = Math.abs(shr) <= 1e-4
+      ? Infinity
+      : (Math.abs(shr - 1) <= 1e-6 ? 0 : ((1 - shr) / shr) * cpm / 2501);
+    const dhdw_kJkg = Math.abs(1 - shr) < 1e-4 ? Infinity : 2501 / (1 - shr);
+    const tZero = (validPt && Number.isFinite(slope) && slope > 1e-9)
+      ? (refPt.T - wRef / slope)
+      : null;
+
+    let satHit = null;
+    let satStatus = 'none';
+
+    if (validPt) {
+      const wsRef = Psy.wsat_at(refPt.T, pPa);
+      if (wRef >= wsRef - 1e-5) {
+        satHit = { T: refPt.T, w: wsRef };
+        satStatus = 'saturated';
+      } else if (!Number.isFinite(slope)) {
+        satHit = { T: refPt.T, w: wsRef };
+        satStatus = 'hit';
+      } else if (Math.abs(slope) <= 1e-9) {
+        const pv = Psy.pv_from_w(Math.max(1e-7, wRef), pPa);
+        const tDp = Psy.dewpoint_from_pv(pv);
+        if (Number.isFinite(tDp) && tDp >= -40 && tDp <= refPt.T + 1e-4) {
+          satHit = { T: tDp, w: wRef };
+          satStatus = 'hit';
+        }
+      } else if (slope > 0) {
+        // Cooling / Room SHR line (0 < SHR < 1): march downward in T from refPt.T toward w = 0
+        const tStop = Math.max(-35, tZero);
+        let prevT = refPt.T;
+        let bracket = null;
+        const stepT = 0.4;
+        for (let T = refPt.T - stepT; T >= tStop - 1e-6; T -= stepT) {
+          const Tc = Math.max(tStop, T);
+          const wL = wRef + slope * (Tc - refPt.T);
+          const ws = Psy.wsat_at(Tc, pPa);
+          if (wL >= ws) {
+            bracket = [Tc, prevT];
+            break;
+          }
+          prevT = Tc;
+          if (Tc <= tStop) break;
+        }
+        if (bracket) {
+          let lo = bracket[0];
+          let hi = bracket[1];
+          for (let it = 0; it < 28; it++) {
+            const mid = 0.5 * (lo + hi);
+            const wL = wRef + slope * (mid - refPt.T);
+            const ws = Psy.wsat_at(mid, pPa);
+            if (wL >= ws) lo = mid;
+            else hi = mid;
+          }
+          const Tsat = 0.5 * (lo + hi);
+          satHit = { T: Tsat, w: Psy.wsat_at(Tsat, pPa) };
+          satStatus = 'hit';
+        } else {
+          // Latent load too steep to intersect saturation curve without reheat or desiccant
+          satStatus = 'no-hit';
+        }
+      } else {
+        // Negative slope (evaporative cooling / desiccant / SHR < 0 or SHR > 1): guaranteed left intersection
+        let prevT = refPt.T;
+        let bracket = null;
+        const stepT = 0.5;
+        for (let T = refPt.T - stepT; T >= -35; T -= stepT) {
+          const wL = wRef + slope * (T - refPt.T);
+          const ws = Psy.wsat_at(T, pPa);
+          if (wL >= ws) {
+            bracket = [T, prevT];
+            break;
+          }
+          prevT = T;
+        }
+        if (bracket) {
+          let lo = bracket[0];
+          let hi = bracket[1];
+          for (let it = 0; it < 28; it++) {
+            const mid = 0.5 * (lo + hi);
+            const wL = wRef + slope * (mid - refPt.T);
+            const ws = Psy.wsat_at(mid, pPa);
+            if (wL >= ws) lo = mid;
+            else hi = mid;
+          }
+          const Tsat = 0.5 * (lo + hi);
+          satHit = { T: Tsat, w: Psy.wsat_at(Tsat, pPa) };
+          satStatus = 'hit';
+        }
+      }
+    }
+
+    return { shr, cpm, slope, dhdw_kJkg, satHit, satStatus, tZero };
+  }
+
   return {
     classifyProcess,
     calcProcessMetrics,
     calcADP,
+    solveSHRSaturation,
     calcMixing,
     calcERV,
     calcEvapCooler,

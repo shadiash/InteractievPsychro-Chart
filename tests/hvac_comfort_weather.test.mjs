@@ -1195,4 +1195,48 @@ describe('4. State Store & Legacy Compatibility (Store)', () => {
     assert.equal(storeC.state.shr.refPointId, p2.id);
     assert.equal(storeC.state.weather.cityId, 'denver');
   });
+
+  it('solves exact ASHRAE SHR saturation/ADP intersections and detects no-hit reheat regimes', () => {
+    const pPa = 101325;
+    const ra = { T: 24, w: Psy.w_from_TRH(24, 0.50, pPa) }; // 24°C, 50% RH (Tdp ≈ 12.9°C)
+
+    // 1. Typical Room SHR = 0.75 from RA -> exact saturation intersection (ADP ≈ 9.25°C)
+    const r75 = HVAC.solveSHRSaturation(ra, 0.75, pPa);
+    assert.equal(r75.satStatus, 'hit');
+    assert.ok(r75.satHit && r75.satHit.T > 7 && r75.satHit.T < 11.5, `Expected ADP ~9.3°C, got ${r75.satHit?.T}`);
+    const wLineAtHit = ra.w + r75.slope * (r75.satHit.T - ra.T);
+    approxEqual(wLineAtHit, Psy.wsat_at(r75.satHit.T, pPa), 1e-5, 'Line must meet 100% RH curve exactly');
+
+    // 2. Pure sensible SHR = 1.0 -> exact dew point of RA
+    const r100 = HVAC.solveSHRSaturation(ra, 1.0, pPa);
+    assert.equal(r100.satStatus, 'hit');
+    const tDp = Psy.dewpoint_from_pv(Psy.pv_from_w(ra.w, pPa));
+    approxEqual(r100.satHit.T, tDp, 0.05, 'SHR=1.0 must intersect saturation at exact Dew Point');
+    assert.equal(r100.dhdw_kJkg, Infinity);
+
+    // 3. Steep latent SHR = 0.45 from RA -> misses saturation curve before w=0 (reheat required)
+    const r45 = HVAC.solveSHRSaturation(ra, 0.45, pPa);
+    assert.equal(r45.satStatus, 'no-hit');
+    assert.equal(r45.satHit, null);
+
+    // 4. Negative evaporative/desiccant SHR = -0.5 from hot dry OA -> unique saturation intersection
+    const oa = { T: 38, w: 0.008 };
+    const rNeg = HVAC.solveSHRSaturation(oa, -0.5, pPa);
+    assert.equal(rNeg.satStatus, 'hit');
+    assert.ok(rNeg.satHit && rNeg.satHit.T < oa.T && rNeg.satHit.w > oa.w);
+
+    // 5. Store anchorTw roundtrip via JSON and Share URL
+    const st = createStore();
+    st.setSHR({ show: true, value: 0.82, anchorTw: { T: 26.5, w: 0.0112 } });
+    assert.equal(st.state.shr.refPointId, null);
+    approxEqual(st.state.shr.anchorTw.T, 26.5, 1e-6);
+    const hash = st.encodeShareURL();
+    const st2 = createStore();
+    const dec = st2.decodeShareURL(hash);
+    assert.equal(dec.ok, true);
+    assert.equal(st2.state.shr.show, true);
+    approxEqual(st2.state.shr.value, 0.82, 1e-4);
+    approxEqual(st2.state.shr.anchorTw.T, 26.5, 1e-3);
+    approxEqual(st2.state.shr.anchorTw.w, 0.0112, 1e-5);
+  });
 });

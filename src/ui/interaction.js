@@ -401,6 +401,72 @@ export function initChartInteraction(store, baseRenderer, overlayRenderer, callb
     return null;
   }
 
+  function pickSHRAtPx(px, py) {
+    const st = getState();
+    if (!st?.shr?.show) return null;
+    const geom = overlayRenderer?.getSHRGeometry?.();
+    if (!geom) return null;
+    const dpi = getDpi();
+
+    // 1. Circular Protractor Dial (center, ring & outer scale)
+    if (Math.hypot(px - geom.cx, py - geom.cy) <= geom.R + 18 * dpi) {
+      return 'dial';
+    }
+
+    // 2. Free / center-anchored Reference Line grab handle
+    if (!geom.isPointAnchored && Number.isFinite(geom.anchorPx) && Number.isFinite(geom.anchorPy)) {
+      if (Math.hypot(px - geom.anchorPx, py - geom.anchorPy) <= 13 * dpi) {
+        return 'anchor';
+      }
+    }
+
+    // 3. Dashed SHR Reference Slope Line segment (slideable parallel ruler)
+    if (geom.lineSeg) {
+      const { x1, y1, x2, y2 } = geom.lineSeg;
+      const dx = x2 - x1;
+      const dy = y2 - y1;
+      const lenSq = dx * dx + dy * dy;
+      if (lenSq > 4) {
+        const t = clamp(((px - x1) * dx + (py - y1) * dy) / lenSq, 0, 1);
+        const nx = x1 + t * dx;
+        const ny = y1 + t * dy;
+        if (Math.hypot(px - nx, py - ny) <= 9 * dpi) {
+          return 'line';
+        }
+      }
+    }
+    return null;
+  }
+
+  function computeShrFromDialPx(px, py, geom, shiftKey = false) {
+    if (!geom) return getState().shr?.value ?? 0.75;
+    const dx = px - geom.cx;
+    const dy = py - geom.cy;
+    if (Math.hypot(dx, dy) < 4) {
+      return geom.shr ?? (getState().shr?.value ?? 0.75);
+    }
+    // Map pulls on either semicircle (SHR right or Δh/ΔW left) to canonical right-going slope ray
+    const runPx = dx >= 0 ? dx : -dx;
+    const risePx = dx >= 0 ? -dy : dy;
+    let rawShr;
+    if (runPx < 1e-3) {
+      rawShr = 0.0;
+    } else {
+      const slope = (risePx / Math.max(1e-6, geom.pxPerKgKg)) / (runPx / Math.max(1e-6, geom.pxPerDegC));
+      const cpm = geom.cpm || 1.02;
+      const denom = cpm + 2501 * slope;
+      if (Math.abs(denom) < 1e-4) {
+        rawShr = denom >= 0 ? 2.0 : -2.0;
+      } else {
+        rawShr = cpm / denom;
+      }
+    }
+    const clamped = clamp(rawShr, -2.0, 2.0);
+    const step = shiftKey ? 0.05 : 0.01;
+    const snapped = Math.round(clamped / step) * step;
+    return Math.abs(snapped) < 1e-9 ? 0 : Number(snapped.toFixed(2));
+  }
+
   // --------------------------------------------------------------------------
   // Psychrometric State, HUD & 10-Property Clipboard Formatter (SI & True IP)
   // --------------------------------------------------------------------------
@@ -501,6 +567,65 @@ export function initChartInteraction(store, baseRenderer, overlayRenderer, callb
     ];
     if (procName) {
       items.push(`<span class="hud-item"><span class="hud-val" style="color:var(--accent)">${esc(procName)}</span></span>`);
+    }
+
+    hudEl.innerHTML = items.join('<span class="hud-sep"></span>');
+    hudEl.classList.remove('hidden');
+  }
+
+  function resolveCurrentShrRefPt() {
+    const st = getState();
+    const shr = st?.shr || {};
+    const explicitId = shr.refPtId ?? shr.refPointId;
+    if (explicitId != null && explicitId !== '') {
+      const pt = getPoint(explicitId);
+      if (pt) return { T: pt.T, w: pt.w, label: pt.label || 'Point' };
+    }
+    if (shr.anchorTw && Number.isFinite(shr.anchorTw.T) && Number.isFinite(shr.anchorTw.w)) {
+      return { T: shr.anchorTw.T, w: shr.anchorTw.w, label: 'Custom' };
+    }
+    const v = getView();
+    const pPa = getPressurePa();
+    const centerT = 0.5 * (v.tMin + v.tMax);
+    const centerW = Math.max(0.0005, Math.min(0.45 * v.wMax, Psy.wsat_at(centerT, pPa) * 0.72));
+    return { T: centerT, w: centerW, label: 'Center' };
+  }
+
+  function updateHudShr(shrVal, snapPtLabel = null) {
+    if (!hudEl) return;
+    const isSI = getUnits() === 'SI';
+    const refPt = resolveCurrentShrRefPt();
+    const solved = typeof HVAC?.solveSHRSaturation === 'function'
+      ? HVAC.solveSHRSaturation(refPt, shrVal, getPressurePa())
+      : null;
+
+    let dhdwStr;
+    if (Math.abs(1 - shrVal) < 1e-4) {
+      dhdwStr = '∞ (Sensible)';
+    } else {
+      const si = 2501 / (1 - shrVal);
+      const disp = isSI ? si : si / 2.326;
+      const fmt = Math.abs(disp) >= 1000 ? `${(disp / 1000).toFixed(1)}k` : disp.toFixed(0);
+      dhdwStr = `${fmt} ${isSI ? 'kJ/kg' : 'Btu/lb'}`;
+    }
+
+    let satStr = '—';
+    if (solved?.satHit && Number.isFinite(solved.satHit.T)) {
+      satStr = isSI ? `${solved.satHit.T.toFixed(1)}°C` : `${cToF(solved.satHit.T).toFixed(1)}°F`;
+    } else if (solved?.satStatus === 'no-hit') {
+      satStr = 'No Hit (Reheat Req.)';
+    }
+
+    const items = [
+      `<span class="hud-item"><span class="hud-val" style="color:var(--warn)">SHR DIAL</span></span>`,
+      hudItem('SHR', Number(shrVal).toFixed(2)),
+      hudItem('Δh/ΔW', dhdwStr),
+      hudItem(shrVal > 0 && shrVal <= 1 ? 'Sat / ADP' : 'Sat Hit', satStr)
+    ];
+    if (snapPtLabel) {
+      items.push(`<span class="hud-item"><span class="hud-val" style="color:var(--accent)">Anchor → ${esc(snapPtLabel)}</span></span>`);
+    } else if (refPt?.label) {
+      items.push(hudItem('Anchor', refPt.label));
     }
 
     hudEl.innerHTML = items.join('<span class="hud-sep"></span>');
@@ -1231,11 +1356,11 @@ export function initChartInteraction(store, baseRenderer, overlayRenderer, callb
     const ui = getUI();
     const m = ui.activeTool || 'select';
 
-    if (dragKind === 'pan' || dragKind === 'point') {
+    if (dragKind === 'pan' || dragKind === 'point' || dragKind === 'shr-dial') {
       setWrapCursorClass('cursor-grabbing');
       return;
     }
-    if (dragKind === 'label' || dragKind === 'annotation') {
+    if (dragKind === 'label' || dragKind === 'annotation' || dragKind === 'shr-anchor') {
       setWrapCursorClass('cursor-move');
       return;
     }
@@ -1268,11 +1393,13 @@ export function initChartInteraction(store, baseRenderer, overlayRenderer, callb
       return;
     }
 
-    // Select mode hover cursors (Point priority over Label)
-    if (ui.hovPickId != null) {
+    // Select mode hover cursors (Dial -> Point -> Label/Annotation -> Process -> SHR Line)
+    if (ui.hovShrPart === 'dial') {
+      setWrapCursorClass('cursor-grab');
+    } else if (ui.hovPickId != null) {
       const pt = getPoint(ui.hovPickId);
       setWrapCursorClass(pt?.locked || isDerivedMixPoint(pt) ? 'cursor-pointer' : 'cursor-grab');
-    } else if (ui.hovLabelId != null || ui.hovAnnId != null) {
+    } else if (ui.hovLabelId != null || ui.hovAnnId != null || ui.hovShrPart === 'anchor' || ui.hovShrPart === 'line') {
       setWrapCursorClass('cursor-move');
     } else if (ui.hovProcId != null) {
       setWrapCursorClass('cursor-pointer');
@@ -1369,7 +1496,7 @@ export function initChartInteraction(store, baseRenderer, overlayRenderer, callb
   // 2. Mouse, Wheel & Touch Interactions on #cvOverlay
   // --------------------------------------------------------------------------
   function handlePointerDown(px, py, opts = {}) {
-    const { button = 0, altKey = false } = opts;
+    const { button = 0, altKey = false, shiftKey = false } = opts;
     if (button === 2) return;
 
     hideContextMenu();
@@ -1432,7 +1559,26 @@ export function initChartInteraction(store, baseRenderer, overlayRenderer, callb
       return;
     }
 
-    // Select Mode: priority Point -> Label -> Annotation -> Process -> Pan
+    // Select Mode: priority SHR Dial -> Point -> Label -> Annotation -> Process -> SHR Parallel Line -> Pan
+    const shrHit = pickSHRAtPx(px, py);
+    if (shrHit === 'dial') {
+      const geom = overlayRenderer?.getSHRGeometry?.();
+      dragKind = 'shr-dial';
+      ui.dragShrPart = 'dial';
+      ui.hovShrPart = 'dial';
+      store?.pushHistory?.('Adjust SHR Protractor');
+      dragHistoryPushed = true;
+      const nextShr = computeShrFromDialPx(px, py, geom, shiftKey);
+      store?.setSHR?.({ value: nextShr }, false, { silentChange: true, skipAutosave: true });
+      const shrInput = byId('shrVal');
+      if (shrInput) shrInput.value = nextShr.toFixed(2);
+      hudEl?.classList.add('hud-dragging');
+      updateHudShr(nextShr);
+      document.body.style.userSelect = 'none';
+      updateCursor();
+      return;
+    }
+
     const hitPtId = pickPointAtPx(px, py);
     if (hitPtId != null) {
       const pt = getPoint(hitPtId);
@@ -1500,6 +1646,19 @@ export function initChartInteraction(store, baseRenderer, overlayRenderer, callb
       return;
     }
 
+    if (shrHit === 'anchor' || shrHit === 'line') {
+      dragKind = 'shr-anchor';
+      ui.dragShrPart = 'anchor';
+      ui.hovShrPart = 'anchor';
+      store?.pushHistory?.('Slide SHR Reference Line');
+      dragHistoryPushed = true;
+      hudEl?.classList.add('hud-dragging');
+      document.body.style.userSelect = 'none';
+      updateHudShr(getState().shr?.value ?? 0.75);
+      updateCursor();
+      return;
+    }
+
     // Empty chart space -> smooth pan
     ui.selectedAnnId = null;
     dragKind = 'pan';
@@ -1525,6 +1684,37 @@ export function initChartInteraction(store, baseRenderer, overlayRenderer, callb
       const dpi = getDpi();
       if (!dragMoved && Math.hypot(px - dragStartPx.x, py - dragStartPx.y) > 3 * dpi) {
         dragMoved = true;
+      }
+
+      if (dragKind === 'shr-dial') {
+        const geom = overlayRenderer?.getSHRGeometry?.();
+        const nextShr = computeShrFromDialPx(px, py, geom, shiftKey);
+        store?.setSHR?.({ value: nextShr }, false, { silentChange: true, skipAutosave: true });
+        const shrInput = byId('shrVal');
+        if (shrInput) shrInput.value = nextShr.toFixed(2);
+        updateHudShr(nextShr);
+        return;
+      }
+
+      if (dragKind === 'shr-anchor') {
+        const curShr = getState().shr?.value ?? 0.75;
+        const snapId = pickPointAtPx(px, py);
+        if (snapId != null) {
+          const snapPt = getPoint(snapId);
+          if (snapPt) {
+            store?.setSHR?.({ refPointId: snapPt.id, anchorTw: null }, false, { silentChange: true, skipAutosave: true });
+            const selRef = byId('shrRefPt');
+            if (selRef) selRef.value = String(snapPt.id);
+            updateHudShr(curShr, snapPt.label || 'Point');
+            return;
+          }
+        }
+        const safe = clampTwToSaturation(tw.T, tw.w, true);
+        store?.setSHR?.({ refPointId: null, anchorTw: { T: safe.T, w: safe.w } }, false, { silentChange: true, skipAutosave: true });
+        const selRef = byId('shrRefPt');
+        if (selRef) selRef.value = '';
+        updateHudShr(curShr, 'Custom');
+        return;
       }
 
       if (dragKind === 'locked-mix') {
@@ -1645,22 +1835,37 @@ export function initChartInteraction(store, baseRenderer, overlayRenderer, callb
       }
     }
 
-    // Idle Hover Hit-Testing & Live HUD (Point priority over Label)
+    // Idle Hover Hit-Testing & Live HUD (Dial -> Point -> Label -> Annotation -> Process -> SHR Line)
     if (inside) {
       const tool = getActiveTool();
       const prevPick = ui.hovPickId;
       const prevLbl = ui.hovLabelId;
       const prevAnn = ui.hovAnnId;
       const prevProc = ui.hovProcId;
+      const prevShrPart = ui.hovShrPart;
 
-      ui.hovPickId = (tool === 'select' || tool === 'process' || tool === 'mix') ? pickPointAtPx(px, py) : null;
-      ui.hovLabelId = (tool === 'select' && ui.hovPickId == null) ? pickLabelAtPx(px, py) : null;
-      ui.hovAnnId = tool === 'select' && ui.hovPickId == null && ui.hovLabelId == null ? pickAnnotationAtPx(px, py) : null;
-      ui.hovProcId = tool === 'select' && ui.hovPickId == null && ui.hovLabelId == null && ui.hovAnnId == null
-        ? pickProcessAtPx(px, py)
-        : null;
+      const rawShrHit = tool === 'select' ? pickSHRAtPx(px, py) : null;
+      if (rawShrHit === 'dial') {
+        ui.hovShrPart = 'dial';
+        ui.hovPickId = null;
+        ui.hovLabelId = null;
+        ui.hovAnnId = null;
+        ui.hovProcId = null;
+      } else {
+        ui.hovPickId = (tool === 'select' || tool === 'process' || tool === 'mix') ? pickPointAtPx(px, py) : null;
+        ui.hovLabelId = (tool === 'select' && ui.hovPickId == null) ? pickLabelAtPx(px, py) : null;
+        ui.hovAnnId = tool === 'select' && ui.hovPickId == null && ui.hovLabelId == null ? pickAnnotationAtPx(px, py) : null;
+        ui.hovProcId = tool === 'select' && ui.hovPickId == null && ui.hovLabelId == null && ui.hovAnnId == null
+          ? pickProcessAtPx(px, py)
+          : null;
+        ui.hovShrPart = (tool === 'select' && ui.hovPickId == null && ui.hovLabelId == null && ui.hovAnnId == null && ui.hovProcId == null)
+          ? rawShrHit
+          : null;
+      }
 
-      if (ui.hovPickId != null && tool === 'select') {
+      if (ui.hovShrPart === 'dial') {
+        updateHudShr(getState().shr?.value ?? 0.75);
+      } else if (ui.hovPickId != null && tool === 'select') {
         const hp = getPoint(ui.hovPickId);
         if (hp) updateHudAtTw(hp.T, hp.w, hp.label || null);
       } else if (measureLocked && ui.measureStart && ui.measureEnd && tool === 'measure') {
@@ -1675,6 +1880,7 @@ export function initChartInteraction(store, baseRenderer, overlayRenderer, callb
         prevLbl !== ui.hovLabelId ||
         prevAnn !== ui.hovAnnId ||
         prevProc !== ui.hovProcId ||
+        prevShrPart !== ui.hovShrPart ||
         ui.hoverPx != null
       ) {
         emitOverlayDirty('hover');
@@ -1694,8 +1900,18 @@ export function initChartInteraction(store, baseRenderer, overlayRenderer, callb
     activeSnapLabel = null;
     ui.dragPtId = null;
     ui.dragSnapLabel = null;
+    ui.dragShrPart = null;
     hudEl?.classList.remove('hud-dragging');
     document.body.style.userSelect = '';
+
+    if (finished === 'shr-dial' || finished === 'shr-anchor') {
+      const s = getState().shr || {};
+      store?.setSHR?.({ value: s.value, refPointId: s.refPointId, anchorTw: s.anchorTw }, false);
+      suppressNextClick = true;
+      updateCursor();
+      emitOverlayDirty('shr-drag-end');
+      return;
+    }
 
     if (finished === 'boxzoom' && ui.boxZoom) {
       const b = ui.boxZoom;
@@ -1870,6 +2086,25 @@ export function initChartInteraction(store, baseRenderer, overlayRenderer, callb
     if (getActiveTool() !== 'select') return;
     const pos = clientToCanvasPx(e.clientX, e.clientY);
 
+    // Double-click SHR protractor dial -> snap Target SHR to active process / measure SHR
+    if (pickSHRAtPx(pos.px, pos.py) === 'dial') {
+      const geom = overlayRenderer?.getSHRGeometry?.();
+      const lv = geom?.liveVector;
+      if (lv && Number.isFinite(lv.shr)) {
+        const matched = Number(clamp(lv.shr, -2, 2).toFixed(2));
+        const stShr = getState().shr || {};
+        const patch = { value: matched };
+        if (stShr.refPointId == null && !stShr.anchorTw && lv.anchorPtId != null) {
+          patch.refPointId = lv.anchorPtId;
+        }
+        store?.setSHR?.(patch, true);
+        toast(`Matched SHR Protractor to ${lv.label} (SHR ${matched.toFixed(2)})`, 'success');
+      } else {
+        toast('Select or hover a process to match its SHR slope', 'info');
+      }
+      return;
+    }
+
     // Double-click point -> toggle lock/unlock
     const hitPtId = pickPointAtPx(pos.px, pos.py);
     if (hitPtId != null) {
@@ -1904,7 +2139,7 @@ export function initChartInteraction(store, baseRenderer, overlayRenderer, callb
   bind(cvOverlay, 'mousedown', e => {
     if (e.button === 2) return;
     const pos = clientToCanvasPx(e.clientX, e.clientY);
-    handlePointerDown(pos.px, pos.py, { button: e.button, altKey: e.altKey });
+    handlePointerDown(pos.px, pos.py, { button: e.button, altKey: e.altKey, shiftKey: e.shiftKey });
   });
 
   bind(window, 'mousemove', e => {
@@ -1919,6 +2154,7 @@ export function initChartInteraction(store, baseRenderer, overlayRenderer, callb
         ui.hovLabelId = null;
         ui.hovAnnId = null;
         ui.hovProcId = null;
+        ui.hovShrPart = null;
         hideHud();
         emitOverlayDirty('hover-exit');
       }
@@ -1943,6 +2179,7 @@ export function initChartInteraction(store, baseRenderer, overlayRenderer, callb
     ui.hovLabelId = null;
     ui.hovAnnId = null;
     ui.hovProcId = null;
+    ui.hovShrPart = null;
     hideHud();
     emitOverlayDirty('hover-leave');
   });
