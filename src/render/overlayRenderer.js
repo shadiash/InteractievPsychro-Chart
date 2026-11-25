@@ -2089,14 +2089,23 @@ export class OverlayRenderer {
         const ep = _OVL.resolveProcEndpoints(p, pts);
         return ep && (ep.a.id === ui.dragPtId || ep.b.id === ui.dragPtId);
       };
+      const trackedMatch = ui.shrTrackedProcId != null ? procs.find(p => p.id === ui.shrTrackedProcId && touches(p)) : null;
       const selMatch = ui.selectedProcId != null ? procs.find(p => p.id === ui.selectedProcId && touches(p)) : null;
       const nonMixMatch = procs.find(p => p.role !== 'mix' && touches(p));
       const anyMatch = procs.find(touches);
-      liveVector = resolveProcVector(selMatch || nonMixMatch || anyMatch);
+      const chosen = trackedMatch || selMatch || nonMixMatch || anyMatch;
+      if (chosen) {
+        ui.shrTrackedProcId = chosen.id;
+        liveVector = resolveProcVector(chosen);
+      }
     }
     if (!liveVector && !isExport && ui.hovProcId != null && procs.length > 0) {
       const hp = procs.find(p => p.id === ui.hovProcId);
       liveVector = resolveProcVector(hp);
+    }
+    if (!liveVector && ui.shrTrackedProcId != null && procs.length > 0) {
+      const tp = procs.find(p => p.id === ui.shrTrackedProcId);
+      liveVector = resolveProcVector(tp);
     }
     if (!liveVector && ui.selectedProcId != null && procs.length > 0) {
       const sp = procs.find(p => p.id === ui.selectedProcId);

@@ -1695,7 +1695,7 @@ export function initLeftPanel(store, callbacks = {}) {
       toast('Add a process first to match its SHR slope', 'warn');
       return;
     }
-    const selId = st.ui?.selectedProcId;
+    const selId = st.ui?.shrTrackedProcId ?? st.ui?.selectedProcId;
     let proc = selId != null ? procs.find((p) => p.id === selId) : null;
     if (!proc || proc.role === 'mix') {
       proc = procs.find((p) => p.role === 'room') || procs.find((p) => p.role !== 'mix') || proc || procs[0];

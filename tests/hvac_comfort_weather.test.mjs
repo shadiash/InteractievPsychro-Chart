@@ -1327,4 +1327,30 @@ describe('4. State Store & Legacy Compatibility (Store)', () => {
       }
     }
   });
+
+  it('keeps SHR protractor live tracking locked to the dragged/selected point process after release (no jump back)', () => {
+    const st = createStore();
+    const p1 = st.addPoint({ T: 43, w: 0.022, label: 'Process Air' }, false);
+    const p2 = st.addPoint({ T: 49, w: 0.024, label: 'Desiccant Out' }, false);
+    const p3 = st.addPoint({ T: 18, w: 0.0062, label: 'Post-Cool SA' }, false);
+    const p4 = st.addPoint({ T: 12, w: 0.0062, label: 'Cleanroom' }, false);
+    const s1 = st.addProcess(p1.id, p2.id, { flowVal: 1000, flowUnit: 'Lps' }, false);
+    const s3 = st.addProcess(p3.id, p4.id, { flowVal: 1000, flowUnit: 'Lps' }, false);
+
+    // Initially S1 is selected
+    st.setUI({ selectedProcId: s1.id });
+    assert.equal(st.state.ui.shrTrackedProcId, s1.id);
+
+    // User selects & drags Cleanroom (connected to S3) -> shrTrackedProcId locks onto S3
+    st.setUI({ selectedPtId: p4.id });
+    assert.equal(st.state.ui.shrTrackedProcId, s3.id, 'Selecting/dragging Cleanroom must track S3');
+    // Even after releasing drag (dragPtId = null), shrTrackedProcId stays on S3 (never jumps back to S1!)
+    st.setUI({ dragPtId: null });
+    assert.equal(st.state.ui.shrTrackedProcId, s3.id, 'Releasing Cleanroom must NOT jump SHR needle back to S1');
+    assert.equal(st.state.ui.selectedProcId, s1.id, 'Right panel selectedProcId remains undisturbed');
+
+    // Explicitly selecting S1 later switches tracking cleanly back to S1
+    st.setUI({ selectedProcId: s1.id });
+    assert.equal(st.state.ui.shrTrackedProcId, s1.id);
+  });
 });

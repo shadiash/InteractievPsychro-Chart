@@ -129,6 +129,7 @@ export function createStore() {
       dragSnapLabel: null,
       hovShrPart: null,
       dragShrPart: null,
+      shrTrackedProcId: null,
       leftCollapsed: false,
       rightCollapsed: false
     }
@@ -323,6 +324,9 @@ export function createStore() {
     }
     if (state.ui.selectedProcId != null && !findById(state.processes, state.ui.selectedProcId)) {
       state.ui.selectedProcId = null;
+    }
+    if (state.ui.shrTrackedProcId != null && !findById(state.processes, state.ui.shrTrackedProcId)) {
+      state.ui.shrTrackedProcId = null;
     }
     if (state.shr.refPointId != null && !findById(state.points, state.shr.refPointId)) {
       state.shr.refPointId = null;
@@ -1332,6 +1336,7 @@ export function createStore() {
     recomputeDerived();
     state.ui.selectedPtId = state.points[0]?.id ?? null;
     state.ui.selectedProcId = state.processes[0]?.id ?? null;
+    state.ui.shrTrackedProcId = state.ui.selectedProcId;
     state.shr.refPointId = null;
     state.shr.anchorTw = null;
 
@@ -1348,6 +1353,7 @@ export function createStore() {
     state.annotations = [];
     state.ui.selectedPtId = null;
     state.ui.selectedProcId = null;
+    state.ui.shrTrackedProcId = null;
     state.shr.refPointId = null;
     state.shr.anchorTw = null;
 
@@ -1371,22 +1377,47 @@ export function createStore() {
     autosave();
   }
 
+  function findConnectedProcForPoint(ptId) {
+    if (ptId == null) return null;
+    const touches = (pr) => pr && (pr.aId === ptId || pr.bId === ptId);
+    const curTracked = state.ui.shrTrackedProcId != null ? getProcess(state.ui.shrTrackedProcId) : null;
+    if (curTracked && touches(curTracked)) return curTracked.id;
+    const curSel = state.ui.selectedProcId != null ? getProcess(state.ui.selectedProcId) : null;
+    if (curSel && touches(curSel)) return curSel.id;
+    const nonMix = state.processes.find(pr => pr.role !== 'mix' && touches(pr));
+    if (nonMix) return nonMix.id;
+    const any = state.processes.find(touches);
+    return any ? any.id : null;
+  }
+
   function setUI(patch = {}) {
     if (!patch || typeof patch !== 'object') return;
     let nonHoverChanged = false;
-    const hoverKeys = new Set(['hoverPx', 'hoverPy', 'hovPickId', 'hovLabelId', 'dragPtId', 'dragSnapLabel']);
+    const hoverKeys = new Set(['hoverPx', 'hoverPy', 'hovPickId', 'hovLabelId', 'dragPtId', 'dragSnapLabel', 'hovShrPart', 'dragShrPart']);
 
     for (const key of Object.keys(patch)) {
       if (!(key in state.ui)) continue;
       let val = patch[key];
       if (key === 'selectedPtId' && val != null) {
         val = getPoint(val)?.id ?? null;
-      } else if (key === 'selectedProcId' && val != null) {
+      } else if ((key === 'selectedProcId' || key === 'shrTrackedProcId') && val != null) {
         val = getProcess(val)?.id ?? null;
       }
       if (state.ui[key] !== val) {
         state.ui[key] = val;
         if (!hoverKeys.has(key)) nonHoverChanged = true;
+      }
+    }
+
+    // Keep SHR protractor live tracking synced to whichever process or connected point was just activated
+    if (!('shrTrackedProcId' in patch)) {
+      if ('selectedProcId' in patch && state.ui.selectedProcId != null) {
+        state.ui.shrTrackedProcId = state.ui.selectedProcId;
+      } else if ('selectedPtId' in patch && state.ui.selectedPtId != null) {
+        const connProcId = findConnectedProcForPoint(state.ui.selectedPtId);
+        if (connProcId != null) {
+          state.ui.shrTrackedProcId = connProcId;
+        }
       }
     }
 
