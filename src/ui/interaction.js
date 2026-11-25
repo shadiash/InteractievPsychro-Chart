@@ -2366,6 +2366,7 @@ export function initChartInteraction(store, baseRenderer, overlayRenderer, callb
         parts.push(ctxItemHtml('editPoint', '✏️', `Edit "${hitPt.label}"…`));
       }
       parts.push(ctxItemHtml('duplicatePoint', '⧉', `Duplicate "${hitPt.label}"`));
+      parts.push(ctxItemHtml('hidePoint', '🙈', `Hide "${hitPt.label}"`));
       parts.push(ctxItemHtml('lockPoint', hitPt.locked || derivedMix ? '🔓' : '🔒', hitPt.locked || derivedMix ? `Unlock "${hitPt.label}"` : `Lock "${hitPt.label}"`));
       parts.push(ctxItemHtml('resetLabel', '↩️', 'Reset Label Position'));
       if (!hitPt.locked && !derivedMix) {
@@ -2480,6 +2481,14 @@ export function initChartInteraction(store, baseRenderer, overlayRenderer, callb
       }
       case 'duplicatePoint': {
         if (ctxTarget.pointId != null) duplicatePoint(ctxTarget.pointId);
+        break;
+      }
+      case 'hidePoint': {
+        const pt = getPoint(ctxTarget.pointId);
+        if (pt && typeof store?.updatePoint === 'function') {
+          store.updatePoint(pt.id, { hidden: true }, true);
+          toast(`Hid "${pt.label}" (restore in Points tab or Show Design Pts)`, 'info');
+        }
         break;
       }
       case 'lockPoint': {

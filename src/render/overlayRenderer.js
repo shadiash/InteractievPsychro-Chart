@@ -471,32 +471,33 @@ const _OVL = {
     ctx.restore();
   },
 
-  drawStatePointMarker(ctx, px, py, ptSz, ptCol, pal, isDark, dpi, pointMarker = 'precision-ring') {
+  drawStatePointMarker(ctx, px, py, ptSz, ptCol, pal, isDark, dpi, pointMarker = 'precision-ring', scale = 1) {
     const bgCol = pal.plotBg || pal.bg || (isDark ? '#0f1520' : '#ffffff');
+    const s = CoreDOM.clamp(Number.isFinite(scale) ? scale : 1, 0.35, 1.4);
     ctx.save();
     ctx.setLineDash([]);
 
     if (pointMarker === 'crosshair-circle') {
       // Authentic Carrier / Mollier / CAD open target circle with 4 precision orthogonal hair-ticks
       const r = ptSz * 1.05;
-      const tickOut = 4.5 * dpi;
+      const tickOut = 4.2 * s * dpi;
       ctx.beginPath();
       ctx.arc(px, py, r, 0, Math.PI * 2);
       ctx.fillStyle = bgCol;
       ctx.fill();
       ctx.strokeStyle = ptCol;
-      ctx.lineWidth = 1.8 * dpi;
+      ctx.lineWidth = Math.max(1.0, 1.75 * s) * dpi;
       ctx.stroke();
 
       // Center precision pinpoint
       ctx.beginPath();
-      ctx.arc(px, py, 1.35 * dpi, 0, Math.PI * 2);
+      ctx.arc(px, py, Math.max(0.85, 1.3 * s) * dpi, 0, Math.PI * 2);
       ctx.fillStyle = ptCol;
       ctx.fill();
 
       // 4 orthogonal hair-ticks extending outward
       ctx.strokeStyle = ptCol;
-      ctx.lineWidth = 1.35 * dpi;
+      ctx.lineWidth = Math.max(0.85, 1.3 * s) * dpi;
       ctx.lineCap = 'round';
       ctx.beginPath();
       ctx.moveTo(px, py - r);
@@ -513,14 +514,14 @@ const _OVL = {
     }
 
     if (pointMarker === 'solid-dot') {
-      // Classic ASHRAE / Print B&W crisp filled dot with contrasting white/bg stroke rim (1.6 * dpi)
+      // Classic ASHRAE / Print B&W crisp filled dot with contrasting white/bg stroke rim
       const r = ptSz * 1.05;
       ctx.beginPath();
       ctx.arc(px, py, r, 0, Math.PI * 2);
       ctx.fillStyle = ptCol;
       ctx.fill();
       ctx.strokeStyle = bgCol;
-      ctx.lineWidth = 1.6 * dpi;
+      ctx.lineWidth = Math.max(0.9, 1.55 * s) * dpi;
       ctx.stroke();
       ctx.restore();
       return;
@@ -538,7 +539,7 @@ const _OVL = {
       ctx.fillStyle = ptCol;
       ctx.fill();
       ctx.strokeStyle = bgCol;
-      ctx.lineWidth = 1.6 * dpi;
+      ctx.lineWidth = Math.max(0.9, 1.55 * s) * dpi;
       ctx.lineJoin = 'miter';
       ctx.stroke();
       ctx.restore();
@@ -546,9 +547,9 @@ const _OVL = {
     }
 
     // Default: 'precision-ring' — soft ambient glow + filled core + precision outer halo ring
-    const gradR = ptSz + 5 * dpi;
+    const gradR = ptSz + 4.5 * s * dpi;
     const grad = ctx.createRadialGradient(px, py, 0, px, py, gradR);
-    grad.addColorStop(0, _OVL.withAlpha(ptCol, 0.35));
+    grad.addColorStop(0, _OVL.withAlpha(ptCol, 0.34));
     grad.addColorStop(1, _OVL.withAlpha(ptCol, 0));
     ctx.fillStyle = grad;
     ctx.beginPath();
@@ -557,16 +558,16 @@ const _OVL = {
 
     // Outer precision ring
     ctx.strokeStyle = ptCol;
-    ctx.lineWidth = 1.5 * dpi;
+    ctx.lineWidth = Math.max(0.85, 1.45 * s) * dpi;
     ctx.beginPath();
-    ctx.arc(px, py, ptSz + 2 * dpi, 0, Math.PI * 2);
+    ctx.arc(px, py, ptSz + 1.85 * s * dpi, 0, Math.PI * 2);
     ctx.stroke();
 
     // Subtle contrast gap ring
     ctx.strokeStyle = bgCol;
-    ctx.lineWidth = 1.1 * dpi;
+    ctx.lineWidth = Math.max(0.7, 1.05 * s) * dpi;
     ctx.beginPath();
-    ctx.arc(px, py, ptSz + 0.4 * dpi, 0, Math.PI * 2);
+    ctx.arc(px, py, ptSz + 0.38 * s * dpi, 0, Math.PI * 2);
     ctx.stroke();
 
     // Solid inner core
@@ -678,9 +679,13 @@ const _OVL = {
     const dpi = br.dpi || 1;
     const ptx = br.xc(p.T);
     const pty = br.yc(p.w);
+    const isDesign = CoreDOM.isDesignCityPoint(p);
+    const ptScale = CoreDOM.computePointScale(state?.view, isDesign);
     const lx = (p.lx ?? 10) * dpi;
     const ly = (p.ly ?? -6) * dpi;
-    const fontSize = CoreDOM.clamp(Number(state?.grid?.labelPx ?? state?.labelPx ?? pal?.lblPx ?? 11), 9, 16);
+    const baseFont = CoreDOM.clamp(Number(state?.grid?.labelPx ?? state?.labelPx ?? pal?.lblPx ?? 11), 9, 16);
+    const zoomFontFactor = ptScale < 0.92 ? CoreDOM.clamp(0.62 + 0.38 * ptScale, 0.78, 1.0) : 1.0;
+    const fontSize = CoreDOM.clamp((baseFont - (isDesign ? 0.7 : 0)) * zoomFontFactor, 8.2, 16);
     const labelText = (p.locked ? '🔒 ' : '') + (p.label || `P${idx + 1}`);
 
     let tw = labelText.length * fontSize * 0.62 * dpi;
@@ -944,15 +949,16 @@ export class OverlayRenderer {
     const isExport = Boolean(opts.isExport);
     const layers = state.layers || {};
 
-    // Shared 2D collision registry seeded with every point marker & SHR dial card
+    // Shared 2D collision registry seeded with every visible point marker & SHR dial card
     const occupiedRects = [];
     if (layers.points !== false && Array.isArray(state.points)) {
       for (let i = 0; i < state.points.length; i++) {
         const p = state.points[i];
-        if (!p || !Number.isFinite(p.T) || !Number.isFinite(p.w)) continue;
+        if (!CoreDOM.isPointVisible(p, state)) continue;
         const px = br.xc(p.T);
         const py = br.yc(p.w);
-        const mRect = [px - 10 * dpi, py - 10 * dpi, 20 * dpi, 20 * dpi];
+        const mHalf = Math.max(5.5, 10 * CoreDOM.computePointScale(state.view, CoreDOM.isDesignCityPoint(p))) * dpi;
+        const mRect = [px - mHalf, py - mHalf, mHalf * 2, mHalf * 2];
         mRect.tag = `pt:${p.id}`;
         occupiedRects.push(mRect);
       }
@@ -1070,7 +1076,7 @@ export class OverlayRenderer {
     const ghostProcs = Array.isArray(scen.processes) ? scen.processes : [];
     const ghostStroke = isDark ? 'rgba(148,163,184,0.68)' : 'rgba(71,85,105,0.62)';
     const ghostLabelCol = isDark ? 'rgba(148,163,184,0.82)' : 'rgba(71,85,105,0.78)';
-    const ptSz = (pal.ptSize || 4.5) * dpi;
+    const ptSz = (pal.ptSize || 4.5) * CoreDOM.computePointScale(state.view, false) * dpi;
 
     // Ghost processes
     ctx.save();
@@ -1516,7 +1522,8 @@ export class OverlayRenderer {
     const procs = state.processes || [];
     const pPa = state.pPa || 101325;
     const baseArrowW = _OVL.resolveLineWeight(trend.lineWeight, pal);
-    const ptSz = (pal.ptSize || 4.5) * dpi;
+    const ptScale = CoreDOM.computePointScale(state.view, false);
+    const ptSz = (pal.ptSize || 4.5) * ptScale * dpi;
     const badgeBg = isDark ? 'rgba(12,18,30,0.88)' : 'rgba(255,255,255,0.93)';
     const showAdpLines = state.layers?.adpLines !== false;
     const animateFlow = Boolean(state.layers?.flowAnim && !isExport);
@@ -1571,7 +1578,7 @@ export class OverlayRenderer {
       }
 
       // Trim end so arrowhead cleanly kisses point B's outer marker rim
-      const markerExtra = trend.pointMarker === 'crosshair-circle' ? 4.5 : (trend.pointMarker === 'diamond' ? 3.5 : 3);
+      const markerExtra = (trend.pointMarker === 'crosshair-circle' ? 4.5 : (trend.pointMarker === 'diamond' ? 3.5 : 3)) * ptScale;
       const trimEnd = chordLen > 24 * dpi ? ptSz + markerExtra * dpi : 0;
       const drawPath = _OVL.trimPolylineEnd(rawPath, trimEnd);
       const pathMetrics = _OVL.computePolylineMetrics(drawPath);
@@ -1874,7 +1881,7 @@ export class OverlayRenderer {
     // Pass 1: Register manually positioned / preset-offset labels as fixed rects
     for (let i = 0; i < pts.length; i++) {
       const p = pts[i];
-      if (!p || !Number.isFinite(p.T) || !Number.isFinite(p.w)) continue;
+      if (!CoreDOM.isPointVisible(p, state)) continue;
       const lm = _OVL.getLabelMetrics(ctx, p, i, br, state, pal);
       const isDefault = (p.lx == null || p.lx === 10) && (p.ly == null || p.ly === -6);
       if (!isDefault) {
@@ -2786,7 +2793,7 @@ export class OverlayRenderer {
     const trend = tr || _OVL.resolveTrendStyle(pal, state);
     const pts = state.points || [];
     const ui = state.ui || {};
-    const ptSz = (pal.ptSize || 4.5) * dpi;
+    const basePtSize = pal.ptSize || 4.5;
     const tool = ui.activeTool || ui.tool || 'select';
     const step = ui.toolStep;
     const stepPtId = (step == null)
@@ -2802,8 +2809,11 @@ export class OverlayRenderer {
 
     for (let i = 0; i < pts.length; i++) {
       const p = pts[i];
-      if (!p || !Number.isFinite(p.T) || !Number.isFinite(p.w)) continue;
+      if (!CoreDOM.isPointVisible(p, state)) continue;
 
+      const isDesign = CoreDOM.isDesignCityPoint(p);
+      const ptScale = CoreDOM.computePointScale(state.view, isDesign);
+      const ptSz = basePtSize * ptScale * dpi;
       const px = br.xc(p.T);
       const py = br.yc(p.w);
       const ptCol = p.color || pal.pt || '#f43f5e';
@@ -2816,14 +2826,14 @@ export class OverlayRenderer {
       if (isProcStart) {
         ctx.save();
         ctx.strokeStyle = accentCol;
-        ctx.lineWidth = 2.2 * dpi;
+        ctx.lineWidth = Math.max(1.3, 2.1 * ptScale) * dpi;
         ctx.setLineDash([4 * dpi, 3 * dpi]);
         ctx.globalAlpha = 0.88;
         ctx.beginPath();
-        ctx.arc(px, py, ptSz + 8.5 * dpi, 0, Math.PI * 2);
+        ctx.arc(px, py, ptSz + 7.5 * ptScale * dpi, 0, Math.PI * 2);
         ctx.stroke();
         ctx.restore();
-        _OVL.textHalo(ctx, 'START', px, py + ptSz + 13 * dpi, accentCol, pal, dpi, {
+        _OVL.textHalo(ctx, 'START', px, py + ptSz + 11.5 * ptScale * dpi, accentCol, pal, dpi, {
           align: 'center',
           base: 'top',
           sizePx: 8.5,
@@ -2834,14 +2844,14 @@ export class OverlayRenderer {
       if (isMixStart) {
         ctx.save();
         ctx.strokeStyle = mixCol;
-        ctx.lineWidth = 2.2 * dpi;
+        ctx.lineWidth = Math.max(1.3, 2.1 * ptScale) * dpi;
         ctx.setLineDash([4 * dpi, 3 * dpi]);
         ctx.globalAlpha = 0.88;
         ctx.beginPath();
-        ctx.arc(px, py, ptSz + 8.5 * dpi, 0, Math.PI * 2);
+        ctx.arc(px, py, ptSz + 7.5 * ptScale * dpi, 0, Math.PI * 2);
         ctx.stroke();
         ctx.restore();
-        _OVL.textHalo(ctx, 'MIX A', px, py + ptSz + 13 * dpi, mixCol, pal, dpi, {
+        _OVL.textHalo(ctx, 'MIX A', px, py + ptSz + 11.5 * ptScale * dpi, mixCol, pal, dpi, {
           align: 'center',
           base: 'top',
           sizePx: 8.5,
@@ -2855,7 +2865,7 @@ export class OverlayRenderer {
         const hCol = tool === 'mix' ? mixCol : (tool === 'process' ? accentCol : ptCol);
 
         ctx.save();
-        const glowR = ptSz + (isPickMode ? 16 : 11) * dpi;
+        const glowR = ptSz + (isPickMode ? 14 : 9.5) * ptScale * dpi;
         const glow = ctx.createRadialGradient(px, py, ptSz, px, py, glowR);
         glow.addColorStop(0, _OVL.withAlpha(hCol, 0.36));
         glow.addColorStop(1, _OVL.withAlpha(hCol, 0));
@@ -2865,10 +2875,10 @@ export class OverlayRenderer {
         ctx.fill();
 
         ctx.strokeStyle = hCol;
-        ctx.lineWidth = 1.9 * dpi;
+        ctx.lineWidth = Math.max(1.1, 1.8 * ptScale) * dpi;
         ctx.globalAlpha = 0.9;
         ctx.beginPath();
-        ctx.arc(px, py, ptSz + 6 * dpi, 0, Math.PI * 2);
+        ctx.arc(px, py, ptSz + 5.2 * ptScale * dpi, 0, Math.PI * 2);
         ctx.stroke();
         ctx.restore();
 
@@ -2876,7 +2886,7 @@ export class OverlayRenderer {
           const hint = tool === 'process'
             ? (procStartId != null ? 'Click to end' : 'Click start')
             : (mixStartId != null ? 'Click to mix' : 'Click stream A');
-          _OVL.textHalo(ctx, hint, px, py - ptSz - 13 * dpi, hCol, pal, dpi, {
+          _OVL.textHalo(ctx, hint, px, py - ptSz - 11 * ptScale * dpi, hCol, pal, dpi, {
             align: 'center',
             base: 'bottom',
             sizePx: 8.5,
@@ -2885,12 +2895,12 @@ export class OverlayRenderer {
         }
       }
 
-      // Selected point double-ring indicator
+      // Selected point double-ring indicator (scales dynamically with chart zoom!)
       if (isSelected) {
         ctx.save();
-        const auraR = ptSz + 13 * dpi;
+        const auraR = ptSz + 10.5 * ptScale * dpi;
         const aura = ctx.createRadialGradient(px, py, ptSz, px, py, auraR);
-        aura.addColorStop(0, _OVL.withAlpha(ptCol, 0.28));
+        aura.addColorStop(0, _OVL.withAlpha(ptCol, 0.26));
         aura.addColorStop(1, _OVL.withAlpha(ptCol, 0));
         ctx.fillStyle = aura;
         ctx.beginPath();
@@ -2899,22 +2909,22 @@ export class OverlayRenderer {
 
         // Outer precision ring
         ctx.strokeStyle = _OVL.withAlpha(ptCol, 0.85);
-        ctx.lineWidth = 1.6 * dpi;
+        ctx.lineWidth = Math.max(1.0, 1.5 * ptScale) * dpi;
         ctx.beginPath();
-        ctx.arc(px, py, ptSz + 7 * dpi, 0, Math.PI * 2);
+        ctx.arc(px, py, ptSz + 6.0 * ptScale * dpi, 0, Math.PI * 2);
         ctx.stroke();
 
         // Inner high-contrast ring
         ctx.strokeStyle = isDark ? 'rgba(255,255,255,0.88)' : 'rgba(15,23,42,0.75)';
-        ctx.lineWidth = 1.15 * dpi;
+        ctx.lineWidth = Math.max(0.8, 1.1 * ptScale) * dpi;
         ctx.beginPath();
-        ctx.arc(px, py, ptSz + 4 * dpi, 0, Math.PI * 2);
+        ctx.arc(px, py, ptSz + 3.4 * ptScale * dpi, 0, Math.PI * 2);
         ctx.stroke();
         ctx.restore();
       }
 
       // Styled state point marker ('precision-ring' | 'crosshair-circle' | 'solid-dot' | 'diamond')
-      _OVL.drawStatePointMarker(ctx, px, py, ptSz, ptCol, pal, isDark, dpi, trend.pointMarker);
+      _OVL.drawStatePointMarker(ctx, px, py, ptSz, ptCol, pal, isDark, dpi, trend.pointMarker, ptScale);
 
       // Draggable label, hover pill, readable ink & 360° closest-point leader line
       const lm = (resolvedLabelMap && resolvedLabelMap.get(p.id))
@@ -2926,10 +2936,10 @@ export class OverlayRenderer {
         const ex = CoreDOM.clamp(px, lm.rx, lm.rx + lm.rw);
         const ey = CoreDOM.clamp(py, lm.ry, lm.ry + lm.rh);
         const leaderDist = Math.hypot(ex - px, ey - py);
-        if (leaderDist > ptSz + 4 * dpi) {
+        if (leaderDist > ptSz + 3.5 * ptScale * dpi) {
           const ang = Math.atan2(ey - py, ex - px);
-          const sx = px + Math.cos(ang) * (ptSz + 3 * dpi);
-          const sy = py + Math.sin(ang) * (ptSz + 3 * dpi);
+          const sx = px + Math.cos(ang) * (ptSz + 2.5 * ptScale * dpi);
+          const sy = py + Math.sin(ang) * (ptSz + 2.5 * ptScale * dpi);
           ctx.save();
           ctx.strokeStyle = _OVL.withAlpha(labelInk, 0.48);
           ctx.lineWidth = 0.85 * dpi;
@@ -3575,13 +3585,15 @@ export class OverlayRenderer {
       return null;
     }
     const dpi = this.br.dpi || 1;
-    const threshSq = (16 * dpi) * (16 * dpi);
+    const ptScale = CoreDOM.computePointScale(state.view, false);
+    const thresh = Math.max(11, 16 * ptScale) * dpi;
+    const threshSq = thresh * thresh;
     let bestId = null;
     let bestD = Infinity;
 
     for (let i = 0; i < state.points.length; i++) {
       const p = state.points[i];
-      if (!p || !Number.isFinite(p.T) || !Number.isFinite(p.w)) continue;
+      if (!CoreDOM.isPointVisible(p, state)) continue;
       const dx = px - this.br.xc(p.T);
       const dy = py - this.br.yc(p.w);
       const d = dx * dx + dy * dy;
@@ -3605,7 +3617,7 @@ export class OverlayRenderer {
 
     for (let i = 0; i < state.points.length; i++) {
       const p = state.points[i];
-      if (!p || !Number.isFinite(p.T) || !Number.isFinite(p.w)) continue;
+      if (!CoreDOM.isPointVisible(p, state)) continue;
       const lm = this._resolvedLabels.get(p.id) || _OVL.getLabelMetrics(this.ctx, p, i, this.br, state, pal);
       if (
         px >= lm.rx - pad &&

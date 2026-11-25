@@ -1072,22 +1072,26 @@ export function initModals(store, exporter, baseRenderer, overlayRenderer, toast
       store.setAtmosphere(pPa, elevM, null, true);
     }
 
-    // Plot ASHRAE 0.4% Summer Cooling & 99.6% Winter Heating design points
+    // Plot ASHRAE 0.4% Summer Cooling & 99.6% Winter Heating design points (idempotent — zero duplicates)
     const designPts = typeof Weather?.getCityDesignPoints === 'function'
       ? Weather.getCityDesignPoints(city, pPa)
       : [];
 
-    if (designPts.length > 0 && typeof store?.addPoint === 'function') {
+    if (designPts.length > 0) {
       const toPlot = designPts.filter(p => p.kind === 'summer04' || p.kind === 'winter996');
-      const list = toPlot.length ? toPlot : [designPts[0]];
-      for (const dp of list) {
-        store.addPoint({
-          T: dp.T,
-          w: dp.w,
-          label: dp.label,
-          color: dp.color,
-          note: dp.note
-        }, false);
+      const list = (toPlot.length ? toPlot : [designPts[0]]).map(dp => ({
+        T: dp.T,
+        w: dp.w,
+        label: dp.label,
+        color: dp.color,
+        note: dp.note,
+        cityId: city.id || null,
+        designTag: `${city.id || city.name}:${dp.kind || dp.label}`
+      }));
+      if (typeof store?.upsertDesignPoints === 'function') {
+        store.upsertDesignPoints(list, { cityId: city.id || null, cityName: city.name, recordHistory: false });
+      } else if (typeof store?.addPoint === 'function') {
+        for (const dp of list) store.addPoint(dp, false);
       }
     }
 

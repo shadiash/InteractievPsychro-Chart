@@ -2380,13 +2380,18 @@ export const Exporter = (() => {
     const ptParts = [];
     if (layerOn('points', true)) {
       pointsRaw.forEach((p, idx) => {
+        if (!CoreDOM.isPointVisible(p, st)) return;
         const px = xc(p.T);
         const py = yc(p.w);
         if (px < padL - 6 || px > plotRight + 6 || py < padT - 6 || py > plotBottom + 6) return;
+        const isDesign = CoreDOM.isDesignCityPoint(p);
+        const s = CoreDOM.computePointScale(st.view, isDesign);
+        const effPtR = ptR * s;
         const col = p.color || palette.pt;
         const lx = Number.isFinite(p.lx) ? p.lx : 10;
         const ly = Number.isFinite(p.ly) ? p.ly : -8;
         const label = p.label || `P${idx + 1}`;
+        const effLblPx = CoreDOM.clamp((labelPx - (isDesign ? 0.7 : 0)) * (s < 0.92 ? Math.max(0.78, 0.62 + 0.38 * s) : 1), 8.2, 16);
 
         if (Math.hypot(lx, ly) > 18) {
           ptParts.push(
@@ -2397,32 +2402,32 @@ export const Exporter = (() => {
 
         let markerSvg;
         if (tr.pointMarker === 'crosshair-circle') {
-          const r = ptR * 1.05;
-          const tLen = 4.5;
+          const r = effPtR * 1.05;
+          const tLen = 4.2 * s;
           markerSvg =
-            `<circle cx="${f2(px)}" cy="${f2(py)}" r="${f2(r)}" fill="${esc(plotBgCol)}" stroke="${esc(col)}" stroke-width="1.75"/>` +
-            `<circle cx="${f2(px)}" cy="${f2(py)}" r="1.35" fill="${esc(col)}"/>` +
+            `<circle cx="${f2(px)}" cy="${f2(py)}" r="${f2(r)}" fill="${esc(plotBgCol)}" stroke="${esc(col)}" stroke-width="${f2(Math.max(1.0, 1.75 * s))}"/>` +
+            `<circle cx="${f2(px)}" cy="${f2(py)}" r="${f2(Math.max(0.85, 1.3 * s))}" fill="${esc(col)}"/>` +
             `<path d="M${f2(px)},${f2(py - r)} V${f2(py - r - tLen)} M${f2(px)},${f2(py + r)} V${f2(py + r + tLen)} ` +
             `M${f2(px - r)},${f2(py)} H${f2(px - r - tLen)} M${f2(px + r)},${f2(py)} H${f2(px + r + tLen)}" ` +
-            `fill="none" stroke="${esc(col)}" stroke-width="1.3" stroke-linecap="round"/>`;
+            `fill="none" stroke="${esc(col)}" stroke-width="${f2(Math.max(0.85, 1.3 * s))}" stroke-linecap="round"/>`;
         } else if (tr.pointMarker === 'solid-dot') {
           markerSvg =
-            `<circle cx="${f2(px)}" cy="${f2(py)}" r="${f2(ptR * 1.05)}" fill="${esc(col)}" stroke="${esc(plotBgCol)}" stroke-width="1.6"/>`;
+            `<circle cx="${f2(px)}" cy="${f2(py)}" r="${f2(effPtR * 1.05)}" fill="${esc(col)}" stroke="${esc(plotBgCol)}" stroke-width="${f2(Math.max(0.9, 1.55 * s))}"/>`;
         } else if (tr.pointMarker === 'diamond') {
-          const dr = ptR * 1.32;
+          const dr = effPtR * 1.32;
           const dPts = `${f2(px)},${f2(py - dr)} ${f2(px + dr)},${f2(py)} ${f2(px)},${f2(py + dr)} ${f2(px - dr)},${f2(py)}`;
           markerSvg =
-            `<polygon points="${dPts}" fill="${esc(col)}" stroke="${esc(plotBgCol)}" stroke-width="1.6" stroke-linejoin="miter"/>`;
+            `<polygon points="${dPts}" fill="${esc(col)}" stroke="${esc(plotBgCol)}" stroke-width="${f2(Math.max(0.9, 1.55 * s))}" stroke-linejoin="miter"/>`;
         } else {
           // Default: 'precision-ring'
           markerSvg =
-            `<circle cx="${f2(px)}" cy="${f2(py)}" r="${f2(ptR + 2.2)}" fill="${esc(col)}" fill-opacity="0.18" stroke="${esc(col)}" stroke-width="1.35"/>` +
-            `<circle cx="${f2(px)}" cy="${f2(py)}" r="${f2(ptR)}" fill="${esc(col)}" stroke="${esc(plotBgCol)}" stroke-width="1.2"/>`;
+            `<circle cx="${f2(px)}" cy="${f2(py)}" r="${f2(effPtR + 1.85 * s)}" fill="${esc(col)}" fill-opacity="0.18" stroke="${esc(col)}" stroke-width="${f2(Math.max(0.85, 1.35 * s))}"/>` +
+            `<circle cx="${f2(px)}" cy="${f2(py)}" r="${f2(effPtR)}" fill="${esc(col)}" stroke="${esc(plotBgCol)}" stroke-width="${f2(Math.max(0.75, 1.15 * s))}"/>`;
         }
 
         ptParts.push(
           markerSvg +
-          `<text x="${f2(px + lx)}" y="${f2(py + ly)}" class="svg-mono svg-halo" font-size="${labelPx}" font-weight="600" fill="${esc(col)}">${esc(label)}</text>`
+          `<text x="${f2(px + lx)}" y="${f2(py + ly)}" class="svg-mono svg-halo" font-size="${f2(effLblPx)}" font-weight="600" fill="${esc(col)}">${esc(label)}</text>`
         );
       });
     }

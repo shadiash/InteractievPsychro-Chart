@@ -19,6 +19,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
+import { CoreDOM } from '../src/core/contracts.js';
 import { Psy } from '../src/engine/psychro.js';
 import { Comfort } from '../src/engine/comfort.js';
 import { HVAC } from '../src/engine/hvac.js';
@@ -1238,5 +1239,57 @@ describe('4. State Store & Legacy Compatibility (Store)', () => {
     approxEqual(st2.state.shr.value, 0.82, 1e-4);
     approxEqual(st2.state.shr.anchorTw.T, 26.5, 1e-3);
     approxEqual(st2.state.shr.anchorTw.w, 0.0112, 1e-5);
+  });
+
+  it('deduplicates ASHRAE city design points, supports show/hide toggling, and scales point markers dynamically with zoom', () => {
+    const st = createStore();
+    const dubaiSpecs = [
+      { T: 44.1, w: 0.0115, label: 'Dubai Sum 0.4%', color: '#f43f5e', note: 'ASHRAE Cooling 0.4% DB/MCWB — Dubai, UAE', designTag: 'dubai:summer04', cityId: 'dubai' },
+      { T: 42.6, w: 0.0119, label: 'Dubai Sum 1%', color: '#f59e0b', note: 'ASHRAE Cooling 1% DB/MCWB — Dubai, UAE', designTag: 'dubai:summer1', cityId: 'dubai' },
+      { T: 13.0, w: 0.0062, label: 'Dubai Win 99.6%', color: '#38bdf8', note: 'ASHRAE Heating 99.6% DB — Dubai, UAE', designTag: 'dubai:winter996', cityId: 'dubai' }
+    ];
+
+    // Simulate legacy pre-existing duplicate stacked copies before upsert
+    st.addPoint({ T: 44.1, w: 0.0115, label: 'Dubai Sum 0.4%', note: 'ASHRAE Cooling 0.4% DB/MCWB — Dubai, UAE' }, false);
+    st.addPoint({ T: 44.1, w: 0.0115, label: 'Dubai Sum 0.4%', note: 'ASHRAE Cooling 0.4% DB/MCWB — Dubai, UAE' }, false);
+    st.addPoint({ T: 44.1, w: 0.0115, label: 'Dubai Sum 0.4%', note: 'ASHRAE Cooling 0.4% DB/MCWB — Dubai, UAE' }, false);
+
+    // Clicking Plot Design Pts multiple times must merge legacy duplicates and never create new ones
+    const r1 = st.upsertDesignPoints(dubaiSpecs, { cityId: 'dubai', cityName: 'Dubai', recordHistory: false });
+    assert.ok(r1.removedDuplicates >= 2, `Expected >= 2 legacy duplicates removed, got ${r1.removedDuplicates}`);
+    const r2 = st.upsertDesignPoints(dubaiSpecs, { cityId: 'dubai', cityName: 'Dubai', recordHistory: false });
+    const r3 = st.upsertDesignPoints(dubaiSpecs, { cityId: 'dubai', cityName: 'Dubai', recordHistory: false });
+    assert.equal(r2.added, 0);
+    assert.equal(r3.added, 0);
+    assert.equal(st.state.points.length, 3, 'Strictly 3 unique Dubai design points after 3x upsert');
+
+    // Group show/hide via layers.designPts
+    assert.equal(st.state.points.every(p => CoreDOM.isPointVisible(p, st.state)), true);
+    st.setLayer('designPts', false);
+    assert.equal(st.state.points.some(p => CoreDOM.isPointVisible(p, st.state)), false, 'All design pts hidden when layers.designPts=false');
+    st.setLayer('designPts', true);
+    assert.equal(st.state.points.every(p => CoreDOM.isPointVisible(p, st.state)), true);
+
+    // Individual point hide/show
+    st.updatePoint(st.state.points[1].id, { hidden: true }, false);
+    assert.equal(CoreDOM.isPointVisible(st.state.points[0], st.state), true);
+    assert.equal(CoreDOM.isPointVisible(st.state.points[1], st.state), false);
+
+    // Clear design points cleanly
+    const clr = st.clearDesignPoints(null, false);
+    assert.equal(clr.removed, 3);
+    assert.equal(st.state.points.length, 0);
+
+    // Zoom-dynamic marker scale monotonically shrinks when zoomed out and caps cleanly when zoomed in
+    const sDef = CoreDOM.computePointScale({ tMin: -10, tMax: 55, wMax: 0.030 }, false);
+    const sWide = CoreDOM.computePointScale({ tMin: -16.6, tMax: 82.6, wMax: 0.0265 }, false);
+    const sMaxOut = CoreDOM.computePointScale({ tMin: -45, tMax: 85, wMax: 0.055 }, false);
+    const sZoomIn = CoreDOM.computePointScale({ tMin: 12, tMax: 32, wMax: 0.015 }, false);
+    const sDesignWide = CoreDOM.computePointScale({ tMin: -16.6, tMax: 82.6, wMax: 0.0265 }, true);
+    approxEqual(sDef, 1.0, 1e-6);
+    assert.ok(sMaxOut < sWide && sWide < sDef && sDef < sZoomIn, `Expected monotonic zoom scale: ${sMaxOut} < ${sWide} < ${sDef} < ${sZoomIn}`);
+    assert.ok(sWide < 0.80, `Wide zoomed-out scale (${sWide}) must noticeably shrink dot size`);
+    assert.ok(sDesignWide < sWide, 'Design city markers must stay subtler than primary process markers');
+    assert.ok(sZoomIn <= 1.25 && sMaxOut >= 0.44);
   });
 });

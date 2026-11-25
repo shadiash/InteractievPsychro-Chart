@@ -4624,6 +4624,10 @@ input[type="checkbox"] {
         <button type="button" id="btnPlotCity" class="btn chip">Plot Design Pts</button>
         <button type="button" id="btnLoadCityTMY" class="btn accent">Load 8760h TMY</button>
       </div>
+      <div id="designPtsBar" class="row hidden" style="margin-top:4px;align-items:center;gap:6px;">
+        <button type="button" id="btnToggleDesignPts" class="btn sm" style="flex:1" title="Show or hide plotted ASHRAE city design points on the chart">Hide Design Pts (0)</button>
+        <button type="button" id="btnClearDesignPts" class="btn sm danger auto" title="Remove plotted ASHRAE city design points">Remove</button>
+      </div>
       <div id="epwDropZone" class="dropZone" role="button" tabindex="0" title="Drop an EnergyPlus .EPW or hourly .CSV weather file">
         <span class="dz-title">☁ Drop .EPW / .CSV Weather File</span>
         <span class="dz-sub">or click to browse hourly 8760h climate data</span>
@@ -4955,12 +4959,15 @@ input[type="checkbox"] {
       <div class="section-title">Active State Points</div>
       <div class="ptEditModeWrap">
         <label for="ptTblEditMode">Inline Edit</label>
-        <select id="ptTblEditMode">
-          <option value="RH" selected>Tdb + RH%</option>
-          <option value="Twb">Tdb + Twb</option>
-          <option value="W">Tdb + W</option>
-          <option value="Tdp">Tdb + Tdp</option>
-        </select>
+        <div style="display:inline-flex;align-items:center;gap:6px;">
+          <button type="button" id="btnShowHiddenPts" class="btn xs auto accent hidden" title="Show all hidden state points on chart">Show Hidden</button>
+          <select id="ptTblEditMode">
+            <option value="RH" selected>Tdb + RH%</option>
+            <option value="Twb">Tdb + Twb</option>
+            <option value="W">Tdb + W</option>
+            <option value="Tdp">Tdb + Tdp</option>
+          </select>
+        </div>
       </div>
       <div class="table-scroll">
         <table class="ptable" id="ptsTbl">
@@ -6093,7 +6100,7 @@ input[type="checkbox"] {
 <script>
 /* ============================================================================
    PsychroChart Ultra 3.0 — Compiled Single-File Bundle
-   Built: 2026-11-25T17:33:42.735Z
+   Built: 2026-11-25T17:47:32.025Z
    ============================================================================ */
 (() => {
 'use strict';
@@ -6467,6 +6474,7 @@ const DEFAULT_LAYERS = {
   datacenter: false,
   weather: false,
   points: true,
+  designPts: true,
   processes: true,
   mixlinks: true,
   adpLines: true,
@@ -6643,6 +6651,34 @@ const CoreDOM = {
       grid_lw: base.grid_lw ?? 0.7,
       grid2_lw: base.grid2_lw ?? 1.0
     };
+  },
+  isDesignCityPoint(p) {
+    if (!p || typeof p !== 'object') return false;
+    if (p.designTag || p.cityId) return true;
+    const note = typeof p.note === 'string' ? p.note : '';
+    if (/^ASHRAE\s+(Cooling|Heating)\s+(0\.4%|1%|99\.6%)/i.test(note)) return true;
+    const lbl = typeof p.label === 'string' ? p.label : '';
+    return /\b(Sum\s*0\.4%|Sum\s*1%|Win\s*99\.6%|0\.4%\s*Cool|1%\s*Cool|99\.6%\s*Heat)\b/i.test(lbl);
+  },
+  isPointVisible(p, state) {
+    if (!p || !Number.isFinite(p.T) || !Number.isFinite(p.w)) return false;
+    const layers = state?.layers || {};
+    if (layers.points === false) return false;
+    if (p.hidden) return false;
+    if (layers.designPts === false && CoreDOM.isDesignCityPoint(p)) return false;
+    return true;
+  },
+  computePointScale(view, isDesignPt = false) {
+    const tSpan = Math.max(4, (view?.tMax ?? 55) - (view?.tMin ?? -10));
+    const wSpan = Math.max(0.003, view?.wMax ?? 0.030);
+    const zT = 65 / tSpan;
+    const zW = 0.030 / wSpan;
+    const zGeom = Math.sqrt(zT * zW);
+    const zEff = Math.min(zGeom, Math.min(zT, zW) * 1.08);
+    const base = zEff < 1
+      ? CoreDOM.clamp(Math.pow(zEff, 0.85), 0.44, 1.0)
+      : CoreDOM.clamp(Math.pow(zEff, 0.28), 1.0, 1.24);
+    return isDesignPt ? CoreDOM.clamp(base * 0.82, 0.38, 1.05) : base;
   }
 };
 
@@ -12015,7 +12051,7 @@ function createStore() {
     'custom'
   ]);
   const VALID_PROCESS_ROLES = new Set(['coil', 'mix', 'room', 'erv', 'erv_exhaust', 'fan', 'humid', 'custom']);
-  const OVERLAY_LAYERS = new Set(['points', 'processes', 'mixlinks', 'adpLines', 'annotations', 'flowAnim']);
+  const OVERLAY_LAYERS = new Set(['points', 'designPts', 'processes', 'mixlinks', 'adpLines', 'annotations', 'flowAnim']);
   const VIEW_BOUNDS = { tMin: -50, tMax: 85, minSpanT: 2, wMin: 0.002, wMax: 0.065 };
 
   const DEFAULT_VIEW = {
@@ -12390,10 +12426,13 @@ function createStore() {
       label,
       color,
       locked: Boolean(raw?.locked),
+      hidden: Boolean(raw?.hidden),
       lx: numOr(raw?.lx, 10),
       ly: numOr(raw?.ly, -6),
       note: raw?.note != null ? String(raw.note) : '',
-      derived: raw?.derived ? deepClone(raw.derived) : null
+      derived: raw?.derived ? deepClone(raw.derived) : null,
+      ...(raw?.designTag ? { designTag: String(raw.designTag) } : {}),
+      ...(raw?.cityId ? { cityId: String(raw.cityId) } : {})
     };
   }
 
@@ -12748,7 +12787,7 @@ function createStore() {
     const willBeLocked = 'locked' in patch ? Boolean(patch.locked) : pt.locked;
     const isCoordEdit = ('T' in patch) || ('w' in patch);
     if (pt.locked && willBeLocked && isCoordEdit && !patch.force) {
-      const hasNonCoordFields = ['label', 'color', 'lx', 'ly', 'note', 'locked', 'derived'].some(k => k in patch);
+      const hasNonCoordFields = ['label', 'color', 'lx', 'ly', 'note', 'locked', 'hidden', 'designTag', 'cityId', 'derived'].some(k => k in patch);
       if (!hasNonCoordFields) return null;
     }
 
@@ -12760,6 +12799,17 @@ function createStore() {
 
     if ('locked' in patch) {
       pt.locked = Boolean(patch.locked);
+    }
+    if ('hidden' in patch) {
+      pt.hidden = Boolean(patch.hidden);
+    }
+    if ('designTag' in patch) {
+      if (patch.designTag) pt.designTag = String(patch.designTag);
+      else delete pt.designTag;
+    }
+    if ('cityId' in patch) {
+      if (patch.cityId) pt.cityId = String(patch.cityId);
+      else delete pt.cityId;
     }
 
     if (!pt.locked || patch.force) {
@@ -12853,6 +12903,178 @@ function createStore() {
     emit('change', { reason: 'duplicate-point', pointId: copy.id });
     autosave();
     return copy;
+  }
+
+  function _isPointReferencedByProcess(ptId) {
+    for (let i = 0; i < state.processes.length; i++) {
+      const pr = state.processes[i];
+      if (pr && (pr.aId === ptId || pr.bId === ptId)) return true;
+    }
+    for (let i = 0; i < state.points.length; i++) {
+      const p = state.points[i];
+      const d = p?.derived;
+      if (!d || d.type !== 'mix') continue;
+      if (d.aId === ptId || d.bId === ptId) return true;
+      if (Array.isArray(d.streams) && d.streams.some(s => (s?.id ?? s?.ptId ?? s?.pointId) === ptId)) return true;
+    }
+    return false;
+  }
+
+  function deduplicateDesignPoints(recordHistory = false) {
+    const seen = new Map();
+    const removeIds = new Set();
+
+    for (let i = 0; i < state.points.length; i++) {
+      const p = state.points[i];
+      if (!CoreDOM.isDesignCityPoint(p)) continue;
+      const key = p.designTag
+        ? `tag:${String(p.designTag).toLowerCase()}`
+        : `lbl:${String(p.label || '').trim().toLowerCase()}`;
+      if (!seen.has(key)) {
+        seen.set(key, p);
+        continue;
+      }
+      const existing = seen.get(key);
+      // Prefer keeping a point attached to a process; drop unattached duplicate copies
+      const existRef = _isPointReferencedByProcess(existing.id);
+      const curRef = _isPointReferencedByProcess(p.id);
+      if (!existRef && curRef) {
+        removeIds.add(existing.id);
+        seen.set(key, p);
+      } else if (!curRef) {
+        removeIds.add(p.id);
+      }
+    }
+
+    if (removeIds.size === 0) return 0;
+    if (recordHistory) pushHistory('Deduplicate Design Points');
+    state.points = state.points.filter(p => !removeIds.has(p.id));
+    cleanSelectionRefs();
+    emit('overlay-dirty', { reason: 'dedupe-design-points' });
+    emit('change', { reason: 'dedupe-design-points' });
+    autosave();
+    return removeIds.size;
+  }
+
+  function upsertDesignPoints(specs = [], opts = {}) {
+    if (!Array.isArray(specs) || specs.length === 0) {
+      return { added: 0, updated: 0, removedDuplicates: 0, points: [] };
+    }
+    const recordHistory = opts.recordHistory !== false;
+    const cityId = opts.cityId != null ? String(opts.cityId) : null;
+    const historyLabel = opts.historyLabel || (opts.cityName ? `Plot ${opts.cityName} Design Points` : 'Plot Design Points');
+
+    if (recordHistory) {
+      pushHistory(historyLabel);
+    }
+
+    // First sweep any pre-existing duplicate design points
+    const removedBefore = deduplicateDesignPoints(false);
+    let added = 0;
+    let updated = 0;
+    let removedDupes = removedBefore;
+    const resultPts = [];
+
+    for (const spec of specs) {
+      if (!spec || !Number.isFinite(Number(spec.T)) || !Number.isFinite(Number(spec.w))) continue;
+      const T = CoreDOM.clamp(Number(spec.T), -60, 120);
+      const w = Math.max(0, Number(spec.w));
+      const label = String(spec.label || '').trim() || 'Design Pt';
+      const lblLow = label.toLowerCase();
+      const dTag = spec.designTag ? String(spec.designTag) : (cityId ? `${cityId}:${lblLow}` : null);
+      const dTagLow = dTag ? dTag.toLowerCase() : null;
+
+      // Match existing design point by designTag, exact label, or co-located design point
+      const matches = state.points.filter(p => {
+        if (!p) return false;
+        if (dTagLow && p.designTag && String(p.designTag).toLowerCase() === dTagLow) return true;
+        if (String(p.label || '').trim().toLowerCase() === lblLow && CoreDOM.isDesignCityPoint(p)) return true;
+        if (CoreDOM.isDesignCityPoint(p) && Math.abs(p.T - T) <= 0.15 && Math.abs(p.w - w) <= 0.00025 &&
+            String(p.label || '').trim().toLowerCase() === lblLow) {
+          return true;
+        }
+        return false;
+      });
+
+      if (matches.length > 0) {
+        // Keep the first (preferring process-attached), drop any extra unattached duplicates
+        matches.sort((a, b) => Number(_isPointReferencedByProcess(b.id)) - Number(_isPointReferencedByProcess(a.id)));
+        const keeper = matches[0];
+        if (matches.length > 1) {
+          const extraIds = new Set(matches.slice(1).filter(m => !_isPointReferencedByProcess(m.id)).map(m => m.id));
+          if (extraIds.size > 0) {
+            state.points = state.points.filter(p => !extraIds.has(p.id));
+            removedDupes += extraIds.size;
+          }
+        }
+        keeper.T = T;
+        keeper.w = w;
+        keeper.label = label;
+        if (spec.color) keeper.color = String(spec.color);
+        if (spec.note != null) keeper.note = String(spec.note);
+        if (dTag) keeper.designTag = dTag;
+        if (cityId || spec.cityId) keeper.cityId = String(spec.cityId || cityId);
+        keeper.hidden = false;
+        updated++;
+        resultPts.push(keeper);
+      } else {
+        const created = normalizePoint(
+          {
+            T,
+            w,
+            label,
+            color: spec.color,
+            note: spec.note || '',
+            hidden: false,
+            designTag: dTag,
+            cityId: spec.cityId || cityId
+          },
+          state.points.length,
+          nextPtId++
+        );
+        state.points.push(created);
+        added++;
+        resultPts.push(created);
+      }
+    }
+
+    state.layers.designPts = true;
+    recomputeDerived();
+    cleanSelectionRefs();
+    emit('overlay-dirty', { reason: 'upsert-design-points' });
+    emit('change', { reason: 'upsert-design-points' });
+    autosave();
+    return { added, updated, removedDuplicates: removedDupes, points: resultPts };
+  }
+
+  function clearDesignPoints(cityId = null, recordHistory = true) {
+    const targetCity = cityId != null ? String(cityId) : null;
+    const candidates = state.points.filter(p => {
+      if (!CoreDOM.isDesignCityPoint(p)) return false;
+      if (targetCity && p.cityId && String(p.cityId) !== targetCity) return false;
+      return true;
+    });
+    if (candidates.length === 0) return { removed: 0, hidden: 0 };
+
+    if (recordHistory) pushHistory('Remove Design Points');
+    const removeIds = new Set();
+    let hiddenCount = 0;
+    for (const p of candidates) {
+      if (p.locked || _isPointReferencedByProcess(p.id)) {
+        p.hidden = true;
+        hiddenCount++;
+      } else {
+        removeIds.add(p.id);
+      }
+    }
+    if (removeIds.size > 0) {
+      state.points = state.points.filter(p => !removeIds.has(p.id));
+    }
+    cleanSelectionRefs();
+    emit('overlay-dirty', { reason: 'clear-design-points' });
+    emit('change', { reason: 'clear-design-points' });
+    autosave();
+    return { removed: removeIds.size, hidden: hiddenCount };
   }
 
   /* --------------------------------------------------------------------------
@@ -13379,7 +13601,9 @@ function createStore() {
   }
 
   function fitPoints(recordHistory = true) {
-    if (state.points.length === 0) {
+    const visiblePts = state.points.filter(pt => CoreDOM.isPointVisible(pt, state));
+    const targetPts = visiblePts.length > 0 ? visiblePts : state.points;
+    if (targetPts.length === 0) {
       resetView(recordHistory);
       return;
     }
@@ -13388,7 +13612,7 @@ function createStore() {
     let tHi = -Infinity;
     let maxPtW = 0;
 
-    for (const pt of state.points) {
+    for (const pt of targetPts) {
       if (pt.T < tLo) tLo = pt.T;
       if (pt.T > tHi) tHi = pt.T;
       if (pt.w > maxPtW) maxPtW = pt.w;
@@ -14310,6 +14534,9 @@ function createStore() {
       if (!raw) return false;
       const obj = JSON.parse(raw);
       const res = importJSON(obj, { recordHistory: false, skipAutosave: true });
+      if (res && res.ok) {
+        deduplicateDesignPoints(false);
+      }
       return Boolean(res && res.ok);
     } catch {
       return false;
@@ -14356,6 +14583,9 @@ function createStore() {
     deletePoint,
     duplicatePoint,
     getPoint,
+    upsertDesignPoints,
+    clearDesignPoints,
+    deduplicateDesignPoints,
 
     // Processes
     addProcess,
@@ -17796,32 +18026,33 @@ const _OVL = {
     ctx.restore();
   },
 
-  drawStatePointMarker(ctx, px, py, ptSz, ptCol, pal, isDark, dpi, pointMarker = 'precision-ring') {
+  drawStatePointMarker(ctx, px, py, ptSz, ptCol, pal, isDark, dpi, pointMarker = 'precision-ring', scale = 1) {
     const bgCol = pal.plotBg || pal.bg || (isDark ? '#0f1520' : '#ffffff');
+    const s = CoreDOM.clamp(Number.isFinite(scale) ? scale : 1, 0.35, 1.4);
     ctx.save();
     ctx.setLineDash([]);
 
     if (pointMarker === 'crosshair-circle') {
       // Authentic Carrier / Mollier / CAD open target circle with 4 precision orthogonal hair-ticks
       const r = ptSz * 1.05;
-      const tickOut = 4.5 * dpi;
+      const tickOut = 4.2 * s * dpi;
       ctx.beginPath();
       ctx.arc(px, py, r, 0, Math.PI * 2);
       ctx.fillStyle = bgCol;
       ctx.fill();
       ctx.strokeStyle = ptCol;
-      ctx.lineWidth = 1.8 * dpi;
+      ctx.lineWidth = Math.max(1.0, 1.75 * s) * dpi;
       ctx.stroke();
 
       // Center precision pinpoint
       ctx.beginPath();
-      ctx.arc(px, py, 1.35 * dpi, 0, Math.PI * 2);
+      ctx.arc(px, py, Math.max(0.85, 1.3 * s) * dpi, 0, Math.PI * 2);
       ctx.fillStyle = ptCol;
       ctx.fill();
 
       // 4 orthogonal hair-ticks extending outward
       ctx.strokeStyle = ptCol;
-      ctx.lineWidth = 1.35 * dpi;
+      ctx.lineWidth = Math.max(0.85, 1.3 * s) * dpi;
       ctx.lineCap = 'round';
       ctx.beginPath();
       ctx.moveTo(px, py - r);
@@ -17838,14 +18069,14 @@ const _OVL = {
     }
 
     if (pointMarker === 'solid-dot') {
-      // Classic ASHRAE / Print B&W crisp filled dot with contrasting white/bg stroke rim (1.6 * dpi)
+      // Classic ASHRAE / Print B&W crisp filled dot with contrasting white/bg stroke rim
       const r = ptSz * 1.05;
       ctx.beginPath();
       ctx.arc(px, py, r, 0, Math.PI * 2);
       ctx.fillStyle = ptCol;
       ctx.fill();
       ctx.strokeStyle = bgCol;
-      ctx.lineWidth = 1.6 * dpi;
+      ctx.lineWidth = Math.max(0.9, 1.55 * s) * dpi;
       ctx.stroke();
       ctx.restore();
       return;
@@ -17863,7 +18094,7 @@ const _OVL = {
       ctx.fillStyle = ptCol;
       ctx.fill();
       ctx.strokeStyle = bgCol;
-      ctx.lineWidth = 1.6 * dpi;
+      ctx.lineWidth = Math.max(0.9, 1.55 * s) * dpi;
       ctx.lineJoin = 'miter';
       ctx.stroke();
       ctx.restore();
@@ -17871,9 +18102,9 @@ const _OVL = {
     }
 
     // Default: 'precision-ring' — soft ambient glow + filled core + precision outer halo ring
-    const gradR = ptSz + 5 * dpi;
+    const gradR = ptSz + 4.5 * s * dpi;
     const grad = ctx.createRadialGradient(px, py, 0, px, py, gradR);
-    grad.addColorStop(0, _OVL.withAlpha(ptCol, 0.35));
+    grad.addColorStop(0, _OVL.withAlpha(ptCol, 0.34));
     grad.addColorStop(1, _OVL.withAlpha(ptCol, 0));
     ctx.fillStyle = grad;
     ctx.beginPath();
@@ -17882,16 +18113,16 @@ const _OVL = {
 
     // Outer precision ring
     ctx.strokeStyle = ptCol;
-    ctx.lineWidth = 1.5 * dpi;
+    ctx.lineWidth = Math.max(0.85, 1.45 * s) * dpi;
     ctx.beginPath();
-    ctx.arc(px, py, ptSz + 2 * dpi, 0, Math.PI * 2);
+    ctx.arc(px, py, ptSz + 1.85 * s * dpi, 0, Math.PI * 2);
     ctx.stroke();
 
     // Subtle contrast gap ring
     ctx.strokeStyle = bgCol;
-    ctx.lineWidth = 1.1 * dpi;
+    ctx.lineWidth = Math.max(0.7, 1.05 * s) * dpi;
     ctx.beginPath();
-    ctx.arc(px, py, ptSz + 0.4 * dpi, 0, Math.PI * 2);
+    ctx.arc(px, py, ptSz + 0.38 * s * dpi, 0, Math.PI * 2);
     ctx.stroke();
 
     // Solid inner core
@@ -18003,9 +18234,13 @@ const _OVL = {
     const dpi = br.dpi || 1;
     const ptx = br.xc(p.T);
     const pty = br.yc(p.w);
+    const isDesign = CoreDOM.isDesignCityPoint(p);
+    const ptScale = CoreDOM.computePointScale(state?.view, isDesign);
     const lx = (p.lx ?? 10) * dpi;
     const ly = (p.ly ?? -6) * dpi;
-    const fontSize = CoreDOM.clamp(Number(state?.grid?.labelPx ?? state?.labelPx ?? pal?.lblPx ?? 11), 9, 16);
+    const baseFont = CoreDOM.clamp(Number(state?.grid?.labelPx ?? state?.labelPx ?? pal?.lblPx ?? 11), 9, 16);
+    const zoomFontFactor = ptScale < 0.92 ? CoreDOM.clamp(0.62 + 0.38 * ptScale, 0.78, 1.0) : 1.0;
+    const fontSize = CoreDOM.clamp((baseFont - (isDesign ? 0.7 : 0)) * zoomFontFactor, 8.2, 16);
     const labelText = (p.locked ? '🔒 ' : '') + (p.label || `P${idx + 1}`);
 
     let tw = labelText.length * fontSize * 0.62 * dpi;
@@ -18269,15 +18504,16 @@ class OverlayRenderer {
     const isExport = Boolean(opts.isExport);
     const layers = state.layers || {};
 
-    // Shared 2D collision registry seeded with every point marker & SHR dial card
+    // Shared 2D collision registry seeded with every visible point marker & SHR dial card
     const occupiedRects = [];
     if (layers.points !== false && Array.isArray(state.points)) {
       for (let i = 0; i < state.points.length; i++) {
         const p = state.points[i];
-        if (!p || !Number.isFinite(p.T) || !Number.isFinite(p.w)) continue;
+        if (!CoreDOM.isPointVisible(p, state)) continue;
         const px = br.xc(p.T);
         const py = br.yc(p.w);
-        const mRect = [px - 10 * dpi, py - 10 * dpi, 20 * dpi, 20 * dpi];
+        const mHalf = Math.max(5.5, 10 * CoreDOM.computePointScale(state.view, CoreDOM.isDesignCityPoint(p))) * dpi;
+        const mRect = [px - mHalf, py - mHalf, mHalf * 2, mHalf * 2];
         mRect.tag = `pt:${p.id}`;
         occupiedRects.push(mRect);
       }
@@ -18395,7 +18631,7 @@ class OverlayRenderer {
     const ghostProcs = Array.isArray(scen.processes) ? scen.processes : [];
     const ghostStroke = isDark ? 'rgba(148,163,184,0.68)' : 'rgba(71,85,105,0.62)';
     const ghostLabelCol = isDark ? 'rgba(148,163,184,0.82)' : 'rgba(71,85,105,0.78)';
-    const ptSz = (pal.ptSize || 4.5) * dpi;
+    const ptSz = (pal.ptSize || 4.5) * CoreDOM.computePointScale(state.view, false) * dpi;
 
     // Ghost processes
     ctx.save();
@@ -18841,7 +19077,8 @@ class OverlayRenderer {
     const procs = state.processes || [];
     const pPa = state.pPa || 101325;
     const baseArrowW = _OVL.resolveLineWeight(trend.lineWeight, pal);
-    const ptSz = (pal.ptSize || 4.5) * dpi;
+    const ptScale = CoreDOM.computePointScale(state.view, false);
+    const ptSz = (pal.ptSize || 4.5) * ptScale * dpi;
     const badgeBg = isDark ? 'rgba(12,18,30,0.88)' : 'rgba(255,255,255,0.93)';
     const showAdpLines = state.layers?.adpLines !== false;
     const animateFlow = Boolean(state.layers?.flowAnim && !isExport);
@@ -18896,7 +19133,7 @@ class OverlayRenderer {
       }
 
       // Trim end so arrowhead cleanly kisses point B's outer marker rim
-      const markerExtra = trend.pointMarker === 'crosshair-circle' ? 4.5 : (trend.pointMarker === 'diamond' ? 3.5 : 3);
+      const markerExtra = (trend.pointMarker === 'crosshair-circle' ? 4.5 : (trend.pointMarker === 'diamond' ? 3.5 : 3)) * ptScale;
       const trimEnd = chordLen > 24 * dpi ? ptSz + markerExtra * dpi : 0;
       const drawPath = _OVL.trimPolylineEnd(rawPath, trimEnd);
       const pathMetrics = _OVL.computePolylineMetrics(drawPath);
@@ -19199,7 +19436,7 @@ class OverlayRenderer {
     // Pass 1: Register manually positioned / preset-offset labels as fixed rects
     for (let i = 0; i < pts.length; i++) {
       const p = pts[i];
-      if (!p || !Number.isFinite(p.T) || !Number.isFinite(p.w)) continue;
+      if (!CoreDOM.isPointVisible(p, state)) continue;
       const lm = _OVL.getLabelMetrics(ctx, p, i, br, state, pal);
       const isDefault = (p.lx == null || p.lx === 10) && (p.ly == null || p.ly === -6);
       if (!isDefault) {
@@ -20111,7 +20348,7 @@ class OverlayRenderer {
     const trend = tr || _OVL.resolveTrendStyle(pal, state);
     const pts = state.points || [];
     const ui = state.ui || {};
-    const ptSz = (pal.ptSize || 4.5) * dpi;
+    const basePtSize = pal.ptSize || 4.5;
     const tool = ui.activeTool || ui.tool || 'select';
     const step = ui.toolStep;
     const stepPtId = (step == null)
@@ -20127,8 +20364,11 @@ class OverlayRenderer {
 
     for (let i = 0; i < pts.length; i++) {
       const p = pts[i];
-      if (!p || !Number.isFinite(p.T) || !Number.isFinite(p.w)) continue;
+      if (!CoreDOM.isPointVisible(p, state)) continue;
 
+      const isDesign = CoreDOM.isDesignCityPoint(p);
+      const ptScale = CoreDOM.computePointScale(state.view, isDesign);
+      const ptSz = basePtSize * ptScale * dpi;
       const px = br.xc(p.T);
       const py = br.yc(p.w);
       const ptCol = p.color || pal.pt || '#f43f5e';
@@ -20141,14 +20381,14 @@ class OverlayRenderer {
       if (isProcStart) {
         ctx.save();
         ctx.strokeStyle = accentCol;
-        ctx.lineWidth = 2.2 * dpi;
+        ctx.lineWidth = Math.max(1.3, 2.1 * ptScale) * dpi;
         ctx.setLineDash([4 * dpi, 3 * dpi]);
         ctx.globalAlpha = 0.88;
         ctx.beginPath();
-        ctx.arc(px, py, ptSz + 8.5 * dpi, 0, Math.PI * 2);
+        ctx.arc(px, py, ptSz + 7.5 * ptScale * dpi, 0, Math.PI * 2);
         ctx.stroke();
         ctx.restore();
-        _OVL.textHalo(ctx, 'START', px, py + ptSz + 13 * dpi, accentCol, pal, dpi, {
+        _OVL.textHalo(ctx, 'START', px, py + ptSz + 11.5 * ptScale * dpi, accentCol, pal, dpi, {
           align: 'center',
           base: 'top',
           sizePx: 8.5,
@@ -20159,14 +20399,14 @@ class OverlayRenderer {
       if (isMixStart) {
         ctx.save();
         ctx.strokeStyle = mixCol;
-        ctx.lineWidth = 2.2 * dpi;
+        ctx.lineWidth = Math.max(1.3, 2.1 * ptScale) * dpi;
         ctx.setLineDash([4 * dpi, 3 * dpi]);
         ctx.globalAlpha = 0.88;
         ctx.beginPath();
-        ctx.arc(px, py, ptSz + 8.5 * dpi, 0, Math.PI * 2);
+        ctx.arc(px, py, ptSz + 7.5 * ptScale * dpi, 0, Math.PI * 2);
         ctx.stroke();
         ctx.restore();
-        _OVL.textHalo(ctx, 'MIX A', px, py + ptSz + 13 * dpi, mixCol, pal, dpi, {
+        _OVL.textHalo(ctx, 'MIX A', px, py + ptSz + 11.5 * ptScale * dpi, mixCol, pal, dpi, {
           align: 'center',
           base: 'top',
           sizePx: 8.5,
@@ -20180,7 +20420,7 @@ class OverlayRenderer {
         const hCol = tool === 'mix' ? mixCol : (tool === 'process' ? accentCol : ptCol);
 
         ctx.save();
-        const glowR = ptSz + (isPickMode ? 16 : 11) * dpi;
+        const glowR = ptSz + (isPickMode ? 14 : 9.5) * ptScale * dpi;
         const glow = ctx.createRadialGradient(px, py, ptSz, px, py, glowR);
         glow.addColorStop(0, _OVL.withAlpha(hCol, 0.36));
         glow.addColorStop(1, _OVL.withAlpha(hCol, 0));
@@ -20190,10 +20430,10 @@ class OverlayRenderer {
         ctx.fill();
 
         ctx.strokeStyle = hCol;
-        ctx.lineWidth = 1.9 * dpi;
+        ctx.lineWidth = Math.max(1.1, 1.8 * ptScale) * dpi;
         ctx.globalAlpha = 0.9;
         ctx.beginPath();
-        ctx.arc(px, py, ptSz + 6 * dpi, 0, Math.PI * 2);
+        ctx.arc(px, py, ptSz + 5.2 * ptScale * dpi, 0, Math.PI * 2);
         ctx.stroke();
         ctx.restore();
 
@@ -20201,7 +20441,7 @@ class OverlayRenderer {
           const hint = tool === 'process'
             ? (procStartId != null ? 'Click to end' : 'Click start')
             : (mixStartId != null ? 'Click to mix' : 'Click stream A');
-          _OVL.textHalo(ctx, hint, px, py - ptSz - 13 * dpi, hCol, pal, dpi, {
+          _OVL.textHalo(ctx, hint, px, py - ptSz - 11 * ptScale * dpi, hCol, pal, dpi, {
             align: 'center',
             base: 'bottom',
             sizePx: 8.5,
@@ -20210,12 +20450,12 @@ class OverlayRenderer {
         }
       }
 
-      // Selected point double-ring indicator
+      // Selected point double-ring indicator (scales dynamically with chart zoom!)
       if (isSelected) {
         ctx.save();
-        const auraR = ptSz + 13 * dpi;
+        const auraR = ptSz + 10.5 * ptScale * dpi;
         const aura = ctx.createRadialGradient(px, py, ptSz, px, py, auraR);
-        aura.addColorStop(0, _OVL.withAlpha(ptCol, 0.28));
+        aura.addColorStop(0, _OVL.withAlpha(ptCol, 0.26));
         aura.addColorStop(1, _OVL.withAlpha(ptCol, 0));
         ctx.fillStyle = aura;
         ctx.beginPath();
@@ -20224,22 +20464,22 @@ class OverlayRenderer {
 
         // Outer precision ring
         ctx.strokeStyle = _OVL.withAlpha(ptCol, 0.85);
-        ctx.lineWidth = 1.6 * dpi;
+        ctx.lineWidth = Math.max(1.0, 1.5 * ptScale) * dpi;
         ctx.beginPath();
-        ctx.arc(px, py, ptSz + 7 * dpi, 0, Math.PI * 2);
+        ctx.arc(px, py, ptSz + 6.0 * ptScale * dpi, 0, Math.PI * 2);
         ctx.stroke();
 
         // Inner high-contrast ring
         ctx.strokeStyle = isDark ? 'rgba(255,255,255,0.88)' : 'rgba(15,23,42,0.75)';
-        ctx.lineWidth = 1.15 * dpi;
+        ctx.lineWidth = Math.max(0.8, 1.1 * ptScale) * dpi;
         ctx.beginPath();
-        ctx.arc(px, py, ptSz + 4 * dpi, 0, Math.PI * 2);
+        ctx.arc(px, py, ptSz + 3.4 * ptScale * dpi, 0, Math.PI * 2);
         ctx.stroke();
         ctx.restore();
       }
 
       // Styled state point marker ('precision-ring' | 'crosshair-circle' | 'solid-dot' | 'diamond')
-      _OVL.drawStatePointMarker(ctx, px, py, ptSz, ptCol, pal, isDark, dpi, trend.pointMarker);
+      _OVL.drawStatePointMarker(ctx, px, py, ptSz, ptCol, pal, isDark, dpi, trend.pointMarker, ptScale);
 
       // Draggable label, hover pill, readable ink & 360° closest-point leader line
       const lm = (resolvedLabelMap && resolvedLabelMap.get(p.id))
@@ -20251,10 +20491,10 @@ class OverlayRenderer {
         const ex = CoreDOM.clamp(px, lm.rx, lm.rx + lm.rw);
         const ey = CoreDOM.clamp(py, lm.ry, lm.ry + lm.rh);
         const leaderDist = Math.hypot(ex - px, ey - py);
-        if (leaderDist > ptSz + 4 * dpi) {
+        if (leaderDist > ptSz + 3.5 * ptScale * dpi) {
           const ang = Math.atan2(ey - py, ex - px);
-          const sx = px + Math.cos(ang) * (ptSz + 3 * dpi);
-          const sy = py + Math.sin(ang) * (ptSz + 3 * dpi);
+          const sx = px + Math.cos(ang) * (ptSz + 2.5 * ptScale * dpi);
+          const sy = py + Math.sin(ang) * (ptSz + 2.5 * ptScale * dpi);
           ctx.save();
           ctx.strokeStyle = _OVL.withAlpha(labelInk, 0.48);
           ctx.lineWidth = 0.85 * dpi;
@@ -20900,13 +21140,15 @@ class OverlayRenderer {
       return null;
     }
     const dpi = this.br.dpi || 1;
-    const threshSq = (16 * dpi) * (16 * dpi);
+    const ptScale = CoreDOM.computePointScale(state.view, false);
+    const thresh = Math.max(11, 16 * ptScale) * dpi;
+    const threshSq = thresh * thresh;
     let bestId = null;
     let bestD = Infinity;
 
     for (let i = 0; i < state.points.length; i++) {
       const p = state.points[i];
-      if (!p || !Number.isFinite(p.T) || !Number.isFinite(p.w)) continue;
+      if (!CoreDOM.isPointVisible(p, state)) continue;
       const dx = px - this.br.xc(p.T);
       const dy = py - this.br.yc(p.w);
       const d = dx * dx + dy * dy;
@@ -20930,7 +21172,7 @@ class OverlayRenderer {
 
     for (let i = 0; i < state.points.length; i++) {
       const p = state.points[i];
-      if (!p || !Number.isFinite(p.T) || !Number.isFinite(p.w)) continue;
+      if (!CoreDOM.isPointVisible(p, state)) continue;
       const lm = this._resolvedLabels.get(p.id) || _OVL.getLabelMetrics(this.ctx, p, i, this.br, state, pal);
       if (
         px >= lm.rx - pad &&
@@ -23424,13 +23666,18 @@ const Exporter = (() => {
     const ptParts = [];
     if (layerOn('points', true)) {
       pointsRaw.forEach((p, idx) => {
+        if (!CoreDOM.isPointVisible(p, st)) return;
         const px = xc(p.T);
         const py = yc(p.w);
         if (px < padL - 6 || px > plotRight + 6 || py < padT - 6 || py > plotBottom + 6) return;
+        const isDesign = CoreDOM.isDesignCityPoint(p);
+        const s = CoreDOM.computePointScale(st.view, isDesign);
+        const effPtR = ptR * s;
         const col = p.color || palette.pt;
         const lx = Number.isFinite(p.lx) ? p.lx : 10;
         const ly = Number.isFinite(p.ly) ? p.ly : -8;
         const label = p.label || `P${idx + 1}`;
+        const effLblPx = CoreDOM.clamp((labelPx - (isDesign ? 0.7 : 0)) * (s < 0.92 ? Math.max(0.78, 0.62 + 0.38 * s) : 1), 8.2, 16);
 
         if (Math.hypot(lx, ly) > 18) {
           ptParts.push(
@@ -23441,32 +23688,32 @@ const Exporter = (() => {
 
         let markerSvg;
         if (tr.pointMarker === 'crosshair-circle') {
-          const r = ptR * 1.05;
-          const tLen = 4.5;
+          const r = effPtR * 1.05;
+          const tLen = 4.2 * s;
           markerSvg =
-            `<circle cx="${f2(px)}" cy="${f2(py)}" r="${f2(r)}" fill="${esc(plotBgCol)}" stroke="${esc(col)}" stroke-width="1.75"/>` +
-            `<circle cx="${f2(px)}" cy="${f2(py)}" r="1.35" fill="${esc(col)}"/>` +
+            `<circle cx="${f2(px)}" cy="${f2(py)}" r="${f2(r)}" fill="${esc(plotBgCol)}" stroke="${esc(col)}" stroke-width="${f2(Math.max(1.0, 1.75 * s))}"/>` +
+            `<circle cx="${f2(px)}" cy="${f2(py)}" r="${f2(Math.max(0.85, 1.3 * s))}" fill="${esc(col)}"/>` +
             `<path d="M${f2(px)},${f2(py - r)} V${f2(py - r - tLen)} M${f2(px)},${f2(py + r)} V${f2(py + r + tLen)} ` +
             `M${f2(px - r)},${f2(py)} H${f2(px - r - tLen)} M${f2(px + r)},${f2(py)} H${f2(px + r + tLen)}" ` +
-            `fill="none" stroke="${esc(col)}" stroke-width="1.3" stroke-linecap="round"/>`;
+            `fill="none" stroke="${esc(col)}" stroke-width="${f2(Math.max(0.85, 1.3 * s))}" stroke-linecap="round"/>`;
         } else if (tr.pointMarker === 'solid-dot') {
           markerSvg =
-            `<circle cx="${f2(px)}" cy="${f2(py)}" r="${f2(ptR * 1.05)}" fill="${esc(col)}" stroke="${esc(plotBgCol)}" stroke-width="1.6"/>`;
+            `<circle cx="${f2(px)}" cy="${f2(py)}" r="${f2(effPtR * 1.05)}" fill="${esc(col)}" stroke="${esc(plotBgCol)}" stroke-width="${f2(Math.max(0.9, 1.55 * s))}"/>`;
         } else if (tr.pointMarker === 'diamond') {
-          const dr = ptR * 1.32;
+          const dr = effPtR * 1.32;
           const dPts = `${f2(px)},${f2(py - dr)} ${f2(px + dr)},${f2(py)} ${f2(px)},${f2(py + dr)} ${f2(px - dr)},${f2(py)}`;
           markerSvg =
-            `<polygon points="${dPts}" fill="${esc(col)}" stroke="${esc(plotBgCol)}" stroke-width="1.6" stroke-linejoin="miter"/>`;
+            `<polygon points="${dPts}" fill="${esc(col)}" stroke="${esc(plotBgCol)}" stroke-width="${f2(Math.max(0.9, 1.55 * s))}" stroke-linejoin="miter"/>`;
         } else {
           // Default: 'precision-ring'
           markerSvg =
-            `<circle cx="${f2(px)}" cy="${f2(py)}" r="${f2(ptR + 2.2)}" fill="${esc(col)}" fill-opacity="0.18" stroke="${esc(col)}" stroke-width="1.35"/>` +
-            `<circle cx="${f2(px)}" cy="${f2(py)}" r="${f2(ptR)}" fill="${esc(col)}" stroke="${esc(plotBgCol)}" stroke-width="1.2"/>`;
+            `<circle cx="${f2(px)}" cy="${f2(py)}" r="${f2(effPtR + 1.85 * s)}" fill="${esc(col)}" fill-opacity="0.18" stroke="${esc(col)}" stroke-width="${f2(Math.max(0.85, 1.35 * s))}"/>` +
+            `<circle cx="${f2(px)}" cy="${f2(py)}" r="${f2(effPtR)}" fill="${esc(col)}" stroke="${esc(plotBgCol)}" stroke-width="${f2(Math.max(0.75, 1.15 * s))}"/>`;
         }
 
         ptParts.push(
           markerSvg +
-          `<text x="${f2(px + lx)}" y="${f2(py + ly)}" class="svg-mono svg-halo" font-size="${labelPx}" font-weight="600" fill="${esc(col)}">${esc(label)}</text>`
+          `<text x="${f2(px + lx)}" y="${f2(py + ly)}" class="svg-mono svg-halo" font-size="${f2(effLblPx)}" font-weight="600" fill="${esc(col)}">${esc(label)}</text>`
         );
       });
     }
@@ -27528,6 +27775,7 @@ function initChartInteraction(store, baseRenderer, overlayRenderer, callbacks = 
         parts.push(ctxItemHtml('editPoint', '✏️', `Edit "${hitPt.label}"…`));
       }
       parts.push(ctxItemHtml('duplicatePoint', '⧉', `Duplicate "${hitPt.label}"`));
+      parts.push(ctxItemHtml('hidePoint', '🙈', `Hide "${hitPt.label}"`));
       parts.push(ctxItemHtml('lockPoint', hitPt.locked || derivedMix ? '🔓' : '🔒', hitPt.locked || derivedMix ? `Unlock "${hitPt.label}"` : `Lock "${hitPt.label}"`));
       parts.push(ctxItemHtml('resetLabel', '↩️', 'Reset Label Position'));
       if (!hitPt.locked && !derivedMix) {
@@ -27642,6 +27890,14 @@ function initChartInteraction(store, baseRenderer, overlayRenderer, callbacks = 
       }
       case 'duplicatePoint': {
         if (ctxTarget.pointId != null) duplicatePoint(ctxTarget.pointId);
+        break;
+      }
+      case 'hidePoint': {
+        const pt = getPoint(ctxTarget.pointId);
+        if (pt && typeof store?.updatePoint === 'function') {
+          store.updatePoint(pt.id, { hidden: true }, true);
+          toast(`Hid "${pt.label}" (restore in Points tab or Show Design Pts)`, 'info');
+        }
         break;
       }
       case 'lockPoint': {
@@ -28351,6 +28607,9 @@ function initLeftPanel(store, callbacks = {}) {
     citySelect: byId('citySelect'),
     btnPlotCity: byId('btnPlotCity'),
     btnLoadCityTMY: byId('btnLoadCityTMY'),
+    designPtsBar: byId('designPtsBar'),
+    btnToggleDesignPts: byId('btnToggleDesignPts'),
+    btnClearDesignPts: byId('btnClearDesignPts'),
     alt: byId('alt'),
     altUnit: byId('altUnit'),
     pOverride: byId('pOverride'),
@@ -28412,6 +28671,7 @@ function initLeftPanel(store, callbacks = {}) {
     connect: byId('connect'),
     addPt: byId('addPt'),
     ptTblEditMode: byId('ptTblEditMode'),
+    btnShowHiddenPts: byId('btnShowHiddenPts'),
     ptsTbl: byId('ptsTbl'),
     ptTblSecondHdr: byId('ptTblSecondHdr'),
     bulkCSV: byId('bulkCSV'),
@@ -29168,6 +29428,7 @@ function initLeftPanel(store, callbacks = {}) {
     }
     const w996 = resolveCityDesignPoint(win996Spec, pPa, 60);
 
+    const cityKey = String(city.id || tag).toLowerCase();
     const out = [];
     if (s04) {
       out.push({
@@ -29175,7 +29436,9 @@ function initLeftPanel(store, callbacks = {}) {
         w: s04.w,
         label: `${tag} Sum 0.4%`,
         color: '#f43f5e',
-        note: `ASHRAE Cooling 0.4% DB/MCWB — ${noteSuffix}`
+        note: `ASHRAE Cooling 0.4% DB/MCWB — ${noteSuffix}`,
+        designTag: `${cityKey}:summer04`,
+        cityId: cityKey
       });
     }
     if (s1) {
@@ -29184,7 +29447,9 @@ function initLeftPanel(store, callbacks = {}) {
         w: s1.w,
         label: `${tag} Sum 1%`,
         color: '#f59e0b',
-        note: `ASHRAE Cooling 1% DB/MCWB — ${noteSuffix}`
+        note: `ASHRAE Cooling 1% DB/MCWB — ${noteSuffix}`,
+        designTag: `${cityKey}:summer1`,
+        cityId: cityKey
       });
     }
     if (w996) {
@@ -29193,10 +29458,31 @@ function initLeftPanel(store, callbacks = {}) {
         w: w996.w,
         label: `${tag} Win 99.6%`,
         color: '#38bdf8',
-        note: `ASHRAE Heating 99.6% DB — ${noteSuffix}`
+        note: `ASHRAE Heating 99.6% DB — ${noteSuffix}`,
+        designTag: `${cityKey}:winter996`,
+        cityId: cityKey
       });
     }
     return out;
+  }
+
+  function syncDesignPtsControls() {
+    const st = getState();
+    const pts = getPoints();
+    const designPts = pts.filter((p) => CoreDOM.isDesignCityPoint(p));
+    if (el.designPtsBar) {
+      el.designPtsBar.classList.toggle('hidden', designPts.length === 0);
+    }
+    if (el.btnToggleDesignPts && designPts.length > 0) {
+      const layerOn = st.layers?.designPts !== false;
+      const visibleCount = layerOn ? designPts.filter((p) => !p.hidden).length : 0;
+      const anyVisible = visibleCount > 0;
+      el.btnToggleDesignPts.textContent = anyVisible
+        ? `Hide Design Pts (${designPts.length})`
+        : `Show Design Pts (${designPts.length})`;
+      el.btnToggleDesignPts.classList.toggle('accent', !anyVisible);
+      el.btnToggleDesignPts.setAttribute('aria-pressed', anyVisible ? 'true' : 'false');
+    }
   }
 
   on(el.btnPlotCity, 'click', () => {
@@ -29216,10 +29502,60 @@ function initLeftPanel(store, callbacks = {}) {
 
     pushStoreHistory(`Plot ${city.name} Design Points`);
     setStorePressure(pPa, elevM, null, false);
-    addPointsBatch(designPts, `Plot ${city.name} Design Points`, false);
+    let res = null;
+    if (typeof store?.upsertDesignPoints === 'function') {
+      res = store.upsertDesignPoints(designPts, {
+        cityId: String(city.id || shortCityTag(city.name)).toLowerCase(),
+        cityName: city.name,
+        recordHistory: false
+      });
+    } else {
+      addPointsBatch(designPts, `Plot ${city.name} Design Points`, false);
+    }
     fitPointsView(false);
     syncAtmosphereInputs(true);
-    toast(`Plotted ${city.name} (${designPts.length} design pts @ ${(pPa / 1000).toFixed(2)} kPa)`, 'success');
+    syncDesignPtsControls();
+    if (res && res.removedDuplicates > 0) {
+      toast(`Updated ${city.name} design pts (removed ${res.removedDuplicates} duplicate${res.removedDuplicates === 1 ? '' : 's'})`, 'success');
+    } else if (res && res.added === 0 && res.updated > 0) {
+      toast(`${city.name} design pts visible (already plotted — use Hide Design Pts to toggle)`, 'info');
+    } else {
+      toast(`Plotted ${city.name} (${designPts.length} design pts @ ${(pPa / 1000).toFixed(2)} kPa)`, 'success');
+    }
+  });
+
+  on(el.btnToggleDesignPts, 'click', () => {
+    const st = getState();
+    const designPts = getPoints().filter((p) => CoreDOM.isDesignCityPoint(p));
+    if (!designPts.length) return;
+    const layerOn = st.layers?.designPts !== false;
+    const anyVisible = layerOn && designPts.some((p) => !p.hidden);
+    if (anyVisible) {
+      setStoreLayer('designPts', false);
+      toast(`Hid ${designPts.length} ASHRAE design point${designPts.length === 1 ? '' : 's'}`, 'info');
+    } else {
+      for (const p of designPts) {
+        if (p.hidden && typeof store?.updatePoint === 'function') {
+          store.updatePoint(p.id, { hidden: false }, false);
+        }
+      }
+      setStoreLayer('designPts', true);
+      toast(`Showing ${designPts.length} ASHRAE design point${designPts.length === 1 ? '' : 's'}`, 'success');
+    }
+    syncDesignPtsControls();
+  });
+
+  on(el.btnClearDesignPts, 'click', () => {
+    if (typeof store?.clearDesignPoints === 'function') {
+      const res = store.clearDesignPoints(null, true);
+      syncDesignPtsControls();
+      if (res.removed > 0 || res.hidden > 0) {
+        const parts = [];
+        if (res.removed > 0) parts.push(`removed ${res.removed}`);
+        if (res.hidden > 0) parts.push(`hid ${res.hidden} linked`);
+        toast(`Design points: ${parts.join(', ')}`, 'info');
+      }
+    }
   });
 
   /* ---- Weather Bin / Analytics Normalization & Stats Renderer ---- */
@@ -30165,11 +30501,22 @@ function initLeftPanel(store, callbacks = {}) {
     const tb = getPointsTBody();
     if (!tb) return;
 
+    const st = getState();
     const pts = getPoints();
     const units = getUnits();
     const pPa = getPressurePa();
     const editMode = el.ptTblEditMode?.value || 'RH';
+    const designLayerOn = st.layers?.designPts !== false;
     updatePointsTableHeaders(editMode, units);
+
+    // Sync "Show Hidden" button in Points tab header whenever any point is hidden
+    const hiddenCount = pts.filter((p) => p.hidden || (!designLayerOn && CoreDOM.isDesignCityPoint(p))).length;
+    if (el.btnShowHiddenPts) {
+      el.btnShowHiddenPts.classList.toggle('hidden', hiddenCount === 0);
+      if (hiddenCount > 0) {
+        el.btnShowHiddenPts.textContent = `Show Hidden (${hiddenCount})`;
+      }
+    }
 
     // Empty state
     if (!pts.length) {
@@ -30179,21 +30526,28 @@ function initLeftPanel(store, callbacks = {}) {
     }
 
     // Check if we can update existing rows in-place to preserve typing focus
-    const nextSig = `${units}|${editMode}|${pts.map((p, i) => `${p.id ?? i}:${p.locked ? 1 : 0}`).join(',')}`;
+    const nextSig = `${units}|${editMode}|${designLayerOn ? 1 : 0}|${pts.map((p, i) => `${p.id ?? i}:${p.locked ? 1 : 0}:${p.hidden ? 1 : 0}`).join(',')}`;
     const existingRows = tb.querySelectorAll('tr[data-pt-idx]');
-    const dragPtId = getState().ui?.dragPtId ?? null;
+    const dragPtId = st.ui?.dragPtId ?? null;
     if (tb.dataset.sig === nextSig && existingRows.length === pts.length) {
       pts.forEach((p, i) => {
         const tr = existingRows[i];
         const disp = computePointRowDisplay(p, editMode, units, pPa);
         const sel = isPointSelected(p, i);
         const isDraggingThis = dragPtId != null && p.id === dragPtId;
+        const isVis = !p.hidden && (designLayerOn || !CoreDOM.isDesignCityPoint(p));
+        const col = p.color || POINT_PALETTE[i % POINT_PALETTE.length];
         tr.classList.toggle('selected', sel);
         tr.classList.toggle('dragging-pt', isDraggingThis);
         tr.style.background = sel ? 'var(--accentSoft, rgba(14,165,233,0.12))' : '';
+        tr.style.opacity = isVis ? '' : '0.52';
 
         const cDot = tr.querySelector('.pt-color-dot');
-        if (cDot) cDot.style.background = p.color || POINT_PALETTE[i % POINT_PALETTE.length];
+        if (cDot) {
+          cDot.style.background = isVis ? col : 'transparent';
+          cDot.style.border = isVis ? 'none' : `1.5px solid ${col}`;
+          cDot.setAttribute('aria-checked', isVis ? 'true' : 'false');
+        }
         const pDot = tr.querySelector('.pt-pmv-dot');
         if (pDot) {
           pDot.style.background = disp.pmv.dotColor;
@@ -30239,6 +30593,7 @@ function initLeftPanel(store, callbacks = {}) {
       const color = p.color || POINT_PALETTE[i % POINT_PALETTE.length];
       const ptName = p.label || `P${i + 1}`;
       const sel = isPointSelected(p, i);
+      const isVis = !p.hidden && (designLayerOn || !CoreDOM.isDesignCityPoint(p));
       const tr = document.createElement('tr');
       tr.dataset.ptIdx = String(i);
       tr.dataset.ptId = String(p.id ?? i);
@@ -30246,18 +30601,24 @@ function initLeftPanel(store, callbacks = {}) {
         tr.classList.add('selected');
         tr.style.background = 'var(--accentSoft, rgba(14,165,233,0.12))';
       }
+      if (!isVis) {
+        tr.style.opacity = '0.52';
+      }
       tr.style.cursor = 'pointer';
 
       const disAttr = p.locked ? 'disabled' : '';
+      const dotStyle = isVis
+        ? `width:7px;height:7px;border-radius:50%;background:${esc(color)};flex-shrink:0;cursor:pointer;box-sizing:border-box`
+        : `width:7px;height:7px;border-radius:50%;background:transparent;border:1.5px solid ${esc(color)};flex-shrink:0;cursor:pointer;box-sizing:border-box`;
       tr.innerHTML = `
         <td style="padding:3px 2px;white-space:nowrap;font-family:var(--mono);font-size:10px;color:var(--muted)">
           <span style="display:inline-flex;align-items:center;gap:2px">
-            <span class="pt-color-dot" style="width:6px;height:6px;border-radius:50%;background:${esc(color)};flex-shrink:0" title="Point color"></span>
+            <span class="pt-color-dot" role="switch" tabindex="0" aria-checked="${isVis ? 'true' : 'false'}" aria-label="${isVis ? 'Hide' : 'Show'} ${esc(ptName)} on chart" style="${dotStyle}" title="${isVis ? 'Click to hide point on chart' : 'Hidden — click to show on chart'}"></span>
             <span class="pt-pmv-dot" style="width:5px;height:5px;border-radius:50%;background:${disp.pmv.dotColor};flex-shrink:0;opacity:0.95" title="${esc(disp.pmv.title)}"></span>
             <span>${i + 1}</span>
           </span>
         </td>
-        <td style="padding:3px 2px"><input type="text" class="pt-lbl" value="${esc(ptName)}" ${disAttr} style="width:100%;max-width:66px;padding:0 3px;font-size:10.5px;font-family:var(--sans)" aria-label="Label for ${esc(ptName)}" /></td>
+        <td style="padding:3px 2px"><input type="text" class="pt-lbl" value="${esc(ptName)}" ${disAttr} style="width:100%;max-width:66px;padding:0 3px;font-size:10.5px;font-family:var(--sans);${isVis ? '' : 'text-decoration:line-through;'}" aria-label="Label for ${esc(ptName)}" /></td>
         <td style="padding:3px 2px"><input type="number" step="0.1" class="pt-tdb" value="${disp.tDisp}" ${disAttr} style="width:44px;padding:0 2px;font-size:10.5px" aria-label="Dry bulb for ${esc(ptName)}" /></td>
         <td style="padding:3px 2px"><input type="number" step="0.1" class="pt-sec" value="${disp.secDisp}" ${disAttr} style="width:44px;padding:0 2px;font-size:10.5px" aria-label="Second property for ${esc(ptName)}" /></td>
         <td class="pt-comp" style="padding:3px 2px;font-family:var(--mono);font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${disp.compDisp}</td>
@@ -30271,9 +30632,34 @@ function initLeftPanel(store, callbacks = {}) {
         </td>
       `;
 
+      // Clicking color dot toggles individual point visibility on chart
+      const toggleVis = (e) => {
+        e.stopPropagation();
+        if (!designLayerOn && CoreDOM.isDesignCityPoint(p) && !p.hidden) {
+          setStoreLayer('designPts', true);
+          toast(`Showing ASHRAE design points`, 'info');
+          return;
+        }
+        const nextHidden = !p.hidden;
+        if (typeof store?.updatePoint === 'function') {
+          store.updatePoint(p.id, { hidden: nextHidden }, true);
+        } else {
+          p.hidden = nextHidden;
+        }
+        toast(`"${ptName}" ${nextHidden ? 'hidden from chart' : 'shown on chart'}`, 'info');
+      };
+      const visDot = tr.querySelector('.pt-color-dot');
+      on(visDot, 'click', toggleVis);
+      on(visDot, 'keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          toggleVis(e);
+        }
+      });
+
       // Clicking row selects point on chart
       on(tr, 'click', (e) => {
-        if (e.target.closest('button')) return;
+        if (e.target.closest('button') || e.target.closest('.pt-color-dot')) return;
         selectChartPoint(p, i);
       });
 
@@ -30388,6 +30774,24 @@ function initLeftPanel(store, callbacks = {}) {
   }
 
   on(el.ptTblEditMode, 'change', refreshPointsTable);
+
+  on(el.btnShowHiddenPts, 'click', () => {
+    const pts = getPoints();
+    let unhid = 0;
+    for (const p of pts) {
+      if (p.hidden) {
+        if (typeof store?.updatePoint === 'function') store.updatePoint(p.id, { hidden: false }, false);
+        else p.hidden = false;
+        unhid++;
+      }
+    }
+    if (getState().layers?.designPts === false) {
+      setStoreLayer('designPts', true);
+    }
+    syncDesignPtsControls();
+    refreshPointsTable();
+    toast(`All hidden state points are now visible`, 'success');
+  });
 
   /* ==========================================================================
      TAB 2 — 3. SMART BULK CSV / TSV IMPORT & CLEAR ALL
@@ -30902,6 +31306,7 @@ function initLeftPanel(store, callbacks = {}) {
     syncChartCurveControls();
     syncComfortControls(false);
     syncShrControls();
+    syncDesignPtsControls();
     syncWeatherControls();
     syncNewPointDefaults(false);
     refreshPointsTable();
@@ -30946,6 +31351,7 @@ function initLeftPanel(store, callbacks = {}) {
   syncAxisAndTrendControls(true);
   syncComfortControls(true);
   syncShrControls();
+  syncDesignPtsControls();
   syncWeatherControls();
   syncNewPointDefaults(false);
   refreshPointsTable();
@@ -34719,22 +35125,26 @@ function initModals(store, exporter, baseRenderer, overlayRenderer, toast) {
       store.setAtmosphere(pPa, elevM, null, true);
     }
 
-    // Plot ASHRAE 0.4% Summer Cooling & 99.6% Winter Heating design points
+    // Plot ASHRAE 0.4% Summer Cooling & 99.6% Winter Heating design points (idempotent — zero duplicates)
     const designPts = typeof Weather?.getCityDesignPoints === 'function'
       ? Weather.getCityDesignPoints(city, pPa)
       : [];
 
-    if (designPts.length > 0 && typeof store?.addPoint === 'function') {
+    if (designPts.length > 0) {
       const toPlot = designPts.filter(p => p.kind === 'summer04' || p.kind === 'winter996');
-      const list = toPlot.length ? toPlot : [designPts[0]];
-      for (const dp of list) {
-        store.addPoint({
-          T: dp.T,
-          w: dp.w,
-          label: dp.label,
-          color: dp.color,
-          note: dp.note
-        }, false);
+      const list = (toPlot.length ? toPlot : [designPts[0]]).map(dp => ({
+        T: dp.T,
+        w: dp.w,
+        label: dp.label,
+        color: dp.color,
+        note: dp.note,
+        cityId: city.id || null,
+        designTag: `${city.id || city.name}:${dp.kind || dp.label}`
+      }));
+      if (typeof store?.upsertDesignPoints === 'function') {
+        store.upsertDesignPoints(list, { cityId: city.id || null, cityName: city.name, recordHistory: false });
+      } else if (typeof store?.addPoint === 'function') {
+        for (const dp of list) store.addPoint(dp, false);
       }
     }
 

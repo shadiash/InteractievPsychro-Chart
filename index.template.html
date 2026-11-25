@@ -153,6 +153,10 @@
         <button type="button" id="btnPlotCity" class="btn chip">Plot Design Pts</button>
         <button type="button" id="btnLoadCityTMY" class="btn accent">Load 8760h TMY</button>
       </div>
+      <div id="designPtsBar" class="row hidden" style="margin-top:4px;align-items:center;gap:6px;">
+        <button type="button" id="btnToggleDesignPts" class="btn sm" style="flex:1" title="Show or hide plotted ASHRAE city design points on the chart">Hide Design Pts (0)</button>
+        <button type="button" id="btnClearDesignPts" class="btn sm danger auto" title="Remove plotted ASHRAE city design points">Remove</button>
+      </div>
       <div id="epwDropZone" class="dropZone" role="button" tabindex="0" title="Drop an EnergyPlus .EPW or hourly .CSV weather file">
         <span class="dz-title">☁ Drop .EPW / .CSV Weather File</span>
         <span class="dz-sub">or click to browse hourly 8760h climate data</span>
@@ -484,12 +488,15 @@
       <div class="section-title">Active State Points</div>
       <div class="ptEditModeWrap">
         <label for="ptTblEditMode">Inline Edit</label>
-        <select id="ptTblEditMode">
-          <option value="RH" selected>Tdb + RH%</option>
-          <option value="Twb">Tdb + Twb</option>
-          <option value="W">Tdb + W</option>
-          <option value="Tdp">Tdb + Tdp</option>
-        </select>
+        <div style="display:inline-flex;align-items:center;gap:6px;">
+          <button type="button" id="btnShowHiddenPts" class="btn xs auto accent hidden" title="Show all hidden state points on chart">Show Hidden</button>
+          <select id="ptTblEditMode">
+            <option value="RH" selected>Tdb + RH%</option>
+            <option value="Twb">Tdb + Twb</option>
+            <option value="W">Tdb + W</option>
+            <option value="Tdp">Tdb + Tdp</option>
+          </select>
+        </div>
       </div>
       <div class="table-scroll">
         <table class="ptable" id="ptsTbl">

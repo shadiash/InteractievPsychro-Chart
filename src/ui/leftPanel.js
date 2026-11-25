@@ -30,6 +30,9 @@ export function initLeftPanel(store, callbacks = {}) {
     citySelect: byId('citySelect'),
     btnPlotCity: byId('btnPlotCity'),
     btnLoadCityTMY: byId('btnLoadCityTMY'),
+    designPtsBar: byId('designPtsBar'),
+    btnToggleDesignPts: byId('btnToggleDesignPts'),
+    btnClearDesignPts: byId('btnClearDesignPts'),
     alt: byId('alt'),
     altUnit: byId('altUnit'),
     pOverride: byId('pOverride'),
@@ -91,6 +94,7 @@ export function initLeftPanel(store, callbacks = {}) {
     connect: byId('connect'),
     addPt: byId('addPt'),
     ptTblEditMode: byId('ptTblEditMode'),
+    btnShowHiddenPts: byId('btnShowHiddenPts'),
     ptsTbl: byId('ptsTbl'),
     ptTblSecondHdr: byId('ptTblSecondHdr'),
     bulkCSV: byId('bulkCSV'),
@@ -847,6 +851,7 @@ export function initLeftPanel(store, callbacks = {}) {
     }
     const w996 = resolveCityDesignPoint(win996Spec, pPa, 60);
 
+    const cityKey = String(city.id || tag).toLowerCase();
     const out = [];
     if (s04) {
       out.push({
@@ -854,7 +859,9 @@ export function initLeftPanel(store, callbacks = {}) {
         w: s04.w,
         label: `${tag} Sum 0.4%`,
         color: '#f43f5e',
-        note: `ASHRAE Cooling 0.4% DB/MCWB — ${noteSuffix}`
+        note: `ASHRAE Cooling 0.4% DB/MCWB — ${noteSuffix}`,
+        designTag: `${cityKey}:summer04`,
+        cityId: cityKey
       });
     }
     if (s1) {
@@ -863,7 +870,9 @@ export function initLeftPanel(store, callbacks = {}) {
         w: s1.w,
         label: `${tag} Sum 1%`,
         color: '#f59e0b',
-        note: `ASHRAE Cooling 1% DB/MCWB — ${noteSuffix}`
+        note: `ASHRAE Cooling 1% DB/MCWB — ${noteSuffix}`,
+        designTag: `${cityKey}:summer1`,
+        cityId: cityKey
       });
     }
     if (w996) {
@@ -872,10 +881,31 @@ export function initLeftPanel(store, callbacks = {}) {
         w: w996.w,
         label: `${tag} Win 99.6%`,
         color: '#38bdf8',
-        note: `ASHRAE Heating 99.6% DB — ${noteSuffix}`
+        note: `ASHRAE Heating 99.6% DB — ${noteSuffix}`,
+        designTag: `${cityKey}:winter996`,
+        cityId: cityKey
       });
     }
     return out;
+  }
+
+  function syncDesignPtsControls() {
+    const st = getState();
+    const pts = getPoints();
+    const designPts = pts.filter((p) => CoreDOM.isDesignCityPoint(p));
+    if (el.designPtsBar) {
+      el.designPtsBar.classList.toggle('hidden', designPts.length === 0);
+    }
+    if (el.btnToggleDesignPts && designPts.length > 0) {
+      const layerOn = st.layers?.designPts !== false;
+      const visibleCount = layerOn ? designPts.filter((p) => !p.hidden).length : 0;
+      const anyVisible = visibleCount > 0;
+      el.btnToggleDesignPts.textContent = anyVisible
+        ? `Hide Design Pts (${designPts.length})`
+        : `Show Design Pts (${designPts.length})`;
+      el.btnToggleDesignPts.classList.toggle('accent', !anyVisible);
+      el.btnToggleDesignPts.setAttribute('aria-pressed', anyVisible ? 'true' : 'false');
+    }
   }
 
   on(el.btnPlotCity, 'click', () => {
@@ -895,10 +925,60 @@ export function initLeftPanel(store, callbacks = {}) {
 
     pushStoreHistory(`Plot ${city.name} Design Points`);
     setStorePressure(pPa, elevM, null, false);
-    addPointsBatch(designPts, `Plot ${city.name} Design Points`, false);
+    let res = null;
+    if (typeof store?.upsertDesignPoints === 'function') {
+      res = store.upsertDesignPoints(designPts, {
+        cityId: String(city.id || shortCityTag(city.name)).toLowerCase(),
+        cityName: city.name,
+        recordHistory: false
+      });
+    } else {
+      addPointsBatch(designPts, `Plot ${city.name} Design Points`, false);
+    }
     fitPointsView(false);
     syncAtmosphereInputs(true);
-    toast(`Plotted ${city.name} (${designPts.length} design pts @ ${(pPa / 1000).toFixed(2)} kPa)`, 'success');
+    syncDesignPtsControls();
+    if (res && res.removedDuplicates > 0) {
+      toast(`Updated ${city.name} design pts (removed ${res.removedDuplicates} duplicate${res.removedDuplicates === 1 ? '' : 's'})`, 'success');
+    } else if (res && res.added === 0 && res.updated > 0) {
+      toast(`${city.name} design pts visible (already plotted — use Hide Design Pts to toggle)`, 'info');
+    } else {
+      toast(`Plotted ${city.name} (${designPts.length} design pts @ ${(pPa / 1000).toFixed(2)} kPa)`, 'success');
+    }
+  });
+
+  on(el.btnToggleDesignPts, 'click', () => {
+    const st = getState();
+    const designPts = getPoints().filter((p) => CoreDOM.isDesignCityPoint(p));
+    if (!designPts.length) return;
+    const layerOn = st.layers?.designPts !== false;
+    const anyVisible = layerOn && designPts.some((p) => !p.hidden);
+    if (anyVisible) {
+      setStoreLayer('designPts', false);
+      toast(`Hid ${designPts.length} ASHRAE design point${designPts.length === 1 ? '' : 's'}`, 'info');
+    } else {
+      for (const p of designPts) {
+        if (p.hidden && typeof store?.updatePoint === 'function') {
+          store.updatePoint(p.id, { hidden: false }, false);
+        }
+      }
+      setStoreLayer('designPts', true);
+      toast(`Showing ${designPts.length} ASHRAE design point${designPts.length === 1 ? '' : 's'}`, 'success');
+    }
+    syncDesignPtsControls();
+  });
+
+  on(el.btnClearDesignPts, 'click', () => {
+    if (typeof store?.clearDesignPoints === 'function') {
+      const res = store.clearDesignPoints(null, true);
+      syncDesignPtsControls();
+      if (res.removed > 0 || res.hidden > 0) {
+        const parts = [];
+        if (res.removed > 0) parts.push(`removed ${res.removed}`);
+        if (res.hidden > 0) parts.push(`hid ${res.hidden} linked`);
+        toast(`Design points: ${parts.join(', ')}`, 'info');
+      }
+    }
   });
 
   /* ---- Weather Bin / Analytics Normalization & Stats Renderer ---- */
@@ -1844,11 +1924,22 @@ export function initLeftPanel(store, callbacks = {}) {
     const tb = getPointsTBody();
     if (!tb) return;
 
+    const st = getState();
     const pts = getPoints();
     const units = getUnits();
     const pPa = getPressurePa();
     const editMode = el.ptTblEditMode?.value || 'RH';
+    const designLayerOn = st.layers?.designPts !== false;
     updatePointsTableHeaders(editMode, units);
+
+    // Sync "Show Hidden" button in Points tab header whenever any point is hidden
+    const hiddenCount = pts.filter((p) => p.hidden || (!designLayerOn && CoreDOM.isDesignCityPoint(p))).length;
+    if (el.btnShowHiddenPts) {
+      el.btnShowHiddenPts.classList.toggle('hidden', hiddenCount === 0);
+      if (hiddenCount > 0) {
+        el.btnShowHiddenPts.textContent = `Show Hidden (${hiddenCount})`;
+      }
+    }
 
     // Empty state
     if (!pts.length) {
@@ -1858,21 +1949,28 @@ export function initLeftPanel(store, callbacks = {}) {
     }
 
     // Check if we can update existing rows in-place to preserve typing focus
-    const nextSig = `${units}|${editMode}|${pts.map((p, i) => `${p.id ?? i}:${p.locked ? 1 : 0}`).join(',')}`;
+    const nextSig = `${units}|${editMode}|${designLayerOn ? 1 : 0}|${pts.map((p, i) => `${p.id ?? i}:${p.locked ? 1 : 0}:${p.hidden ? 1 : 0}`).join(',')}`;
     const existingRows = tb.querySelectorAll('tr[data-pt-idx]');
-    const dragPtId = getState().ui?.dragPtId ?? null;
+    const dragPtId = st.ui?.dragPtId ?? null;
     if (tb.dataset.sig === nextSig && existingRows.length === pts.length) {
       pts.forEach((p, i) => {
         const tr = existingRows[i];
         const disp = computePointRowDisplay(p, editMode, units, pPa);
         const sel = isPointSelected(p, i);
         const isDraggingThis = dragPtId != null && p.id === dragPtId;
+        const isVis = !p.hidden && (designLayerOn || !CoreDOM.isDesignCityPoint(p));
+        const col = p.color || POINT_PALETTE[i % POINT_PALETTE.length];
         tr.classList.toggle('selected', sel);
         tr.classList.toggle('dragging-pt', isDraggingThis);
         tr.style.background = sel ? 'var(--accentSoft, rgba(14,165,233,0.12))' : '';
+        tr.style.opacity = isVis ? '' : '0.52';
 
         const cDot = tr.querySelector('.pt-color-dot');
-        if (cDot) cDot.style.background = p.color || POINT_PALETTE[i % POINT_PALETTE.length];
+        if (cDot) {
+          cDot.style.background = isVis ? col : 'transparent';
+          cDot.style.border = isVis ? 'none' : `1.5px solid ${col}`;
+          cDot.setAttribute('aria-checked', isVis ? 'true' : 'false');
+        }
         const pDot = tr.querySelector('.pt-pmv-dot');
         if (pDot) {
           pDot.style.background = disp.pmv.dotColor;
@@ -1918,6 +2016,7 @@ export function initLeftPanel(store, callbacks = {}) {
       const color = p.color || POINT_PALETTE[i % POINT_PALETTE.length];
       const ptName = p.label || `P${i + 1}`;
       const sel = isPointSelected(p, i);
+      const isVis = !p.hidden && (designLayerOn || !CoreDOM.isDesignCityPoint(p));
       const tr = document.createElement('tr');
       tr.dataset.ptIdx = String(i);
       tr.dataset.ptId = String(p.id ?? i);
@@ -1925,18 +2024,24 @@ export function initLeftPanel(store, callbacks = {}) {
         tr.classList.add('selected');
         tr.style.background = 'var(--accentSoft, rgba(14,165,233,0.12))';
       }
+      if (!isVis) {
+        tr.style.opacity = '0.52';
+      }
       tr.style.cursor = 'pointer';
 
       const disAttr = p.locked ? 'disabled' : '';
+      const dotStyle = isVis
+        ? `width:7px;height:7px;border-radius:50%;background:${esc(color)};flex-shrink:0;cursor:pointer;box-sizing:border-box`
+        : `width:7px;height:7px;border-radius:50%;background:transparent;border:1.5px solid ${esc(color)};flex-shrink:0;cursor:pointer;box-sizing:border-box`;
       tr.innerHTML = `
         <td style="padding:3px 2px;white-space:nowrap;font-family:var(--mono);font-size:10px;color:var(--muted)">
           <span style="display:inline-flex;align-items:center;gap:2px">
-            <span class="pt-color-dot" style="width:6px;height:6px;border-radius:50%;background:${esc(color)};flex-shrink:0" title="Point color"></span>
+            <span class="pt-color-dot" role="switch" tabindex="0" aria-checked="${isVis ? 'true' : 'false'}" aria-label="${isVis ? 'Hide' : 'Show'} ${esc(ptName)} on chart" style="${dotStyle}" title="${isVis ? 'Click to hide point on chart' : 'Hidden — click to show on chart'}"></span>
             <span class="pt-pmv-dot" style="width:5px;height:5px;border-radius:50%;background:${disp.pmv.dotColor};flex-shrink:0;opacity:0.95" title="${esc(disp.pmv.title)}"></span>
             <span>${i + 1}</span>
           </span>
         </td>
-        <td style="padding:3px 2px"><input type="text" class="pt-lbl" value="${esc(ptName)}" ${disAttr} style="width:100%;max-width:66px;padding:0 3px;font-size:10.5px;font-family:var(--sans)" aria-label="Label for ${esc(ptName)}" /></td>
+        <td style="padding:3px 2px"><input type="text" class="pt-lbl" value="${esc(ptName)}" ${disAttr} style="width:100%;max-width:66px;padding:0 3px;font-size:10.5px;font-family:var(--sans);${isVis ? '' : 'text-decoration:line-through;'}" aria-label="Label for ${esc(ptName)}" /></td>
         <td style="padding:3px 2px"><input type="number" step="0.1" class="pt-tdb" value="${disp.tDisp}" ${disAttr} style="width:44px;padding:0 2px;font-size:10.5px" aria-label="Dry bulb for ${esc(ptName)}" /></td>
         <td style="padding:3px 2px"><input type="number" step="0.1" class="pt-sec" value="${disp.secDisp}" ${disAttr} style="width:44px;padding:0 2px;font-size:10.5px" aria-label="Second property for ${esc(ptName)}" /></td>
         <td class="pt-comp" style="padding:3px 2px;font-family:var(--mono);font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${disp.compDisp}</td>
@@ -1950,9 +2055,34 @@ export function initLeftPanel(store, callbacks = {}) {
         </td>
       `;
 
+      // Clicking color dot toggles individual point visibility on chart
+      const toggleVis = (e) => {
+        e.stopPropagation();
+        if (!designLayerOn && CoreDOM.isDesignCityPoint(p) && !p.hidden) {
+          setStoreLayer('designPts', true);
+          toast(`Showing ASHRAE design points`, 'info');
+          return;
+        }
+        const nextHidden = !p.hidden;
+        if (typeof store?.updatePoint === 'function') {
+          store.updatePoint(p.id, { hidden: nextHidden }, true);
+        } else {
+          p.hidden = nextHidden;
+        }
+        toast(`"${ptName}" ${nextHidden ? 'hidden from chart' : 'shown on chart'}`, 'info');
+      };
+      const visDot = tr.querySelector('.pt-color-dot');
+      on(visDot, 'click', toggleVis);
+      on(visDot, 'keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          toggleVis(e);
+        }
+      });
+
       // Clicking row selects point on chart
       on(tr, 'click', (e) => {
-        if (e.target.closest('button')) return;
+        if (e.target.closest('button') || e.target.closest('.pt-color-dot')) return;
         selectChartPoint(p, i);
       });
 
@@ -2067,6 +2197,24 @@ export function initLeftPanel(store, callbacks = {}) {
   }
 
   on(el.ptTblEditMode, 'change', refreshPointsTable);
+
+  on(el.btnShowHiddenPts, 'click', () => {
+    const pts = getPoints();
+    let unhid = 0;
+    for (const p of pts) {
+      if (p.hidden) {
+        if (typeof store?.updatePoint === 'function') store.updatePoint(p.id, { hidden: false }, false);
+        else p.hidden = false;
+        unhid++;
+      }
+    }
+    if (getState().layers?.designPts === false) {
+      setStoreLayer('designPts', true);
+    }
+    syncDesignPtsControls();
+    refreshPointsTable();
+    toast(`All hidden state points are now visible`, 'success');
+  });
 
   /* ==========================================================================
      TAB 2 — 3. SMART BULK CSV / TSV IMPORT & CLEAR ALL
@@ -2581,6 +2729,7 @@ export function initLeftPanel(store, callbacks = {}) {
     syncChartCurveControls();
     syncComfortControls(false);
     syncShrControls();
+    syncDesignPtsControls();
     syncWeatherControls();
     syncNewPointDefaults(false);
     refreshPointsTable();
@@ -2625,6 +2774,7 @@ export function initLeftPanel(store, callbacks = {}) {
   syncAxisAndTrendControls(true);
   syncComfortControls(true);
   syncShrControls();
+  syncDesignPtsControls();
   syncWeatherControls();
   syncNewPointDefaults(false);
   refreshPointsTable();

@@ -366,6 +366,7 @@ export const DEFAULT_LAYERS = {
   datacenter: false,
   weather: false,
   points: true,
+  designPts: true,
   processes: true,
   mixlinks: true,
   adpLines: true,
@@ -542,5 +543,33 @@ export const CoreDOM = {
       grid_lw: base.grid_lw ?? 0.7,
       grid2_lw: base.grid2_lw ?? 1.0
     };
+  },
+  isDesignCityPoint(p) {
+    if (!p || typeof p !== 'object') return false;
+    if (p.designTag || p.cityId) return true;
+    const note = typeof p.note === 'string' ? p.note : '';
+    if (/^ASHRAE\s+(Cooling|Heating)\s+(0\.4%|1%|99\.6%)/i.test(note)) return true;
+    const lbl = typeof p.label === 'string' ? p.label : '';
+    return /\b(Sum\s*0\.4%|Sum\s*1%|Win\s*99\.6%|0\.4%\s*Cool|1%\s*Cool|99\.6%\s*Heat)\b/i.test(lbl);
+  },
+  isPointVisible(p, state) {
+    if (!p || !Number.isFinite(p.T) || !Number.isFinite(p.w)) return false;
+    const layers = state?.layers || {};
+    if (layers.points === false) return false;
+    if (p.hidden) return false;
+    if (layers.designPts === false && CoreDOM.isDesignCityPoint(p)) return false;
+    return true;
+  },
+  computePointScale(view, isDesignPt = false) {
+    const tSpan = Math.max(4, (view?.tMax ?? 55) - (view?.tMin ?? -10));
+    const wSpan = Math.max(0.003, view?.wMax ?? 0.030);
+    const zT = 65 / tSpan;
+    const zW = 0.030 / wSpan;
+    const zGeom = Math.sqrt(zT * zW);
+    const zEff = Math.min(zGeom, Math.min(zT, zW) * 1.08);
+    const base = zEff < 1
+      ? CoreDOM.clamp(Math.pow(zEff, 0.85), 0.44, 1.0)
+      : CoreDOM.clamp(Math.pow(zEff, 0.28), 1.0, 1.24);
+    return isDesignPt ? CoreDOM.clamp(base * 0.82, 0.38, 1.05) : base;
   }
 };

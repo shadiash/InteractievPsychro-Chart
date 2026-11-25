@@ -34,7 +34,7 @@ export function createStore() {
     'custom'
   ]);
   const VALID_PROCESS_ROLES = new Set(['coil', 'mix', 'room', 'erv', 'erv_exhaust', 'fan', 'humid', 'custom']);
-  const OVERLAY_LAYERS = new Set(['points', 'processes', 'mixlinks', 'adpLines', 'annotations', 'flowAnim']);
+  const OVERLAY_LAYERS = new Set(['points', 'designPts', 'processes', 'mixlinks', 'adpLines', 'annotations', 'flowAnim']);
   const VIEW_BOUNDS = { tMin: -50, tMax: 85, minSpanT: 2, wMin: 0.002, wMax: 0.065 };
 
   const DEFAULT_VIEW = {
@@ -409,10 +409,13 @@ export function createStore() {
       label,
       color,
       locked: Boolean(raw?.locked),
+      hidden: Boolean(raw?.hidden),
       lx: numOr(raw?.lx, 10),
       ly: numOr(raw?.ly, -6),
       note: raw?.note != null ? String(raw.note) : '',
-      derived: raw?.derived ? deepClone(raw.derived) : null
+      derived: raw?.derived ? deepClone(raw.derived) : null,
+      ...(raw?.designTag ? { designTag: String(raw.designTag) } : {}),
+      ...(raw?.cityId ? { cityId: String(raw.cityId) } : {})
     };
   }
 
@@ -767,7 +770,7 @@ export function createStore() {
     const willBeLocked = 'locked' in patch ? Boolean(patch.locked) : pt.locked;
     const isCoordEdit = ('T' in patch) || ('w' in patch);
     if (pt.locked && willBeLocked && isCoordEdit && !patch.force) {
-      const hasNonCoordFields = ['label', 'color', 'lx', 'ly', 'note', 'locked', 'derived'].some(k => k in patch);
+      const hasNonCoordFields = ['label', 'color', 'lx', 'ly', 'note', 'locked', 'hidden', 'designTag', 'cityId', 'derived'].some(k => k in patch);
       if (!hasNonCoordFields) return null;
     }
 
@@ -779,6 +782,17 @@ export function createStore() {
 
     if ('locked' in patch) {
       pt.locked = Boolean(patch.locked);
+    }
+    if ('hidden' in patch) {
+      pt.hidden = Boolean(patch.hidden);
+    }
+    if ('designTag' in patch) {
+      if (patch.designTag) pt.designTag = String(patch.designTag);
+      else delete pt.designTag;
+    }
+    if ('cityId' in patch) {
+      if (patch.cityId) pt.cityId = String(patch.cityId);
+      else delete pt.cityId;
     }
 
     if (!pt.locked || patch.force) {
@@ -872,6 +886,178 @@ export function createStore() {
     emit('change', { reason: 'duplicate-point', pointId: copy.id });
     autosave();
     return copy;
+  }
+
+  function _isPointReferencedByProcess(ptId) {
+    for (let i = 0; i < state.processes.length; i++) {
+      const pr = state.processes[i];
+      if (pr && (pr.aId === ptId || pr.bId === ptId)) return true;
+    }
+    for (let i = 0; i < state.points.length; i++) {
+      const p = state.points[i];
+      const d = p?.derived;
+      if (!d || d.type !== 'mix') continue;
+      if (d.aId === ptId || d.bId === ptId) return true;
+      if (Array.isArray(d.streams) && d.streams.some(s => (s?.id ?? s?.ptId ?? s?.pointId) === ptId)) return true;
+    }
+    return false;
+  }
+
+  function deduplicateDesignPoints(recordHistory = false) {
+    const seen = new Map();
+    const removeIds = new Set();
+
+    for (let i = 0; i < state.points.length; i++) {
+      const p = state.points[i];
+      if (!CoreDOM.isDesignCityPoint(p)) continue;
+      const key = p.designTag
+        ? `tag:${String(p.designTag).toLowerCase()}`
+        : `lbl:${String(p.label || '').trim().toLowerCase()}`;
+      if (!seen.has(key)) {
+        seen.set(key, p);
+        continue;
+      }
+      const existing = seen.get(key);
+      // Prefer keeping a point attached to a process; drop unattached duplicate copies
+      const existRef = _isPointReferencedByProcess(existing.id);
+      const curRef = _isPointReferencedByProcess(p.id);
+      if (!existRef && curRef) {
+        removeIds.add(existing.id);
+        seen.set(key, p);
+      } else if (!curRef) {
+        removeIds.add(p.id);
+      }
+    }
+
+    if (removeIds.size === 0) return 0;
+    if (recordHistory) pushHistory('Deduplicate Design Points');
+    state.points = state.points.filter(p => !removeIds.has(p.id));
+    cleanSelectionRefs();
+    emit('overlay-dirty', { reason: 'dedupe-design-points' });
+    emit('change', { reason: 'dedupe-design-points' });
+    autosave();
+    return removeIds.size;
+  }
+
+  function upsertDesignPoints(specs = [], opts = {}) {
+    if (!Array.isArray(specs) || specs.length === 0) {
+      return { added: 0, updated: 0, removedDuplicates: 0, points: [] };
+    }
+    const recordHistory = opts.recordHistory !== false;
+    const cityId = opts.cityId != null ? String(opts.cityId) : null;
+    const historyLabel = opts.historyLabel || (opts.cityName ? `Plot ${opts.cityName} Design Points` : 'Plot Design Points');
+
+    if (recordHistory) {
+      pushHistory(historyLabel);
+    }
+
+    // First sweep any pre-existing duplicate design points
+    const removedBefore = deduplicateDesignPoints(false);
+    let added = 0;
+    let updated = 0;
+    let removedDupes = removedBefore;
+    const resultPts = [];
+
+    for (const spec of specs) {
+      if (!spec || !Number.isFinite(Number(spec.T)) || !Number.isFinite(Number(spec.w))) continue;
+      const T = CoreDOM.clamp(Number(spec.T), -60, 120);
+      const w = Math.max(0, Number(spec.w));
+      const label = String(spec.label || '').trim() || 'Design Pt';
+      const lblLow = label.toLowerCase();
+      const dTag = spec.designTag ? String(spec.designTag) : (cityId ? `${cityId}:${lblLow}` : null);
+      const dTagLow = dTag ? dTag.toLowerCase() : null;
+
+      // Match existing design point by designTag, exact label, or co-located design point
+      const matches = state.points.filter(p => {
+        if (!p) return false;
+        if (dTagLow && p.designTag && String(p.designTag).toLowerCase() === dTagLow) return true;
+        if (String(p.label || '').trim().toLowerCase() === lblLow && CoreDOM.isDesignCityPoint(p)) return true;
+        if (CoreDOM.isDesignCityPoint(p) && Math.abs(p.T - T) <= 0.15 && Math.abs(p.w - w) <= 0.00025 &&
+            String(p.label || '').trim().toLowerCase() === lblLow) {
+          return true;
+        }
+        return false;
+      });
+
+      if (matches.length > 0) {
+        // Keep the first (preferring process-attached), drop any extra unattached duplicates
+        matches.sort((a, b) => Number(_isPointReferencedByProcess(b.id)) - Number(_isPointReferencedByProcess(a.id)));
+        const keeper = matches[0];
+        if (matches.length > 1) {
+          const extraIds = new Set(matches.slice(1).filter(m => !_isPointReferencedByProcess(m.id)).map(m => m.id));
+          if (extraIds.size > 0) {
+            state.points = state.points.filter(p => !extraIds.has(p.id));
+            removedDupes += extraIds.size;
+          }
+        }
+        keeper.T = T;
+        keeper.w = w;
+        keeper.label = label;
+        if (spec.color) keeper.color = String(spec.color);
+        if (spec.note != null) keeper.note = String(spec.note);
+        if (dTag) keeper.designTag = dTag;
+        if (cityId || spec.cityId) keeper.cityId = String(spec.cityId || cityId);
+        keeper.hidden = false;
+        updated++;
+        resultPts.push(keeper);
+      } else {
+        const created = normalizePoint(
+          {
+            T,
+            w,
+            label,
+            color: spec.color,
+            note: spec.note || '',
+            hidden: false,
+            designTag: dTag,
+            cityId: spec.cityId || cityId
+          },
+          state.points.length,
+          nextPtId++
+        );
+        state.points.push(created);
+        added++;
+        resultPts.push(created);
+      }
+    }
+
+    state.layers.designPts = true;
+    recomputeDerived();
+    cleanSelectionRefs();
+    emit('overlay-dirty', { reason: 'upsert-design-points' });
+    emit('change', { reason: 'upsert-design-points' });
+    autosave();
+    return { added, updated, removedDuplicates: removedDupes, points: resultPts };
+  }
+
+  function clearDesignPoints(cityId = null, recordHistory = true) {
+    const targetCity = cityId != null ? String(cityId) : null;
+    const candidates = state.points.filter(p => {
+      if (!CoreDOM.isDesignCityPoint(p)) return false;
+      if (targetCity && p.cityId && String(p.cityId) !== targetCity) return false;
+      return true;
+    });
+    if (candidates.length === 0) return { removed: 0, hidden: 0 };
+
+    if (recordHistory) pushHistory('Remove Design Points');
+    const removeIds = new Set();
+    let hiddenCount = 0;
+    for (const p of candidates) {
+      if (p.locked || _isPointReferencedByProcess(p.id)) {
+        p.hidden = true;
+        hiddenCount++;
+      } else {
+        removeIds.add(p.id);
+      }
+    }
+    if (removeIds.size > 0) {
+      state.points = state.points.filter(p => !removeIds.has(p.id));
+    }
+    cleanSelectionRefs();
+    emit('overlay-dirty', { reason: 'clear-design-points' });
+    emit('change', { reason: 'clear-design-points' });
+    autosave();
+    return { removed: removeIds.size, hidden: hiddenCount };
   }
 
   /* --------------------------------------------------------------------------
@@ -1398,7 +1584,9 @@ export function createStore() {
   }
 
   function fitPoints(recordHistory = true) {
-    if (state.points.length === 0) {
+    const visiblePts = state.points.filter(pt => CoreDOM.isPointVisible(pt, state));
+    const targetPts = visiblePts.length > 0 ? visiblePts : state.points;
+    if (targetPts.length === 0) {
       resetView(recordHistory);
       return;
     }
@@ -1407,7 +1595,7 @@ export function createStore() {
     let tHi = -Infinity;
     let maxPtW = 0;
 
-    for (const pt of state.points) {
+    for (const pt of targetPts) {
       if (pt.T < tLo) tLo = pt.T;
       if (pt.T > tHi) tHi = pt.T;
       if (pt.w > maxPtW) maxPtW = pt.w;
@@ -2329,6 +2517,9 @@ export function createStore() {
       if (!raw) return false;
       const obj = JSON.parse(raw);
       const res = importJSON(obj, { recordHistory: false, skipAutosave: true });
+      if (res && res.ok) {
+        deduplicateDesignPoints(false);
+      }
       return Boolean(res && res.ok);
     } catch {
       return false;
@@ -2375,6 +2566,9 @@ export function createStore() {
     deletePoint,
     duplicatePoint,
     getPoint,
+    upsertDesignPoints,
+    clearDesignPoints,
+    deduplicateDesignPoints,
 
     // Processes
     addProcess,
